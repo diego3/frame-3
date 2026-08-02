@@ -32,6 +32,37 @@ You can use this templates in a few ways: using Visual Studio, using CMake, or m
 
 Chose one of the follow setup options that fit in you development environment.
 
+### CLI: CMake (recommended on Linux)
+
+Install the build tools and raylib's system dependencies:
+
+```sh
+sudo apt update && sudo apt install -y cmake build-essential git \
+    libasound2-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev \
+    libxext-dev libgl1-mesa-dev libglu1-mesa-dev
+```
+
+`CMakeLists.txt` fetches and builds raylib automatically (via `FetchContent`), so no manual clone is needed:
+
+```sh
+cmake -S . -B build
+cmake --build build
+```
+
+The executable is generated at `build/raylib-game-template/raylib-game-template`. To run it:
+
+```sh
+./build/raylib-game-template/raylib-game-template
+```
+
+Or use the helper scripts at the repo root, which wrap the commands above:
+
+```sh
+./build.sh      # configure + compile
+./run.sh        # run the already-built executable
+./build-run.sh  # build.sh followed by run.sh
+```
+
 ### CLI: Makefile
 
 ```sh
