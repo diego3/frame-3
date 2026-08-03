@@ -67,6 +67,9 @@ compile_commands.json
 # Build folder
 [Bb]uild
 
+# Resources staged into src/ at build time by the raw Makefile (source lives in assets/)
+/src/resources/
+
 # Android files
 *apk*
 android.*
