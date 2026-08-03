@@ -47,6 +47,103 @@ only ever called once, from `main()`.
 The event manager is not ticked or budgeted at all — `Emit` runs handlers immediately, so there's
 nothing for `Engine::Run()` to drive on its behalf.
 
+### Starting proposal vs. what shipped
+
+The starting point for this ADR was a hand-written sketch of what the book's Ch. 4 loop would look
+like ported onto raylib, close to the book's own style:
+
+```cpp
+// Starting proposal (not what shipped -- see below)
+InitWindow(screenWidth, screenHeight, "Raylib Game Loop - GC4 Style");
+SetTargetFPS(60);
+
+shared_ptr<EventManager> pEventManager(new EventManager("Global", true));
+shared_ptr<ProcessManager> pProcessManager(new ProcessManager());
+
+while (!WindowShouldClose())
+{
+    if (IsKeyPressed(KEY_SPACE)) {
+        pEventManager->VQueueEvent(make_shared<EvtData_Fire_Weapon>(playerID));
+    }
+
+    float deltaMs = GetFrameTime() * 1000.0f;
+    pEventManager->VTick(20);
+    pProcessManager->UpdateProcesses(deltaMs);
+
+    BeginDrawing();
+    ClearBackground(BLACK);
+    pScene->OnRender();
+    EndDrawing();
+}
+
+CloseWindow();
+```
+
+What actually shipped (`src/app/engine.h`/`.cpp`):
+
+```cpp
+// engine.h
+class Engine {
+public:
+    bool Init(int screenWidth, int screenHeight, const char *title);
+    void Run(void (*updateAndDraw)(void));
+    void Shutdown();
+
+    entt::registry &Registry() { return registry_; }
+    EventManager &Events() { return eventManager_; }
+    ProcessManager &Processes() { return processManager_; }
+
+private:
+    entt::registry registry_;
+    EventManager eventManager_;
+    ProcessManager processManager_;
+};
+```
+
+```cpp
+// engine.cpp
+bool Engine::Init(int screenWidth, int screenHeight, const char *title) {
+    InitWindow(screenWidth, screenHeight, title);
+    InitAudioDevice();
+    font = LoadFont("resources/characters/mecha.png");
+    fxCoin = LoadSound("resources/audio/fx/coin.wav");
+    SetMusicVolume(music, 1.0f);
+    PlayMusicStream(music);
+    return IsWindowReady();
+}
+
+namespace {
+    Engine *g_runningEngine = nullptr;
+    void (*g_updateAndDraw)(void) = nullptr;
+
+    void TickAndUpdateDraw() {
+        g_runningEngine->Processes().Update(GetFrameTime());
+        g_updateAndDraw();   // == UpdateDrawFrame() in raylib_game.cpp
+    }
+}
+
+void Engine::Run(void (*updateAndDraw)(void)) {
+    g_runningEngine = this;
+    g_updateAndDraw = updateAndDraw;
+#if defined(PLATFORM_WEB)
+    emscripten_set_main_loop(TickAndUpdateDraw, 60, 1);
+#else
+    SetTargetFPS(60);
+    while (!WindowShouldClose()) {
+        TickAndUpdateDraw();
+    }
+#endif
+}
+```
+
+| Starting proposal | What shipped | Why |
+|---|---|---|
+| `EventManager::VQueueEvent(...)` + `VTick(20)` (queued, 20ms-per-frame processing budget) | `EventManager::Emit<T>(...)` dispatches immediately, synchronously | `VTick(20)`'s budget exists in the book to bound the cost of GUID-lookup + enum-dispatch over a queue that might grow large in one frame. `std::type_index`-keyed dispatch doesn't carry that cost, so there's no queue to drain against a budget in the first place. Revisit only if a real workload shows event storms causing frame-time spikes (see Tradeoffs below). |
+| `shared_ptr<EventManager>`, `shared_ptr<ProcessManager>` held loose in `main()` | `Engine` owns both by value, as plain members | No shared ownership need exists — `Engine` is the only thing that references either today. Matches ADR-0001's precedent of `Engine` owning `entt::registry` by value, not behind a `shared_ptr`. |
+| `pScene->OnRender()` — an explicit Scene Graph call | A generic `updateAndDraw()` callback (`UpdateDrawFrame` from the raylib template) | frame-3 has no Scene Graph yet — `screens.h`'s `screen_*.c` files are still fused update+draw per screen (ADR-0001, Decision 2). `Engine::Run()` stays agnostic to what the callback does. |
+| Loop body reads input directly (`IsKeyPressed`) and queues an event inline | Not shown in `Engine` at all — input handling stays inside whatever `updateAndDraw()` calls | `Engine` deliberately doesn't touch Game Logic/View concerns (ADR-0001, Decision 2). Input → event translation is gameplay code's job once it exists, not the application layer's. |
+| One `while` loop, no `PLATFORM_WEB` branch | Desktop `while` loop and `PLATFORM_WEB`'s `emscripten_set_main_loop` both go through the same `TickAndUpdateDraw` trampoline | The starting proposal targeted desktop only; frame-3 already has to support `PLATFORM_WEB` (ADR-0001), so the process-manager tick had to work under both without being duplicated or drifting between them. |
+
 ### Tradeoffs accepted
 
 - No time-budgeted event processing (the book's `VTick(20)`). Accepted because the cost that budget
