@@ -28,7 +28,11 @@ jobs:
       PROJECT_RESOURCES_SRC_PATH: assets
       PROJECT_RESOURCES_DST_PATH: resources
       PROJECT_CUSTOM_FLAGS: ""
-      PROJECT_RESOURCES_PATH: resources
+      # NOTE: intentionally not setting PROJECT_RESOURCES_PATH here -- it's a Makefile variable,
+      # not a Generate-Artifacts-step variable like the two above, and overriding it to
+      # "resources" (stale from before the assets/ rename) made the Makefile's own "resources"
+      # target try to cp resources/. onto itself. Let the Makefile's own default (../assets)
+      # apply, same as the Linux workflow already does.
 
     steps:
     - name: Checkout this repo
@@ -41,6 +45,13 @@ jobs:
       with:
         repository: raysan5/raylib
         path: raylib
+
+    - name: Checkout EnTT repo
+      uses: actions/checkout@master
+      with:
+        repository: skypjack/entt
+        ref: v4.0.0
+        path: entt
 
     - name: Setup Release Paths
       run: |
@@ -96,13 +107,13 @@ jobs:
 
         # Build project x86_64 binary
         # TODO: Link with x86_64 raylib library: libraylib_x86_64.a
-        make PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE PROJECT_CUSTOM_FLAGS=${{ env.PROJECT_CUSTOM_FLAGS }} PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib PROJECT_CUSTOM_FLAGS="-target x86_64-apple-macos10.12"
+        make PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE PROJECT_CUSTOM_FLAGS=${{ env.PROJECT_CUSTOM_FLAGS }} PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib ENTT_PATH=../../entt PROJECT_CUSTOM_FLAGS="-target x86_64-apple-macos10.12"
         mv -v -f ${{ env.PROJECT_NAME }} ${{ env.PROJECT_NAME }}_x86_64
         make clean
 
         # Build project arm64 binary
         # TODO: Link with arm64 raylib library: libraylib_arm.a
-        make PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE PROJECT_CUSTOM_FLAGS=${{ env.PROJECT_CUSTOM_FLAGS }} PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib PROJECT_CUSTOM_FLAGS="-target arm64-apple-macos11"
+        make PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE PROJECT_CUSTOM_FLAGS=${{ env.PROJECT_CUSTOM_FLAGS }} PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib ENTT_PATH=../../entt PROJECT_CUSTOM_FLAGS="-target arm64-apple-macos11"
         mv -v -f ${{ env.PROJECT_NAME }} ${{ env.PROJECT_NAME }}_arm64
         make clean
 

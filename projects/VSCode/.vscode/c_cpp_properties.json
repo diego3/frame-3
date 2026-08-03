@@ -5,7 +5,8 @@
             "includePath": [
                 "${workspaceFolder}/../../src/**",
                 "${workspaceFolder}/../../src/external",
-                "C:/raylib/raylib/src"
+                "C:/raylib/raylib/src",
+                "C:/entt/entt/single_include"
             ],
             "defines": [
                 "_DEBUG",
@@ -16,7 +17,7 @@
             ],
             "compilerPath": "C:/raylib/w64devkit/bin/gcc.exe",
             "cStandard": "c99",
-            "cppStandard": "c++14",
+            "cppStandard": "c++20",
             "intelliSenseMode": "gcc-x64"
         },
         {
@@ -24,7 +25,8 @@
             "includePath": [
                 "${workspaceFolder}/../../src/**",
                 "${workspaceFolder}/../../src/external",
-                "${workspaceFolder}/../../../raylib/src/**"
+                "${workspaceFolder}/../../../raylib/src/**",
+                "${workspaceFolder}/../../../entt/single_include/**"
             ],
             "defines": [
                 "_DEBUG",
@@ -35,7 +37,7 @@
             ],
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c11",
-            "cppStandard": "c++14",
+            "cppStandard": "c++20",
             "intelliSenseMode": "clang-x64"
         },
         {
@@ -43,7 +45,8 @@
             "includePath": [
                 "${workspaceFolder}/../../src/**",
                 "${workspaceFolder}/../../src/external",
-                "${workspaceFolder}/../../../raylib/src/**"
+                "${workspaceFolder}/../../../raylib/src/**",
+                "${workspaceFolder}/../../../entt/single_include/**"
             ],
             "defines": [
                 "_DEBUG",
@@ -54,7 +57,7 @@
             ],
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c11",
-            "cppStandard": "c++14",
+            "cppStandard": "c++20",
             "intelliSenseMode": "macos-clang-arm64"
         }
     ],

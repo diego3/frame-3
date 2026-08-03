@@ -12,13 +12,10 @@
 
 #include "raylib.h"
 #include "../game/screens.h"    // NOTE: Declares global (extern) variables and screens functions
-
-#if defined(PLATFORM_WEB)
-    #include <emscripten/emscripten.h>      // Emscripten library
-#endif
+#include "engine.h"
 
 #include <stdio.h>                          // Required for: printf()
-#include <stdlib.h>                         // Required for: 
+#include <stdlib.h>                         // Required for:
 #include <string.h>                         // Required for:
 
 //----------------------------------------------------------------------------------
@@ -58,9 +55,9 @@ static GameScreen transToScreen = UNKNOWN;
 //----------------------------------------------------------------------------------
 // Module Functions Declaration
 //----------------------------------------------------------------------------------
-static void ChangeToScreen(int screen);     // Change to screen, no transition effect
+static void ChangeToScreen(GameScreen screen);     // Change to screen, no transition effect
 
-static void TransitionToScreen(int screen); // Request transition to next screen
+static void TransitionToScreen(GameScreen screen); // Request transition to next screen
 static void UpdateTransition(void);         // Update transition effect
 static void DrawTransition(void);           // Draw transition effect (full-screen rectangle)
 
@@ -73,34 +70,14 @@ int main(void)
 {
     // Initialization
     //---------------------------------------------------------
-    InitWindow(screenWidth, screenHeight, "raylib game template");
-
-    InitAudioDevice();      // Initialize audio device
-
-    // Load global data (assets that must be available in all screens, i.e. font)
-    font = LoadFont("resources/characters/mecha.png");
-    //music = LoadMusicStream("resources/audio/music/ambient.ogg"); // TODO: Load music
-    fxCoin = LoadSound("resources/audio/fx/coin.wav");
-
-    SetMusicVolume(music, 1.0f);
-    PlayMusicStream(music);
+    Engine engine;
+    if (!engine.Init(screenWidth, screenHeight, "raylib game template")) return 1;
 
     // Setup and init first screen
     currentScreen = LOGO;
     InitLogoScreen();
 
-#if defined(PLATFORM_WEB)
-    emscripten_set_main_loop(UpdateDrawFrame, 60, 1);
-#else
-    SetTargetFPS(60);       // Set our game to run at 60 frames-per-second
-    //--------------------------------------------------------------------------------------
-
-    // Main game loop
-    while (!WindowShouldClose())    // Detect window close button or ESC key
-    {
-        UpdateDrawFrame();
-    }
-#endif
+    engine.Run(UpdateDrawFrame);
 
     // De-Initialization
     //--------------------------------------------------------------------------------------
@@ -115,14 +92,7 @@ int main(void)
         default: break;
     }
 
-    // Unload global data loaded
-    UnloadFont(font);
-    UnloadMusicStream(music);
-    UnloadSound(fxCoin);
-
-    CloseAudioDevice();     // Close audio context
-
-    CloseWindow();          // Close window and OpenGL context
+    engine.Shutdown();
     //--------------------------------------------------------------------------------------
 
     return 0;
@@ -132,7 +102,7 @@ int main(void)
 // Module Functions Definition
 //----------------------------------------------------------------------------------
 // Change to next screen, no transition
-static void ChangeToScreen(int screen)
+static void ChangeToScreen(GameScreen screen)
 {
     // Unload current screen
     switch (currentScreen)
@@ -160,7 +130,7 @@ static void ChangeToScreen(int screen)
 }
 
 // Request transition to next screen
-static void TransitionToScreen(int screen)
+static void TransitionToScreen(GameScreen screen)
 {
     onTransition = true;
     transFadeOut = false;

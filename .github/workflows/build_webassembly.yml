@@ -39,6 +39,13 @@ jobs:
         repository: raysan5/raylib
         path: raylib
 
+    - name: Checkout EnTT repo
+      uses: actions/checkout@master
+      with:
+        repository: skypjack/entt
+        ref: v4.0.0
+        path: entt
+
     - name: Setup emsdk
       uses: emscripten-core/setup-emsdk@v15
       with:
@@ -66,7 +73,7 @@ jobs:
     - name: Build Product
       run: |
         cd ${{ env.PROJECT_REPO_NAME }}/src
-        make PLATFORM=PLATFORM_WEB BUILD_MODE=RELEASE EMSDK_PATH="D:/a/${{ env.PROJECT_REPO_NAME }}/${{ env.PROJECT_REPO_NAME }}/emsdk-cache/emsdk-main" PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib -B
+        make PLATFORM=PLATFORM_WEB BUILD_MODE=RELEASE EMSDK_PATH="D:/a/${{ env.PROJECT_REPO_NAME }}/${{ env.PROJECT_REPO_NAME }}/emsdk-cache/emsdk-main" PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib ENTT_PATH=../../entt -B
 
     - name: Generate Artifacts
       run: |

@@ -40,12 +40,17 @@ ifeq ($(PLATFORM),PLATFORM_WEB)
 endif
 
 PROJECT_SOURCE_FILES  ?= \
-    app/raylib_game.c \
     game/screen_logo.c \
     game/screen_title.c \
     game/screen_options.c \
     game/screen_gameplay.c \
     game/screen_ending.c
+
+# C++ sources (EnTT-using code, etc.), compiled/linked separately from the plain-C sources above
+# since they need a C++ standard and the EnTT include path (see ENTT_INCLUDE_PATH below).
+PROJECT_SOURCE_FILES_CPP ?= \
+    app/raylib_game.cpp \
+    app/engine.cpp
 
 # Source location of game content, staged into ./resources before linking (see 'resources' target)
 PROJECT_RESOURCES_PATH ?= ../assets
@@ -56,6 +61,13 @@ RAYLIB_INCLUDE_PATH   ?= $(RAYLIB_PATH)/src
 RAYLIB_LIB_PATH       ?= $(RAYLIB_PATH)/src
 # Library type used for raylib: STATIC (.a) or SHARED (.so/.dll)
 RAYLIB_LIBTYPE        ?= STATIC
+
+# EnTT (header-only; only an include path is needed, no library to build/link).
+# ENTT_PATH should point at a checkout of https://github.com/skypjack/entt (see CI workflows,
+# which check it out as a sibling directory next to raylib/); single_include/ has the amalgamated
+# entt/entt.hpp header so no build step or additional include roots are required.
+ENTT_PATH             ?= C:\entt\entt
+ENTT_INCLUDE_PATH      = $(ENTT_PATH)/single_include
 
 # Build mode for project: DEBUG or RELEASE
 BUILD_MODE            ?= RELEASE
@@ -144,6 +156,21 @@ ifeq ($(PLATFORM),PLATFORM_DRM)
     endif
 endif
 
+# Define default C++ compiler: CXX (for PROJECT_SOURCE_FILES_CPP; mirrors CC's platform logic)
+#------------------------------------------------------------------------------------------------
+CXX = g++
+
+ifeq ($(PLATFORM),PLATFORM_DESKTOP)
+    ifeq ($(PLATFORM_OS),OSX)
+        CXX = clang++
+    endif
+    ifeq ($(PLATFORM_OS),BSD)
+        CXX = clang++
+    endif
+endif
+ifeq ($(PLATFORM),PLATFORM_WEB)
+    CXX = em++
+endif
 
 # Define default make program: MAKE
 #------------------------------------------------------------------------------------------------
@@ -196,9 +223,15 @@ ifeq ($(PLATFORM),PLATFORM_DRM)
     CFLAGS += -std=gnu99 -DEGL_NO_X11
 endif
 
+# CXXFLAGS: everything CFLAGS has (warnings, optimization, PROJECT_CUSTOM_FLAGS, ...) with the C
+# language-standard flag swapped for its C++ equivalent (EnTT requires C++20) rather than
+# recomputing platform/optimization logic a second time. -Wno-pointer-sign is C/ObjC-only and
+# filtered out to avoid a "valid for C/ObjC but not for C++" compiler warning.
+CXXFLAGS = $(filter-out -Wno-pointer-sign,$(patsubst -std=c99,-std=c++20,$(patsubst -std=gnu99,-std=gnu++20,$(CFLAGS))))
+
 # Define include paths for required headers: INCLUDE_PATHS
 #------------------------------------------------------------------------------------------------
-INCLUDE_PATHS += -I. -Iexternal -I$(RAYLIB_INCLUDE_PATH)
+INCLUDE_PATHS += -I. -Iexternal -I$(RAYLIB_INCLUDE_PATH) -I$(ENTT_INCLUDE_PATH)
 
 # Define additional directories containing required header files
 ifeq ($(PLATFORM),PLATFORM_DRM)
@@ -329,7 +362,7 @@ endif
 
 # Define all object files from source files
 #------------------------------------------------------------------------------------------------
-OBJS = $(patsubst %.c, %.o, $(PROJECT_SOURCE_FILES))
+OBJS = $(patsubst %.c, %.o, $(PROJECT_SOURCE_FILES)) $(patsubst %.cpp, %.o, $(PROJECT_SOURCE_FILES_CPP))
 
 # Define processes to execute
 #------------------------------------------------------------------------------------------------
@@ -347,8 +380,11 @@ all:
 	$(MAKE) $(MAKEFILE_TARGET)
 
 # Project target defined by PROJECT_NAME
+# NOTE: Linked with $(CXX), not $(CC) -- OBJS includes C++ object files (see
+# PROJECT_SOURCE_FILES_CPP), and linking those requires the C++ standard library, which the C
+# compiler driver doesn't pull in automatically.
 $(PROJECT_NAME): $(OBJS) resources
-	$(CC) -o $(PROJECT_BUILD_PATH)/$(PROJECT_NAME)$(EXT) $(OBJS) $(CFLAGS) $(INCLUDE_PATHS) $(LDFLAGS) $(LDLIBS) -D$(PLATFORM)
+	$(CXX) -o $(PROJECT_BUILD_PATH)/$(PROJECT_NAME)$(EXT) $(OBJS) $(CFLAGS) $(INCLUDE_PATHS) $(LDFLAGS) $(LDLIBS) -D$(PLATFORM)
 
 # Stage game content next to the built executable
 # NOTE: Content now lives at PROJECT_RESOURCES_PATH (../assets by default), outside src/
@@ -360,6 +396,11 @@ resources:
 # NOTE: This pattern will compile every module defined on $(OBJS)
 %.o: %.c
 	$(CC) -c $< -o $@ $(CFLAGS) $(INCLUDE_PATHS) -D$(PLATFORM)
+
+# NOTE: PROJECT_SOURCE_FILES_CPP entries (EnTT-using code) compile through this pattern instead,
+# with the C++ standard (CXXFLAGS) and the C++ compiler driver (CXX).
+%.o: %.cpp
+	$(CXX) -c $< -o $@ $(CXXFLAGS) $(INCLUDE_PATHS) -D$(PLATFORM)
 
 # Clean everything
 clean:

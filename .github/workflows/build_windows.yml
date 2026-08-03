@@ -40,6 +40,13 @@ jobs:
         repository: raysan5/raylib
         path: raylib
 
+    - name: Checkout EnTT repo
+      uses: actions/checkout@master
+      with:
+        repository: skypjack/entt
+        ref: v4.0.0
+        path: entt
+
     # NOTE: Visual Studio project build configuration already defines all required directories where project is generated:
     # $(SolutionDir)\build\$(ProjectName)\bin\$(Platform)\$(Configuration)\
     - name: Setup Release Paths

@@ -63,8 +63,9 @@ sudo apt update && sudo apt install -y build-essential git \
     libxext-dev libgl1-mesa-dev libglu1-mesa-dev
 ```
 
-`build.sh` wraps the raw Makefile below: it clones and compiles raylib into `vendor/raylib/`
-(skipped once already there) the first time it runs, then builds the game.
+`build.sh` wraps the raw Makefile below: it clones and compiles raylib into `vendor/raylib/`, and
+clones [EnTT](https://github.com/skypjack/entt) (the ECS library, header-only — no build step) into
+`vendor/entt/` (both skipped once already there) the first time it runs, then builds the game.
 
 ```sh
 ./build.sh      # vendor raylib if needed, then compile
@@ -80,9 +81,10 @@ The manual version of what the scripts above automate:
 mkdir ~/raylib-gamejam && cd ~/raylib-gamejam
 git clone --depth 1 --branch 6.0 https://github.com/raysan5/raylib
 make -C raylib/src PLATFORM=PLATFORM_DESKTOP RAYLIB_LIBTYPE=STATIC
+git clone --depth 1 --branch v4.0.0 https://github.com/skypjack/entt
 git clone https://github.com/$(User Name)/$(Repo Name).git
 cd $(Repo Name)
-make -C src PLATFORM=PLATFORM_DESKTOP RAYLIB_PATH=../../raylib
+make -C src PLATFORM=PLATFORM_DESKTOP RAYLIB_PATH=../../raylib ENTT_PATH=../../entt
 src/raylib_game
 ```
 
@@ -104,9 +106,10 @@ Build raylib itself for the web target, then the game, both via the same Makefil
 ```sh
 git clone --depth 1 --branch 6.0 https://github.com/raysan5/raylib
 make -C raylib/src PLATFORM=PLATFORM_WEB RAYLIB_LIBTYPE=STATIC
+git clone --depth 1 --branch v4.0.0 https://github.com/skypjack/entt
 
 cd src
-make PLATFORM=PLATFORM_WEB BUILD_MODE=RELEASE RAYLIB_PATH=../../raylib
+make PLATFORM=PLATFORM_WEB BUILD_MODE=RELEASE RAYLIB_PATH=../../raylib ENTT_PATH=../../entt
 ```
 
 This produces `build/web/raylib_game.html`, `.js`, `.wasm`, and `.data` (the `assets/` content,
