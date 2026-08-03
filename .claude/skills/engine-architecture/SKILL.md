@@ -1,6 +1,6 @@
 ---
 name: engine-architecture
-description: Design guidance for frame-3's core systems (event bus, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventBus` (`src/app/event_bus.h`), and a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`); no real components or resource cache exist yet, and nothing subscribes to the event bus or attaches a process yet either.
+description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), and a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`); no real components or resource cache exist yet, and nothing subscribes to the event manager or attaches a process yet either.
 ---
 
 # Engine Architecture (Game Coding Complete Ch. 4, 6-8 — modernized)
@@ -11,7 +11,7 @@ frame-3 is still close to the stock
 state machine (`src/game/screens.h`, still plain C) driven by `src/app/raylib_game.cpp`. The
 `src/app/` layer: **`Engine`** (`src/app/engine.h`/`.cpp`, Ch. 5 Application layer) owns
 window/audio lifecycle, drives the main loop via a function-pointer callback, owns an
-`entt::registry`, and now also owns and drives §§1-2's systems (`EventBus`, `ProcessManager`) —
+`entt::registry`, and now also owns and drives §§1-2's systems (`EventManager`, `ProcessManager`) —
 see §3 for what it does (and deliberately doesn't) touch re: ECS. EnTT itself is wired into the
 raw Makefile (`CXX`/`CXXFLAGS`/`ENTT_PATH`, no CMake in this repo). No real components or resource
 cache exist yet (§§3-4). This skill exists so that when each of these systems gets built, it
@@ -36,18 +36,19 @@ every code sketch below as a starting shape to adjust, not a spec to match exact
 
 ## Core Concepts
 
-### 1. Event bus (Ch. 4) — typed, not GUID+enum
+### 1. Event manager (Ch. 4) — typed, not GUID+enum
 
-The book's Event Manager multicasts by a 32-bit GUID and a monolithic event-type enum, dispatched
-through hand-rolled delegate objects — idiomatic C++ for a pre-`std::function`, pre-templates-were-
-trusted-for-this era. **Don't port that literally.** A modern equivalent, and — not coincidentally
-— the same shape already proven out in this project's sibling 2D engine (`frame`'s Go
-`event.Subscribe[T]`/`Emit`): a bus keyed by `std::type_index`, with `std::function<void(const T&)>`
-handlers.
+The book calls this the Event Manager, and multicasts by a 32-bit GUID and a monolithic event-type
+enum, dispatched through hand-rolled delegate objects — idiomatic C++ for a pre-`std::function`,
+pre-templates-were-trusted-for-this era. **Don't port that literally.** A modern equivalent, and —
+not coincidentally — the same shape already proven out in this project's sibling 2D engine
+(`frame`'s Go `event.Subscribe[T]`/`Emit`): an `EventManager` keyed by `std::type_index`, with
+`std::function<void(const T&)>` handlers, keeping the book's name rather than relabeling it "event
+bus".
 
 ```cpp
-// Sketch — matches src/app/event_bus.h; adjust here if that file's shape changes.
-class EventBus {
+// Sketch — matches src/app/event_manager.h; adjust here if that file's shape changes.
+class EventManager {
 public:
     template <typename T>
     void Subscribe(std::function<void(const T&)> handler) {
@@ -72,10 +73,11 @@ defining a new struct — the same win the book's Ch. 4 was actually chasing (av
 "terrible monolithic enumeration" compile-time trap), achieved with templates instead of an
 integer registry.
 
-**Current state**: `EventBus` (`src/app/event_bus.h`, header-only) exists and `Engine::Events()`
-(`src/app/engine.h`) owns the one instance — but nothing subscribes or emits yet. No event struct
-types exist yet either; define one per event kind as gameplay code needs to announce something
-(e.g. a future `EvtData_EnemyDied`), don't pre-build a taxonomy of events speculatively.
+**Current state**: `EventManager` (`src/app/event_manager.h`, header-only) exists and
+`Engine::Events()` (`src/app/engine.h`) owns the one instance — but nothing subscribes or emits
+yet. No event struct types exist yet either; define one per event kind as gameplay code needs to
+announce something (e.g. a future `EvtData_EnemyDied`), don't pre-build a taxonomy of events
+speculatively.
 
 ### 2. Process manager (Ch. 4) — cooperative multitasking for timed behavior
 

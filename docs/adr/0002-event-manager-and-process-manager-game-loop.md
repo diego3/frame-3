@@ -1,4 +1,4 @@
-# 2. Event bus and process manager, ticked from `Engine::Run`
+# 2. Event manager and process manager, ticked from `Engine::Run`
 
 - Status: Accepted
 - Date: 2026-08-03
@@ -19,13 +19,14 @@ C++03 era; porting the GUID+enum mechanism literally would reintroduce exactly t
 monolithic enumeration" problem the book itself was working around. The Process Manager, by
 contrast, is genuinely not Windows/DirectX-specific in the book and ports close to as-is.
 
-## Decision — `Engine` owns one `EventBus` and one `ProcessManager`, ticked from a shared trampoline
+## Decision — `Engine` owns one `EventManager` and one `ProcessManager`, ticked from a shared trampoline
 
-**`EventBus`** (`src/app/event_bus.h`, header-only): pub/sub keyed by `std::type_index`, handlers
-are `std::function<void(const T&)>`. `Subscribe<T>`/`Emit<T>` dispatch synchronously, in the calling
-frame — no queuing, no per-frame time budget (the book's `VTick(20ms)` existed to bound processing
-under the GUID+enum dispatch cost; the typed dispatch here doesn't carry that cost). Adding a new
-event kind is just defining a new struct, no shared enum to touch.
+**`EventManager`** (`src/app/event_manager.h`, header-only): keeps the book's name rather than
+relabeling it "event bus", but not its GUID+enum mechanism — pub/sub keyed by `std::type_index`,
+handlers are `std::function<void(const T&)>`. `Subscribe<T>`/`Emit<T>` dispatch synchronously, in
+the calling frame — no queuing, no per-frame time budget (the book's `VTick(20ms)` existed to bound
+processing under the GUID+enum dispatch cost; the typed dispatch here doesn't carry that cost).
+Adding a new event kind is just defining a new struct, no shared enum to touch.
 
 **`Process`/`ProcessManager`** (`src/app/process.h`, `src/app/process_manager.h`/`.cpp`): a
 `Process` runs across frames via `Update(dt)` until it reports `Succeed()`/`Fail()`; `ProcessManager`
@@ -43,7 +44,7 @@ a plain function pointer for `emscripten_set_main_loop`, which can't capture `th
 local globals (`g_runningEngine`, `g_updateAndDraw`) bridge that, valid because `Engine::Run()` is
 only ever called once, from `main()`.
 
-The event bus is not ticked or budgeted at all — `Emit` runs handlers immediately, so there's
+The event manager is not ticked or budgeted at all — `Emit` runs handlers immediately, so there's
 nothing for `Engine::Run()` to drive on its behalf.
 
 ### Tradeoffs accepted
@@ -57,7 +58,7 @@ nothing for `Engine::Run()` to drive on its behalf.
   `Engine` is a de facto singleton in practice (one instance, constructed in `main()`, `Run()`
   called once), and the alternative (a heavier callback-registration API on `Engine` itself) isn't
   justified until something other than raylib's own loop-driving needs to hook in.
-- Neither system has a caller yet: nothing subscribes to the event bus or attaches a `Process`,
+- Neither system has a caller yet: nothing subscribes to the event manager or attaches a `Process`,
   because no gameplay code exists to need either yet. No event struct types and no concrete
   `Process` subclass were pre-built speculatively — both get added the first time real gameplay code
   needs to announce something or run a multi-frame effect.
@@ -67,10 +68,10 @@ nothing for `Engine::Run()` to drive on its behalf.
 - `.claude/skills/engine-architecture/SKILL.md` §§1-2 updated to point at these real files instead
   of only sketches, per the skill's own "update once it lands" note.
 - The resource cache (Ch. 8) and real ECS components (Ch. 6-7) remain unbuilt — see ADR-0001 and
-  the skill's Open Questions; this ADR only covers the event bus and process manager.
-- First real usage of `EventBus`/`ProcessManager` should also be the first test of whether
+  the skill's Open Questions; this ADR only covers the event manager and process manager.
+- First real usage of `EventManager`/`ProcessManager` should also be the first test of whether
   `Events()`/`Processes()` accessed straight off `Engine` (vs. threaded through as explicit
   parameters to game/view code) stays comfortable once `screens.h`'s C screen functions need to
   reach them — those functions currently only see `currentScreen`/`font`/`music`/`fxCoin` via
-  `extern` (ADR-0001, Decision 2's tradeoffs), and neither `EventBus` nor `ProcessManager` are
+  `extern` (ADR-0001, Decision 2's tradeoffs), and neither `EventManager` nor `ProcessManager` are
   C-compatible types.

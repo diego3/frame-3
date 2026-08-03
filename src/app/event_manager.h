@@ -1,16 +1,16 @@
-// Event bus (Game Coding Complete Ch. 4, modernized -- see .claude/skills/engine-architecture).
+// Event manager (Game Coding Complete Ch. 4, modernized -- see .claude/skills/engine-architecture).
 // The book multicasts events by a 32-bit GUID plus a monolithic event-type enum; that's a
 // workaround for a pre-templates C++ era. Here, events are just structs and subscribers key off
 // std::type_index, so adding a new event type never touches a shared enum.
-#ifndef EVENT_BUS_H
-#define EVENT_BUS_H
+#ifndef EVENT_MANAGER_H
+#define EVENT_MANAGER_H
 
 #include <functional>
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
 
-class EventBus {
+class EventManager {
 public:
     // Registers a handler for events of type T. Multiple handlers may subscribe to the same T;
     // all of them run, in subscription order, on the next Emit<T>.
@@ -33,4 +33,4 @@ private:
     std::unordered_map<std::type_index, std::vector<std::function<void(const void *)>>> handlers_;
 };
 
-#endif // EVENT_BUS_H
+#endif // EVENT_MANAGER_H

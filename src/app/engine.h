@@ -7,7 +7,7 @@
 
 #include <entt/entt.hpp>
 
-#include "event_bus.h"
+#include "event_manager.h"
 #include "process_manager.h"
 
 class Engine {
@@ -27,12 +27,12 @@ public:
     void Shutdown();
 
     entt::registry &Registry() { return registry_; }
-    EventBus &Events() { return eventBus_; }
+    EventManager &Events() { return eventManager_; }
     ProcessManager &Processes() { return processManager_; }
 
 private:
     entt::registry registry_;
-    EventBus eventBus_;
+    EventManager eventManager_;
     ProcessManager processManager_;
 };
 
