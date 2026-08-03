@@ -32,6 +32,13 @@ PLATFORM              ?= PLATFORM_DESKTOP
 PROJECT_NAME          ?= raylib_game
 PROJECT_VERSION       ?= 1.0
 PROJECT_BUILD_PATH    ?= .
+
+# Web build artifacts (.html/.js/.wasm/.data) land in build/web/ instead of src/, matching
+# where the CMake build already puts its output (build/raylib-game-template/)
+ifeq ($(PLATFORM),PLATFORM_WEB)
+    PROJECT_BUILD_PATH := ../build/web
+endif
+
 PROJECT_SOURCE_FILES  ?= \
     app/raylib_game.c \
     game/screen_logo.c \
@@ -60,7 +67,7 @@ BUILD_WEB_HEAP_SIZE   ?= 128MB
 BUILD_WEB_STACK_SIZE  ?= 1MB
 BUILD_WEB_ASYNCIFY_STACK_SIZE ?= 1048576
 BUILD_WEB_RESOURCES   ?= TRUE
-BUILD_WEB_RESOURCES_PATH  ?= resources
+BUILD_WEB_RESOURCES_PATH  ?= $(PROJECT_BUILD_PATH)/resources
 
 # Determine PLATFORM_OS in case PLATFORM_DESKTOP selected
 ifeq ($(PLATFORM),PLATFORM_DESKTOP)
@@ -346,8 +353,8 @@ $(PROJECT_NAME): $(OBJS) resources
 # Stage game content next to the built executable
 # NOTE: Content now lives at PROJECT_RESOURCES_PATH (../assets by default), outside src/
 resources:
-	@mkdir -p resources
-	@cp -r $(PROJECT_RESOURCES_PATH)/. resources
+	@mkdir -p $(PROJECT_BUILD_PATH)/resources
+	@cp -r $(PROJECT_RESOURCES_PATH)/. $(PROJECT_BUILD_PATH)/resources
 
 # Compile source files
 # NOTE: This pattern will compile every module defined on $(OBJS)
@@ -362,26 +369,20 @@ ifeq ($(PLATFORM),PLATFORM_DESKTOP)
     endif
     ifeq ($(PLATFORM_OS),LINUX)
 	find . -type f -executable -delete
-	rm -fv *.o
+	find . -name "*.o" -delete
     endif
     ifeq ($(PLATFORM_OS),OSX)
-	rm -f *.o external/*.o $(PROJECT_NAME)
+	find . -name "*.o" -delete
+	rm -f $(PROJECT_NAME)
     endif
 endif
 ifeq ($(PLATFORM),PLATFORM_DRM)
 	find . -type f -executable -delete
-	rm -fv *.o
+	find . -name "*.o" -delete
 endif
 ifeq ($(PLATFORM),PLATFORM_WEB)
-    ifeq ($(PLATFORM_OS),WINDOWS)
-	del *.o *.html *.js
-    endif
-    ifeq ($(PLATFORM_OS),LINUX)
-	rm -fv *.o $(PROJECT_NAME).data $(PROJECT_NAME).html $(PROJECT_NAME).js $(PROJECT_NAME).wasm
-    endif
-    ifeq ($(PLATFORM_OS),OSX)
-	rm -f *.o $(PROJECT_NAME).data $(PROJECT_NAME).html $(PROJECT_NAME).js $(PROJECT_NAME).wasm
-    endif
+	find . -name "*.o" -delete
+	rm -rf $(PROJECT_BUILD_PATH)
 endif
 	@echo Cleaning done
 

@@ -117,18 +117,19 @@ git clone --depth 1 --branch 6.0 https://github.com/raysan5/raylib
 make -C raylib/src PLATFORM=PLATFORM_WEB RAYLIB_LIBTYPE=STATIC
 
 cd src
-make PLATFORM=PLATFORM_WEB BUILD_MODE=RELEASE PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib
+make PLATFORM=PLATFORM_WEB BUILD_MODE=RELEASE RAYLIB_PATH=../../raylib
 ```
 
-This produces `src/raylib_game.html`, `.js`, `.wasm`, and `.data` (the `assets/` content,
-preloaded into a virtual filesystem the WASM binary reads at runtime).
+This produces `build/web/raylib_game.html`, `.js`, `.wasm`, and `.data` (the `assets/` content,
+preloaded into a virtual filesystem the WASM binary reads at runtime) — same top-level `build/`
+directory the CMake build already uses, just under a `web/` subfolder.
 
 **Opening `raylib_game.html` directly from disk (`file://`) will not work** — the browser blocks
 the `fetch`/XHR calls Emscripten uses to load the `.wasm` and `.data` files under `file://` for
 security reasons. Serve it over HTTP instead:
 
 ```sh
-cd src
+cd build/web
 python3 -m http.server 8765
 # open http://localhost:8765/raylib_game.html
 ```
