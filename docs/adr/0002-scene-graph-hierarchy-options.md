@@ -1,22 +1,22 @@
-# ADR-001: Scene graph / transform hierarchy — build our own vs. adopt existing
+# 2. Scene graph / transform hierarchy — build our own vs. adopt existing
 
-## Status
-
-Proposed.
+- Status: Proposed
+- Date: 2026-08-03
 
 ## Context
 
 Following the *Game Coding Complete* (McShaffry & Graham) Ch. 9-10 discussion of scene graphs —
-and the Actor-vs-ECS decision already made (ECS via [EnTT](https://github.com/skypjack/entt),
-recorded in `.claude/skills/engine-architecture/SKILL.md`, implemented in PR #2) — this project
-needs a way to attach entities to each other with composed transforms: a weapon in a hand, a
-camera rig on a character, any case where one entity's world position/rotation should be derived
-from a parent's, not stored independently.
+and the Actor-vs-ECS decision already made and recorded in
+[ADR-0001](0001-ecs-via-entt-and-cpp-engine-init.md) (ECS via
+[EnTT](https://github.com/skypjack/entt), implemented directly on `main` in `603dcd2`) — this
+project needs a way to attach entities to each other with composed transforms: a weapon in a
+hand, a camera rig on a character, any case where one entity's world position/rotation should be
+derived from a parent's, not stored independently.
 
 This ADR surveys whether something ready-made should be adopted for this, or whether it should be
-built from scratch on top of the already-chosen EnTT/raylib stack — the Actor-vs-ECS ADR (recorded
-as a skill decision, not yet its own ADR) explicitly deferred this exact question rather than
-presupposing an answer.
+built from scratch on top of the already-chosen EnTT/raylib stack. ADR-0001 explicitly scoped
+itself to the Actor-vs-ECS question and the `Engine` class, deferring this exact hierarchy
+question rather than presupposing an answer — this ADR is that follow-up.
 
 ### Constraints that shape this decision
 
@@ -119,7 +119,7 @@ traversal.
 
 | Pros | Cons |
 |------|------|
-| Hierarchy traversal and query-by-relationship come for free, well-optimized, from the library itself — not something we build or maintain. | **Requires abandoning EnTT**, a dependency already wired in (PR #2) and already decided against being treated as swappable — this isn't a hierarchy decision, it's re-opening the ECS decision for a single feature. |
+| Hierarchy traversal and query-by-relationship come for free, well-optimized, from the library itself — not something we build or maintain. | **Requires abandoning EnTT**, a dependency already wired in (`603dcd2` on `main`, per ADR-0001) and already decided against being treated as swappable — this isn't a hierarchy decision, it's re-opening the ECS decision for a single feature. |
 | Real, actively maintained project with first-party documentation of exactly this use case. | Different API/idioms from EnTT (flecs is more "framework," EnTT more "library primitives") — a bigger surface to learn than any hierarchy-specific decision should require. |
 
 ## Option 3: OpenSceneGraph (OSG)
@@ -235,11 +235,12 @@ process of elimination.
 
 ## References
 
-- `.claude/skills/engine-architecture/SKILL.md` — the Actor-vs-ECS decision (EnTT) and its
-  "Decisions Made"/"Open Questions" sections, which this ADR follows up on directly.
+- [ADR-0001](0001-ecs-via-entt-and-cpp-engine-init.md) — the Actor-vs-ECS decision (EnTT) and the
+  `Engine` class, which this ADR follows up on directly.
+- `.claude/skills/engine-architecture/SKILL.md` — the same decision as reflected in the
+  engine-architecture skill's "Decisions Made"/"Open Questions" sections.
 - `.claude/skills/engine-ai-behavior/SKILL.md` — related discussion of the GCC scene-graph
   concept adapted to ECS.
-- PR #2 (`claude/entt-ecs-dependency`) — EnTT wired into the build.
 - EnTT `docs/md/entity.md`, "Hierarchies and the like" section — the `relationship`/stable-pointer
   patterns cited above, straight from the library's own documentation.
 - [flecs Relationships docs](https://www.flecs.dev/flecs/md_docs_2Relationships.html) and
