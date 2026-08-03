@@ -40,7 +40,14 @@ jobs:
       with:
         repository: raysan5/raylib
         path: raylib
-        
+
+    - name: Checkout EnTT repo
+      uses: actions/checkout@master
+      with:
+        repository: skypjack/entt
+        ref: v4.0.0
+        path: entt
+
     - name: Setup Release Paths
       run: |
         echo "PROJECT_VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
@@ -65,7 +72,7 @@ jobs:
     - name: Build Product
       run: |
         cd ${{ env.PROJECT_REPO_NAME }}/src
-        make PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE PROJECT_CUSTOM_FLAGS=${{ env.PROJECT_CUSTOM_FLAGS }} PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib
+        make PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE PROJECT_CUSTOM_FLAGS=${{ env.PROJECT_CUSTOM_FLAGS }} PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib ENTT_PATH=../../entt
 
     - name: Generate Artifacts
       run: |
