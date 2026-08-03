@@ -23,15 +23,34 @@ bool Engine::Init(int screenWidth, int screenHeight, const char *title) {
     return IsWindowReady();
 }
 
+namespace {
+    // emscripten_set_main_loop only accepts a plain function pointer, so on PLATFORM_WEB there's
+    // no way to pass `this` through to the per-frame tick -- these globals give the trampoline
+    // below a way to reach the running Engine. Only one Engine ever runs at a time (Run() is
+    // called once from main()), so a pair of globals is simpler than reaching for a singleton.
+    Engine *g_runningEngine = nullptr;
+    void (*g_updateAndDraw)(void) = nullptr;
+
+    // Advances attached processes by the frame's delta time (Ch. 4) before handing off to the
+    // screen's own update/draw, on both desktop and web.
+    void TickAndUpdateDraw() {
+        g_runningEngine->Processes().Update(GetFrameTime());
+        g_updateAndDraw();
+    }
+}
+
 void Engine::Run(void (*updateAndDraw)(void)) {
+    g_runningEngine = this;
+    g_updateAndDraw = updateAndDraw;
+
 #if defined(PLATFORM_WEB)
-    emscripten_set_main_loop(updateAndDraw, 60, 1);
+    emscripten_set_main_loop(TickAndUpdateDraw, 60, 1);
 #else
     SetTargetFPS(60);       // Set our game to run at 60 frames-per-second
 
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
-        updateAndDraw();
+        TickAndUpdateDraw();
     }
 #endif
 }
