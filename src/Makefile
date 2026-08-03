@@ -50,7 +50,8 @@ PROJECT_SOURCE_FILES  ?= \
 # since they need a C++ standard and the EnTT include path (see ENTT_INCLUDE_PATH below).
 PROJECT_SOURCE_FILES_CPP ?= \
     app/raylib_game.cpp \
-    app/engine.cpp
+    app/engine.cpp \
+    app/process_manager.cpp
 
 # Source location of game content, staged into ./resources before linking (see 'resources' target)
 PROJECT_RESOURCES_PATH ?= ../assets
