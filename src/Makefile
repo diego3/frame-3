@@ -404,25 +404,25 @@ ifeq ($(PLATFORM),PLATFORM_DESKTOP)
     endif
     ifeq ($(PLATFORM_OS),LINUX)
 	find . -type f -executable -delete
-	rm -fv *.o
+	rm -fv $(OBJS)
     endif
     ifeq ($(PLATFORM_OS),OSX)
-	rm -f *.o external/*.o $(PROJECT_NAME)
+	rm -f $(OBJS) external/*.o $(PROJECT_NAME)
     endif
 endif
 ifeq ($(PLATFORM),PLATFORM_DRM)
 	find . -type f -executable -delete
-	rm -fv *.o
+	rm -fv $(OBJS)
 endif
 ifeq ($(PLATFORM),PLATFORM_WEB)
     ifeq ($(PLATFORM_OS),WINDOWS)
 	del *.o *.html *.js
     endif
     ifeq ($(PLATFORM_OS),LINUX)
-	rm -fv *.o $(PROJECT_NAME).data $(PROJECT_NAME).html $(PROJECT_NAME).js $(PROJECT_NAME).wasm
+	rm -fv $(OBJS) $(PROJECT_NAME).data $(PROJECT_NAME).html $(PROJECT_NAME).js $(PROJECT_NAME).wasm
     endif
     ifeq ($(PLATFORM_OS),OSX)
-	rm -f *.o $(PROJECT_NAME).data $(PROJECT_NAME).html $(PROJECT_NAME).js $(PROJECT_NAME).wasm
+	rm -f $(OBJS) $(PROJECT_NAME).data $(PROJECT_NAME).html $(PROJECT_NAME).js $(PROJECT_NAME).wasm
     endif
 endif
 	@echo Cleaning done
