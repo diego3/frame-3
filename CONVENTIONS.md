@@ -74,16 +74,17 @@ _NOTE: Spaces and special characters are always avoided in the files/dir naming!
 
  - Resource files are organized by context and usage in the game. Loading requirements for data are also considered (grouping data when required).
  - Descriptive names are used for the files, just reading the name of the file it should be possible to know what is that file and where fits in the game.
+ - Content lives in the top-level `assets/` directory (sibling of `src/`), not nested inside it — see `README.md`'s Project Layout section.
 
 ```
-resources/audio/fx/long_jump.wav
-resources/audio/music/main_theme.ogg
-resources/screens/logo/logo.png
-resources/screens/title/title.png
-resources/screens/gameplay/background.png
-resources/characters/player.png
-resources/characters/enemy_slime.png
-resources/common/font_arial.ttf
-resources/common/gui.png
+assets/audio/fx/long_jump.wav
+assets/audio/music/main_theme.ogg
+assets/screens/logo/logo.png
+assets/screens/title/title.png
+assets/screens/gameplay/background.png
+assets/characters/player.png
+assets/characters/enemy_slime.png
+assets/common/font_arial.ttf
+assets/common/gui.png
 ```
 _NOTE: Some resources require to be loaded all at once while other require to be loaded only at initialization (gui, font)._

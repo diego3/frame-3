@@ -33,12 +33,15 @@ PROJECT_NAME          ?= raylib_game
 PROJECT_VERSION       ?= 1.0
 PROJECT_BUILD_PATH    ?= .
 PROJECT_SOURCE_FILES  ?= \
-    raylib_game.c \
-    screen_logo.c \
-    screen_title.c \
-    screen_options.c \
-    screen_gameplay.c \
-    screen_ending.c
+    app/raylib_game.c \
+    game/screen_logo.c \
+    game/screen_title.c \
+    game/screen_options.c \
+    game/screen_gameplay.c \
+    game/screen_ending.c
+
+# Source location of game content, staged into ./resources before linking (see 'resources' target)
+PROJECT_RESOURCES_PATH ?= ../assets
 
 # raylib library variables
 RAYLIB_PATH           ?= C:\raylib\raylib
@@ -337,8 +340,14 @@ all:
 	$(MAKE) $(MAKEFILE_TARGET)
 
 # Project target defined by PROJECT_NAME
-$(PROJECT_NAME): $(OBJS)
+$(PROJECT_NAME): $(OBJS) resources
 	$(CC) -o $(PROJECT_BUILD_PATH)/$(PROJECT_NAME)$(EXT) $(OBJS) $(CFLAGS) $(INCLUDE_PATHS) $(LDFLAGS) $(LDLIBS) -D$(PLATFORM)
+
+# Stage game content next to the built executable
+# NOTE: Content now lives at PROJECT_RESOURCES_PATH (../assets by default), outside src/
+resources:
+	@mkdir -p resources
+	@cp -r $(PROJECT_RESOURCES_PATH)/. resources
 
 # Compile source files
 # NOTE: This pattern will compile every module defined on $(OBJS)

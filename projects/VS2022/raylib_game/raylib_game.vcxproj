@@ -359,18 +359,18 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\src\screens.h" />
+    <ClInclude Include="..\..\..\src\game\screens.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\src\raylib_game.c" />
-    <ClCompile Include="..\..\..\src\screen_logo.c" />
-    <ClCompile Include="..\..\..\src\screen_title.c" />
-    <ClCompile Include="..\..\..\src\screen_options.c" />
-    <ClCompile Include="..\..\..\src\screen_gameplay.c" />
-    <ClCompile Include="..\..\..\src\screen_ending.c" />
+    <ClCompile Include="..\..\..\src\app\raylib_game.c" />
+    <ClCompile Include="..\..\..\src\game\screen_logo.c" />
+    <ClCompile Include="..\..\..\src\game\screen_title.c" />
+    <ClCompile Include="..\..\..\src\game\screen_options.c" />
+    <ClCompile Include="..\..\..\src\game\screen_gameplay.c" />
+    <ClCompile Include="..\..\..\src\game\screen_ending.c" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="..\..\..\src\raylib_game.rc" />
+    <ResourceCompile Include="..\..\..\src\platform\raylib_game.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

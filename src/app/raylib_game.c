@@ -11,7 +11,7 @@
 ********************************************************************************************/
 
 #include "raylib.h"
-#include "screens.h"    // NOTE: Declares global (extern) variables and screens functions
+#include "../game/screens.h"    // NOTE: Declares global (extern) variables and screens functions
 
 #if defined(PLATFORM_WEB)
     #include <emscripten/emscripten.h>      // Emscripten library
@@ -78,9 +78,9 @@ int main(void)
     InitAudioDevice();      // Initialize audio device
 
     // Load global data (assets that must be available in all screens, i.e. font)
-    font = LoadFont("resources/mecha.png");
-    //music = LoadMusicStream("resources/ambient.ogg"); // TODO: Load music
-    fxCoin = LoadSound("resources/coin.wav");
+    font = LoadFont("resources/characters/mecha.png");
+    //music = LoadMusicStream("resources/audio/music/ambient.ogg"); // TODO: Load music
+    fxCoin = LoadSound("resources/audio/fx/coin.wav");
 
     SetMusicVolume(music, 1.0f);
     PlayMusicStream(music);

@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'src/**'
+      - 'assets/**'
       - '.github/workflows/build_webassembly.yml'
   release:
     types: [published]

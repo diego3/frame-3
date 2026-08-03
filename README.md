@@ -9,6 +9,27 @@ All the sections defined by `$(Data to Fill)` are expected to be edited and fill
 
 -----------------------------------
 
+## Project Layout
+
+Source is organized in layers, loosely following *Game Coding Complete*'s architecture:
+
+```
+assets/          # Game content (art, audio) — see CONVENTIONS.md for organization
+src/
+    app/         # Application layer: window/audio init, main loop, screen state machine
+    game/        # Game logic + view per screen (Init/Update/Draw/Unload) — still fused,
+                 # not yet split into separate logic/view modules
+    platform/    # OS/packaging assets (icons, .rc, .plist, web shell) — not compiled code
+    Makefile, Makefile.Android, CMakeLists.txt   # build scripts
+```
+
+`src/engine/` (event bus, process manager, resource cache) and `src/game/ai/` (FSM, steering,
+pathfinding) are reserved for systems described in `.claude/skills/engine-architecture` and
+`.claude/skills/engine-ai-behavior` — they don't exist yet and aren't scaffolded until actually
+built.
+
+-----------------------------------
+
 ## Getting Started with this template
 
 ### Windows: Visual Studio

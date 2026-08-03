@@ -3,7 +3,7 @@
         {
             "name": "Win32",
             "includePath": [
-                "${workspaceFolder}/../../src",
+                "${workspaceFolder}/../../src/**",
                 "${workspaceFolder}/../../src/external",
                 "C:/raylib/raylib/src"
             ],
@@ -22,7 +22,7 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/../../src",
+                "${workspaceFolder}/../../src/**",
                 "${workspaceFolder}/../../src/external",
                 "${workspaceFolder}/../../../raylib/src/**"
             ],
@@ -41,7 +41,7 @@
         {
             "name": "Mac",
             "includePath": [
-                "${workspaceFolder}/../../src",
+                "${workspaceFolder}/../../src/**",
                 "${workspaceFolder}/../../src/external",
                 "${workspaceFolder}/../../../raylib/src/**"
             ],

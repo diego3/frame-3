@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'src/**'
+      - 'assets/**'
       - '.github/workflows/build_macos.yml'
   release:
     types: [published]
@@ -24,7 +25,7 @@ jobs:
       PROJECT_REPO_NAME: ${{ github.event.repository.name }}
       PROJECT_BUILD_PATH: ${{ github.event.repository.name }}/src
       PROJECT_RELEASE_PATH: ${{ github.event.repository.name }}_dev_macos
-      PROJECT_RESOURCES_SRC_PATH: src/resources
+      PROJECT_RESOURCES_SRC_PATH: assets
       PROJECT_RESOURCES_DST_PATH: resources
       PROJECT_CUSTOM_FLAGS: ""
       PROJECT_RESOURCES_PATH: resources
@@ -114,8 +115,8 @@ jobs:
       run: |
         ls ${{ env.PROJECT_BUILD_PATH }}
         cp ${{ env.PROJECT_BUILD_PATH }}/${{ env.PROJECT_NAME }} ${{ env.PROJECT_RELEASE_PATH }}/${{ env.PROJECT_NAME }}.app/Contents/MacOS
-        cp ${{ env.PROJECT_REPO_NAME }}/src/raylib.icns ${{ env.PROJECT_RELEASE_PATH }}/${{ env.PROJECT_NAME }}.app/Contents/Resources
-        cp ${{ env.PROJECT_REPO_NAME }}/src/Info.plist ${{ env.PROJECT_RELEASE_PATH }}/${{ env.PROJECT_NAME }}.app/Contents
+        cp ${{ env.PROJECT_REPO_NAME }}/src/platform/raylib.icns ${{ env.PROJECT_RELEASE_PATH }}/${{ env.PROJECT_NAME }}.app/Contents/Resources
+        cp ${{ env.PROJECT_REPO_NAME }}/src/platform/Info.plist ${{ env.PROJECT_RELEASE_PATH }}/${{ env.PROJECT_NAME }}.app/Contents
         cp -r ${{ env.PROJECT_REPO_NAME }}/${{ env.PROJECT_RESOURCES_SRC_PATH }} ${{ env.PROJECT_RELEASE_PATH }}/${{ env.PROJECT_NAME }}.app/Contents/${{ env.PROJECT_RESOURCES_DST_PATH }}
         cp ${{ env.PROJECT_REPO_NAME }}/README.md ${{ env.PROJECT_RELEASE_PATH }}
         cp ${{ env.PROJECT_REPO_NAME }}/LICENSE ${{ env.PROJECT_RELEASE_PATH }}

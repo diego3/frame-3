@@ -60,7 +60,7 @@ PROJECT_NAME           ?= raylib_game
 PROJECT_LIBRARY_NAME   ?= main
 PROJECT_BUILD_ID       ?= android
 PROJECT_BUILD_PATH     ?= $(PROJECT_BUILD_ID).$(PROJECT_NAME)
-PROJECT_RESOURCES_PATH ?= resources
+PROJECT_RESOURCES_PATH ?= ../assets
 PROJECT_SOURCE_FILES   ?= simple_game.c
 
 # Some source files are placed in directories, when compiling to some 
