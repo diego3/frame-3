@@ -12,6 +12,7 @@
 
 #include "raylib.h"
 #include "../game/screens.h"    // NOTE: Declares global (extern) variables and screens functions
+#include "ecs_smoke_test.h"     // TEMPORARY: proves EnTT builds/links; see ecs_smoke_test.cpp
 
 #if defined(PLATFORM_WEB)
     #include <emscripten/emscripten.h>      // Emscripten library
@@ -76,6 +77,8 @@ int main(void)
     InitWindow(screenWidth, screenHeight, "raylib game template");
 
     InitAudioDevice();      // Initialize audio device
+
+    EcsSmokeTest();         // TEMPORARY: proves EnTT builds/links; see ecs_smoke_test.cpp
 
     // Load global data (assets that must be available in all screens, i.e. font)
     font = LoadFont("resources/characters/mecha.png");

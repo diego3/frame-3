@@ -6,8 +6,13 @@ include(FetchContent)
 # Generate compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# EnTT (see below) requires C++20; the template's own C sources are unaffected by this.
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # Dependencies
 set(RAYLIB_VERSION 6.0)
+set(ENTT_VERSION v4.0.0)
 
 FetchContent_Declare(
     raylib
@@ -17,7 +22,18 @@ FetchContent_Declare(
     FIND_PACKAGE_ARGS
 )
 
-FetchContent_MakeAvailable(raylib)
+# EnTT is header-only; its own tests/docs/testbed default OFF already. Turn on
+# ENTT_INCLUDE_HEADERS so the headers show up as sources in IDEs (no effect on the build itself).
+set(ENTT_INCLUDE_HEADERS ON CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+    entt
+    GIT_REPOSITORY https://github.com/skypjack/entt.git
+    GIT_TAG ${ENTT_VERSION}
+    GIT_SHALLOW TRUE
+)
+
+FetchContent_MakeAvailable(raylib entt)
 
 # Our Project
 add_executable(${PROJECT_NAME})
@@ -43,7 +59,7 @@ else()
 endif()
 
 #set(raylib_VERBOSE 1)
-target_link_libraries(${PROJECT_NAME} raylib)
+target_link_libraries(${PROJECT_NAME} raylib EnTT::EnTT)
 
 # Web Configurations
 if ("${PLATFORM}" STREQUAL "Web")
