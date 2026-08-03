@@ -96,6 +96,43 @@ make -C src
 src/raylib_game
 ```
 
+### CLI: Web (WebAssembly)
+
+Requires the [Emscripten SDK](https://emscripten.org/) (`emcc`), not just a C compiler:
+
+```sh
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk
+./emsdk install latest
+./emsdk activate latest
+source ./emsdk_env.sh     # puts emcc on PATH for this shell session
+```
+
+Build raylib itself for the web target, then the game, both via the raw Makefile (there's no
+CMake+Emscripten path set up in this repo — `PLATFORM=Web` in `CMakeLists.txt` assumes a
+toolchain file the project doesn't ship):
+
+```sh
+git clone --depth 1 --branch 6.0 https://github.com/raysan5/raylib
+make -C raylib/src PLATFORM=PLATFORM_WEB RAYLIB_LIBTYPE=STATIC
+
+cd src
+make PLATFORM=PLATFORM_WEB BUILD_MODE=RELEASE PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib
+```
+
+This produces `src/raylib_game.html`, `.js`, `.wasm`, and `.data` (the `assets/` content,
+preloaded into a virtual filesystem the WASM binary reads at runtime).
+
+**Opening `raylib_game.html` directly from disk (`file://`) will not work** — the browser blocks
+the `fetch`/XHR calls Emscripten uses to load the `.wasm` and `.data` files under `file://` for
+security reasons. Serve it over HTTP instead:
+
+```sh
+cd src
+python3 -m http.server 8765
+# open http://localhost:8765/raylib_game.html
+```
+
 This template has been created to be used with raylib (www.raylib.com) and it's licensed under an unmodified zlib/libpng license.
 
 _Copyright (c) 2014-2026 Ramon Santamaria ([@raysan5](https://github.com/raysan5))_
