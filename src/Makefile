@@ -33,8 +33,8 @@ PROJECT_NAME          ?= raylib_game
 PROJECT_VERSION       ?= 1.0
 PROJECT_BUILD_PATH    ?= .
 
-# Web build artifacts (.html/.js/.wasm/.data) land in build/web/ instead of src/, matching
-# where the CMake build already puts its output (build/raylib-game-template/)
+# Web build artifacts (.html/.js/.wasm/.data) land in build/web/ instead of src/, so
+# `make clean` and .gitignore only have to deal with one build output location
 ifeq ($(PLATFORM),PLATFORM_WEB)
     PROJECT_BUILD_PATH := ../build/web
 endif

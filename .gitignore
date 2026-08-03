@@ -70,6 +70,12 @@ compile_commands.json
 # Resources staged into src/ at build time by the raw Makefile (source lives in assets/)
 /src/resources/
 
+# Desktop binary built by the raw Makefile (no file extension on Linux, so *.exe etc. miss it)
+/src/raylib_game
+
+# raylib checkout auto-vendored by build.sh
+/vendor/
+
 # Android files
 *apk*
 android.*

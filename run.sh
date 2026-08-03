@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIN="$SCRIPT_DIR/build/raylib-game-template/raylib-game-template"
+BIN="$SCRIPT_DIR/src/raylib_game"
 
 if [ ! -x "$BIN" ]; then
     echo "Executable not found. Build it first with ./build.sh" >&2
@@ -10,4 +10,4 @@ if [ ! -x "$BIN" ]; then
 fi
 
 cd "$(dirname "$BIN")"
-exec ./raylib-game-template
+exec ./raylib_game
