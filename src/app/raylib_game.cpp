@@ -12,6 +12,7 @@
 
 #include "raylib.h"
 #include "../game/screens.h"    // NOTE: Declares global (extern) variables and screens functions
+#include "debug_overlay.h"
 #include "engine.h"
 
 #include <stdio.h>                          // Required for: printf()
@@ -208,6 +209,8 @@ static void UpdateDrawFrame(void)
     //----------------------------------------------------------------------------------
     //UpdateMusicStream(music);       // NOTE: Music keeps playing between screens
 
+    UpdateDebugOverlay(GetFrameTime());   // NOTE: F3 toggles a /proc/self stats HUD (Linux desktop only)
+
     if (!onTransition)
     {
         switch(currentScreen)
@@ -273,6 +276,8 @@ static void UpdateDrawFrame(void)
 
         // Draw full screen rectangle in front of everything
         if (onTransition) DrawTransition();
+
+        DrawDebugOverlay();
 
         //DrawFPS(10, 10);
 

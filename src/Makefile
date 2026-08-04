@@ -51,7 +51,8 @@ PROJECT_SOURCE_FILES  ?= \
 PROJECT_SOURCE_FILES_CPP ?= \
     app/raylib_game.cpp \
     app/engine.cpp \
-    app/process_manager.cpp
+    app/process_manager.cpp \
+    app/debug_overlay.cpp
 
 # Source location of game content, staged into ./resources before linking (see 'resources' target)
 PROJECT_RESOURCES_PATH ?= ../assets
