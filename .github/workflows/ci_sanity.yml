@@ -27,6 +27,7 @@ env:
   # raylib tag checkout below.
   RAYLIB_VERSION: "6.0"
   ENTT_VERSION: v4.0.0
+  DOCTEST_VERSION: v2.5.3
 
 jobs:
   build:
@@ -66,6 +67,21 @@ jobs:
           ref: ${{ env.ENTT_VERSION }}
           path: entt
 
+      - name: Cache doctest (header-only)
+        id: cache-doctest
+        uses: actions/cache@v4
+        with:
+          path: doctest
+          key: doctest-${{ env.DOCTEST_VERSION }}-v1
+
+      - name: Checkout doctest repo
+        if: steps.cache-doctest.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: doctest/doctest
+          ref: ${{ env.DOCTEST_VERSION }}
+          path: doctest
+
       - name: Install raylib system dependencies
         run: |
           sudo apt-get update -qq
@@ -80,3 +96,10 @@ jobs:
         # leftover from the original C template (TransitionToScreen() handles all transitions
         # now). Downgraded to a warning instead of blocking every build on pre-existing dead code.
         run: make -C src PLATFORM=PLATFORM_DESKTOP RAYLIB_PATH=../raylib ENTT_PATH=../entt PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=unused-function"
+
+      - name: Build and run unit tests (see docs/adr/0004-doctest-for-unit-tests.md)
+        # No raylib/EnTT dependency here -- the systems under test (EventManager, ProcessManager)
+        # are pure logic, so this only needs the doctest include path.
+        run: |
+          make -C src tests DOCTEST_PATH=../doctest PROJECT_CUSTOM_FLAGS="-Werror"
+          src/tests_runner

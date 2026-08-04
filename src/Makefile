@@ -21,7 +21,7 @@
 #
 #**************************************************************************************************
 
-.PHONY: all clean
+.PHONY: all clean tests test-run
 
 # Define required environment variables
 #------------------------------------------------------------------------------------------------
@@ -70,6 +70,14 @@ RAYLIB_LIBTYPE        ?= STATIC
 # entt/entt.hpp header so no build step or additional include roots are required.
 ENTT_PATH             ?= C:\entt\entt
 ENTT_INCLUDE_PATH      = $(ENTT_PATH)/single_include
+
+# doctest (header-only; only an include path is needed, no library to build/link). See
+# docs/adr/0004-doctest-for-unit-tests.md. DOCTEST_PATH should point at a checkout of
+# https://github.com/doctest/doctest (see test.sh and ci_sanity.yml, which check it out as a
+# sibling directory next to raylib/ and entt/); the header lives at doctest/doctest.h inside that
+# checkout, matching the #include "doctest/doctest.h" used by tests/*.cpp.
+DOCTEST_PATH          ?= C:\doctest\doctest
+DOCTEST_INCLUDE_PATH   = $(DOCTEST_PATH)
 
 # Build mode for project: DEBUG or RELEASE
 BUILD_MODE            ?= RELEASE
@@ -403,6 +411,37 @@ resources:
 # with the C++ standard (CXXFLAGS) and the C++ compiler driver (CXX).
 %.o: %.cpp
 	$(CXX) -c $< -o $@ $(CXXFLAGS) $(INCLUDE_PATHS) -D$(PLATFORM)
+
+# Unit tests (doctest, see docs/adr/0004-doctest-for-unit-tests.md)
+#------------------------------------------------------------------------------------------------
+# Deliberately independent of the PLATFORM/RAYLIB/ENTT machinery above: everything under tests/
+# exercises pure-logic systems (EventManager, ProcessManager) with no raylib or EnTT dependency,
+# so building and running them needs no window, GL, or platform library -- just CXX/CXXFLAGS and
+# the doctest include path.
+TEST_SOURCE_FILES_CPP ?= \
+    tests/main_test.cpp \
+    tests/event_manager_test.cpp \
+    tests/process_manager_test.cpp
+
+TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH)
+
+# ProcessManager's implementation lives in app/process_manager.cpp (EventManager is header-only,
+# needs no object of its own). Built into a tests/-local object, never app/process_manager.o, so
+# it can't collide with the object the main product target above produces from the same source
+# with different flags.
+TEST_OBJS = $(patsubst tests/%.cpp, tests/%.o, $(TEST_SOURCE_FILES_CPP)) tests/process_manager.o
+
+tests: $(TEST_OBJS)
+	$(CXX) -o tests_runner $(TEST_OBJS) $(TEST_CXXFLAGS)
+
+test-run: tests
+	./tests_runner
+
+tests/process_manager.o: app/process_manager.cpp
+	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
+
+tests/%.o: tests/%.cpp
+	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
 # Clean everything
 clean:

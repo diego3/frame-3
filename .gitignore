@@ -73,6 +73,9 @@ compile_commands.json
 # Desktop binary built by the raw Makefile (no file extension on Linux, so *.exe etc. miss it)
 /src/raylib_game
 
+# Unit test binary built by `make tests` / test.sh (see docs/adr/0004-doctest-for-unit-tests.md)
+/src/tests_runner
+
 # raylib checkout auto-vendored by build.sh
 /vendor/
 
