@@ -23,7 +23,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RAYLIB_VERSION: 6.0
+  # Quoted: unquoted 6.0 is parsed as YAML float 6 and loses the trailing .0, breaking the
+  # raylib tag checkout below.
+  RAYLIB_VERSION: "6.0"
   ENTT_VERSION: v4.0.0
 
 jobs:
