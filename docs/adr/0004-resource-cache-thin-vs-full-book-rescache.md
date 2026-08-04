@@ -1,6 +1,6 @@
 # 4. Resource cache: thin raylib-backed cache vs. the book's full `ResCache`
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-08-03
 
 ## Context
@@ -110,7 +110,108 @@ This isn't a rejection of the proposal — it's the same shape, sequenced so eac
 frame-3 actually has the problem it solves, instead of all at once ahead of any gameplay code that
 would exercise it.
 
+## What actually shipped
+
+`ResourceCache<T>` (`src/app/resource_cache.h`, header-only, templated over the resource type)
+implements the thin cache plus the `ResHandle`/`shared_ptr` lifetime-safety piece together, not the
+thin cache alone:
+
+```cpp
+template <typename T>
+class ResourceCache {
+public:
+    using Loader = std::function<T(const char *path)>;
+    using Unloader = std::function<void(T &resource)>;
+
+    ResourceCache(Loader loader, Unloader unloader);
+
+    // Loads `path` via `loader_` on first request (or if every previous handle to it has already
+    // been released); repeat calls while a handle is still live return a shared_ptr to the same
+    // underlying resource. The returned shared_ptr's own deleter calls `unloader_` -- runs the
+    // moment its last holder releases it, cache included.
+    std::shared_ptr<T> GetHandle(const std::string &path);
+
+    void Clear();   // drops the cache's own bookkeeping; doesn't force-unload a live handle
+
+private:
+    Loader loader_;
+    Unloader unloader_;
+    std::unordered_map<std::string, std::weak_ptr<T>> resources_;   // weak: doesn't keep alive on its own
+};
+```
+
+`Engine` (`src/app/engine.h`/`.cpp`) owns one `ResourceCache<Font>` and one `ResourceCache<Sound>`,
+exposed via `Fonts()`/`Sounds()`. `Engine::Init()` now loads the font and coin sound through these
+caches instead of calling `LoadFont`/`LoadSound` directly:
+
+```cpp
+fontHandle_ = fontCache_.GetHandle("resources/characters/mecha.png");
+font = *fontHandle_;   // screens.h's plain-C code reads the extern `font` global, not a shared_ptr
+soundHandle_ = soundCache_.GetHandle("resources/audio/fx/coin.wav");
+fxCoin = *soundHandle_;
+```
+
+`fontHandle_`/`soundHandle_` (`std::shared_ptr<Font>`/`std::shared_ptr<Sound>` members) exist
+because `screens.h`'s five `screen_*.c` files are still plain C and read `font`/`fxCoin` as plain
+`extern` globals (ADR-0001, Decision 2) — they can't hold a `shared_ptr` themselves. `Engine` holds
+the handle to keep the underlying resource alive for the app's whole lifetime; the plain globals
+get an ordinary copy of raylib's value-type struct, which is how raylib already expects
+`Font`/`Sound` to be passed around (a lightweight handle to GPU/audio-resident data, not the data
+itself) — copying it doesn't duplicate the GPU/audio resource.
+
+### A real hazard this surfaced, not called out in the original proposal
+
+`Engine::Shutdown()` (pre-existing code) explicitly unloads in a specific order:
+`UnloadFont`/`UnloadSound` *before* `CloseAudioDevice()`/`CloseWindow()`, because those `Unload*`
+calls need a live GL/audio context. A `shared_ptr`-held handle whose deleter calls `UnloadFont`/
+`UnloadSound` only runs that deleter when the *last* reference is released — which, for a plain
+class member, is whenever the object holding it gets destroyed. If `fontHandle_`/`soundHandle_`
+were left to their own destructors, that would happen when `Engine` itself is destroyed (`main`'s
+`Engine engine;` going out of scope) — **after** `Shutdown()` already called `CloseAudioDevice()`/
+`CloseWindow()`, since `Shutdown()` is called explicitly mid-`main`, not from `Engine`'s destructor.
+That would call `UnloadFont`/`UnloadSound` into an already-closed context.
+
+Fixed by resetting the handles (and calling `Clear()` on both caches) explicitly at the top of
+`Engine::Shutdown()`, before `CloseAudioDevice()`/`CloseWindow()` — same discipline the pre-existing
+manual `UnloadFont`/`UnloadSound` calls already followed, just moved behind the cache's handles
+instead of calling `UnloadFont`/`UnloadSound` directly:
+
+```cpp
+void Engine::Shutdown() {
+    fontHandle_.reset();
+    soundHandle_.reset();
+    fontCache_.Clear();
+    soundCache_.Clear();
+
+    UnloadMusicStream(music);
+    CloseAudioDevice();
+    CloseWindow();
+}
+```
+
+Verified with a standalone `Init()`/`Shutdown()` smoke test run under `xvfb-run` (no window-close
+event needed) — exits cleanly, raylib's own logging confirms the font texture loads once and
+unloads once, no use-after-close.
+
+### One deliberate deviation from "no eviction"
+
+The comparison table above lists the thin cache's eviction policy as "None — everything loaded
+stays loaded." What shipped is slightly different: `resources_` holds a `std::weak_ptr<T>` per
+path rather than a `shared_ptr<T>`, so a resource unloads as soon as every `shared_ptr<T>` handle
+to it is released — including the cache's own, since it never holds a strong reference. This is
+**not** the book's LRU/byte-budget policy (no size tracking, no "least recently used" ordering,
+nothing keyed on a memory ceiling) — it's a simpler property that falls out of using `shared_ptr`
+for lifetime safety at all: a resource nobody references anymore doesn't linger just because the
+cache itself is still alive. Chosen because it costs nothing extra to get (the alternative, a
+`shared_ptr<T>` map that never releases its own reference, would need an explicit eviction call
+somewhere to free anything) and doesn't contradict the ADR's "no LRU yet" decision — LRU is about
+evicting things still in use under memory pressure; this only ever frees something already unused.
+
 ## Tradeoffs accepted
+
+The list below is unchanged from the original proposal, plus one new item reflecting what actually
+shipped (the `shared_ptr`/`ResHandle` piece landed alongside the thin cache, not after it, and the
+weak_ptr-driven early-free behavior noted above):
 
 - No hitch-free `Preload()`-driven loading-screen story yet — accepted because there are no levels
   or loading screens today for it to protect; revisit once a level boundary/loading screen exists.
@@ -121,23 +222,36 @@ would exercise it.
 - No asset-bundle format (ZIP) — accepted because `assets/` is small and loose-file loading
   already matches `CONVENTIONS.md`'s existing asset-organization conventions; a repack step would
   be new authoring friction with no current payoff.
-- Callers get a raw reference into the cache rather than a `shared_ptr<ResHandle>`, until the
-  handle-safety piece above is pulled forward — accepted short-term since nothing today creates or
-  tears down the cache more than once, but flagged as the one piece of the full proposal worth
-  adopting early rather than only "when needed."
+- **(New)** A resource can silently reload from disk if every handle to it is released and then
+  `GetHandle` is called again for the same path — there's no way to tell, from the caller's side,
+  whether a given `GetHandle` call was a cache hit or a fresh reload. Accepted because nothing in
+  the codebase releases a handle and re-requests the same path yet (`Engine` holds its two handles
+  for the app's whole lifetime); revisit with an explicit hit/miss signal if that pattern shows up
+  and the reload cost turns out to matter.
+- ~~Callers get a raw reference into the cache rather than a `shared_ptr<ResHandle>`, until the
+  handle-safety piece above is pulled forward~~ — superseded by "What actually shipped" above: the
+  `shared_ptr` handle landed in the same change as the thin cache, not deferred.
 
 ## Consequences / follow-ups
 
-- `.claude/skills/engine-architecture/SKILL.md` §4 already states this direction; no change needed
-  there unless this ADR's recommendation changes on review.
-- When the thin `ResourceCache` sketch actually lands in code, update this ADR's Status to
-  Accepted (or Superseded, if review favors the full `ResCache` proposal instead) and update the
-  skill's "Current state" note per its own "update once it lands" convention (see ADR-0003's
-  precedent).
-- If/when any of the four deferred pieces above gets pulled forward, record that as its own
-  decision (or an amendment here) naming the concrete trigger that justified it, so the "gated on
-  a concrete trigger" reasoning stays checkable later rather than becoming "we just built it
-  eventually."
+- `.claude/skills/engine-architecture/SKILL.md` §4 updated to point at `src/app/resource_cache.h`
+  and `Engine::Fonts()`/`Sounds()` instead of only the sketch, per the skill's own "update once it
+  lands" note.
+- `Engine::Init()`/`Shutdown()` (`src/app/engine.cpp`) now go through `fontCache_`/`soundCache_`
+  instead of calling `LoadFont`/`UnloadFont`/`LoadSound`/`UnloadSound` directly — see "What actually
+  shipped" above, including the shutdown-ordering fix this surfaced.
+- `src/tests/resource_cache_test.cpp` (doctest, ADR-0006) covers `ResourceCache<T>` with a fake
+  int-based loader/unloader — no raylib/window dependency needed, same reasoning
+  `event_manager_test.cpp`/`process_manager_test.cpp` already used.
+- The four deferred pieces (ZIP bundling, pluggable loader registry, LRU+budget, `Preload()`) are
+  still not built. If/when any gets pulled forward, record that as its own decision (or an
+  amendment here) naming the concrete trigger that justified it, so the "gated on a concrete
+  trigger" reasoning stays checkable later rather than becoming "we just built it eventually."
+- The next resource type to go through `ResourceCache<T>` (e.g. `ResourceCache<Texture2D>` or
+  `ResourceCache<Model>`, once something loads either) should be the first real test of whether the
+  `Loader`/`Unloader` `std::function` signatures generalize cleanly, or whether a given raylib
+  type's loader needs something the current shape (`T(*)(const char*)`-compatible, single-argument)
+  doesn't fit (e.g. `LoadModelFromMesh` isn't a path-based loader at all).
 
 ## References
 

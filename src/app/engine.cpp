@@ -12,10 +12,18 @@ bool Engine::Init(int screenWidth, int screenHeight, const char *title) {
 
     InitAudioDevice();
 
-    // Load global data (assets that must be available in all screens, i.e. font)
-    font = LoadFont("resources/characters/mecha.png");
+    // Load global data (assets that must be available in all screens, i.e. font) through the
+    // resource caches (Ch. 8, ADR-0004) rather than calling LoadFont/LoadSound directly. screens.h's
+    // screen_*.c files are still plain C and read font/fxCoin as plain extern globals (ADR-0001,
+    // Decision 2), not through Engine or a shared_ptr -- so the cache's handle is kept alive here
+    // (fontHandle_/soundHandle_) and the plain globals get a copy of the raylib value type, which
+    // is how raylib itself expects Font/Sound to be passed around (a lightweight handle to
+    // GPU/audio-resident data, not the data itself).
+    fontHandle_ = fontCache_.GetHandle("resources/characters/mecha.png");
+    font = *fontHandle_;
     //music = LoadMusicStream("resources/audio/music/ambient.ogg"); // TODO: Load music
-    fxCoin = LoadSound("resources/audio/fx/coin.wav");
+    soundHandle_ = soundCache_.GetHandle("resources/audio/fx/coin.wav");
+    fxCoin = *soundHandle_;
 
     SetMusicVolume(music, 1.0f);
     PlayMusicStream(music);
@@ -67,9 +75,17 @@ void Engine::Run(void (*updateAndDraw)(void)) {
 }
 
 void Engine::Shutdown() {
-    UnloadFont(font);
+    // Release the cache handles (running UnloadFont/UnloadSound, via ResourceCache's own deleter)
+    // before CloseAudioDevice()/CloseWindow() below tear down the contexts those Unload* calls
+    // need to still be open -- reset explicitly here rather than left to whatever order Engine's
+    // own members would otherwise be destroyed in, since that could run after this function
+    // returns and the window/audio device are already closed.
+    fontHandle_.reset();
+    soundHandle_.reset();
+    fontCache_.Clear();
+    soundCache_.Clear();
+
     UnloadMusicStream(music);
-    UnloadSound(fxCoin);
 
     CloseAudioDevice();     // Close audio context
 

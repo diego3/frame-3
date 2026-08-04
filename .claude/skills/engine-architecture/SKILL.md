@@ -1,6 +1,6 @@
 ---
 name: engine-architecture
-description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), and a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`); no real components or resource cache exist yet, and nothing subscribes to the event manager or attaches a process yet either.
+description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`), and a `ResourceCache<T>` (`src/app/resource_cache.h`, per ADR-0004, backing `Engine::Fonts()`/`Sounds()`); no real components exist yet, and nothing subscribes to the event manager or attaches a process yet either.
 ---
 
 # Engine Architecture (Game Coding Complete Ch. 4, 6-8 — modernized)
@@ -11,12 +11,12 @@ frame-3 is still close to the stock
 state machine (`src/game/screens.h`, still plain C) driven by `src/app/raylib_game.cpp`. The
 `src/app/` layer: **`Engine`** (`src/app/engine.h`/`.cpp`, Ch. 5 Application layer) owns
 window/audio lifecycle, drives the main loop via a function-pointer callback, owns an
-`entt::registry`, and now also owns and drives §§1-2's systems (`EventManager`, `ProcessManager`) —
-see §3 for what it does (and deliberately doesn't) touch re: ECS. EnTT itself is wired into the
-raw Makefile (`CXX`/`CXXFLAGS`/`ENTT_PATH`, no CMake in this repo). No real components or resource
-cache exist yet (§§3-4). This skill exists so that when each of these systems gets built, it
-follows a considered design instead of whatever's fastest to type at the time — and so the
-*book's* patterns get adapted deliberately, not copied verbatim from a codebase that assumed
+`entt::registry`, and now also owns and drives §§1-2's systems (`EventManager`, `ProcessManager`)
+plus §4's `ResourceCache<T>` — see §3 for what it does (and deliberately doesn't) touch re: ECS.
+EnTT itself is wired into the raw Makefile (`CXX`/`CXXFLAGS`/`ENTT_PATH`, no CMake in this repo).
+No real components exist yet (§3). This skill exists so that when each of these systems gets
+built, it follows a considered design instead of whatever's fastest to type at the time — and so
+the *book's* patterns get adapted deliberately, not copied verbatim from a codebase that assumed
 Windows, DirectX, and C++03.
 
 **Update this skill with real file references once each system actually lands.** Until then, treat
@@ -166,26 +166,53 @@ The book builds a full resource cache with its own Windows file I/O and a custom
 bundle format (`Resource.zip`) — that whole layer exists because Win32 didn't hand you asset
 loading for free. **raylib already does the hard part** (`LoadModel`, `LoadTexture`, `LoadShader`,
 with GPU upload included). What's still worth having is a thin cache keyed by resolved path, so
-loading `"models/enemy.glb"` twice doesn't upload it to the GPU twice:
+loading `"models/enemy.glb"` twice doesn't upload it to the GPU twice — plus, per ADR-0004, the
+book's `ResHandle`/`shared_ptr` lifetime-safety piece pulled forward alongside it, so a resource
+can't be freed out from under a caller still holding a handle to it:
 
 ```cpp
-// Sketch.
+// Sketch — matches src/app/resource_cache.h; adjust here if that file's shape changes.
+template <typename T>
 class ResourceCache {
 public:
-    Model& GetModel(const std::string& path) {
-        auto it = models_.find(path);
-        if (it != models_.end()) return it->second;
-        return models_.emplace(path, LoadModel(path.c_str())).first->second;
-    }
-    ~ResourceCache() { for (auto& [_, m] : models_) UnloadModel(m); }
+    using Loader = std::function<T(const char* path)>;
+    using Unloader = std::function<void(T& resource)>;
+
+    ResourceCache(Loader loader, Unloader unloader);
+
+    // Loads `path` on first request (or once every prior handle to it has been released);
+    // returns a shared_ptr whose deleter calls `unloader` the moment its last holder releases it.
+    std::shared_ptr<T> GetHandle(const std::string& path);
+
+    void Clear(); // drops the cache's own bookkeeping; doesn't force-unload a still-live handle
+
 private:
-    std::unordered_map<std::string, Model> models_;
+    Loader loader_;
+    Unloader unloader_;
+    std::unordered_map<std::string, std::weak_ptr<T>> resources_; // weak: doesn't keep alive alone
 };
 ```
 
-Don't build asset bundling/packing (the book's ZIP format) until there's an actual reason to (many
-small files, or a distribution/build-size concern) — that's premature for a learning project's
-early demos.
+`resources_` holds a `weak_ptr`, not a `shared_ptr` — the cache never keeps a resource loaded on
+its own; a resource frees itself as soon as every caller's `shared_ptr<T>` handle to it is
+released. That's simpler than the book's byte-budgeted LRU (still not built — see below) while
+still not leaking anything nobody references anymore.
+
+Don't build asset bundling/packing (the book's ZIP format), a pluggable per-type loader registry,
+or LRU+budget eviction until there's an actual reason to (many small files, custom decode logic
+beyond a single raylib call, or a measured memory-pressure problem) — that's premature for a
+learning project's early demos; see ADR-0004 for the full comparison and reasoning.
+
+**Current state**: `ResourceCache<T>` (`src/app/resource_cache.h`, header-only, templated) exists.
+`Engine` (`src/app/engine.h`/`.cpp`) owns one `ResourceCache<Font>` and one `ResourceCache<Sound>`,
+exposed via `Fonts()`/`Sounds()`; `Engine::Init()` loads the shared font and coin sound through
+them (`fontHandle_`/`soundHandle_`, kept alive as `Engine` members since `screens.h`'s plain-C
+screen code reads `font`/`fxCoin` as `extern` globals, not through a `shared_ptr`). `Engine::
+Shutdown()` resets those handles and calls `Clear()` on both caches *before*
+`CloseAudioDevice()`/`CloseWindow()` — required, not incidental: a handle's deleter calls
+`UnloadFont`/`UnloadSound`, which need a still-open GL/audio context. No other resource type
+(`Texture2D`, `Model`, ...) is cached yet; add a `ResourceCache<T>` instance the first time
+something actually loads one, don't pre-instantiate for types nothing uses yet.
 
 ## Decisions Made
 
