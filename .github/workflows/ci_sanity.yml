@@ -1,0 +1,80 @@
+name: CI - Build Sanity Check
+
+# Fast fail-fast signal: does the project still compile cleanly? Unlike the build_*.yml
+# release workflows (which build on 4 platforms, package artifacts, and only run on push/release),
+# this is a single Linux job with caching, meant to answer that question in a couple of minutes
+# on every push and pull request.
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - '.github/workflows/ci_sanity.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - '.github/workflows/ci_sanity.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-sanity-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RAYLIB_VERSION: 6.0
+  ENTT_VERSION: v4.0.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Cache raylib (source + built static lib)
+        id: cache-raylib
+        uses: actions/cache@v4
+        with:
+          path: raylib
+          key: raylib-${{ env.RAYLIB_VERSION }}-${{ runner.os }}-v1
+
+      - name: Checkout raylib repo
+        if: steps.cache-raylib.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: raysan5/raylib
+          ref: ${{ env.RAYLIB_VERSION }}
+          path: raylib
+
+      - name: Cache EnTT (header-only)
+        id: cache-entt
+        uses: actions/cache@v4
+        with:
+          path: entt
+          key: entt-${{ env.ENTT_VERSION }}-v1
+
+      - name: Checkout EnTT repo
+        if: steps.cache-entt.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: skypjack/entt
+          ref: ${{ env.ENTT_VERSION }}
+          path: entt
+
+      - name: Install raylib system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libglfw3 libglfw3-dev libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libxext-dev libxfixes-dev libwayland-dev libxkbcommon-dev
+
+      - name: Build raylib library
+        if: steps.cache-raylib.outputs.cache-hit != 'true'
+        run: make -C raylib/src PLATFORM=PLATFORM_DESKTOP RAYLIB_LIBTYPE=STATIC
+
+      - name: Build project (warnings treated as errors)
+        # -Wno-error=unused-function: raylib_game.cpp still carries ChangeToScreen(), an unused
+        # leftover from the original C template (TransitionToScreen() handles all transitions
+        # now). Downgraded to a warning instead of blocking every build on pre-existing dead code.
+        run: make -C src PLATFORM=PLATFORM_DESKTOP RAYLIB_PATH=../raylib ENTT_PATH=../entt PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=unused-function"
