@@ -72,7 +72,7 @@ ENTT_PATH             ?= C:\entt\entt
 ENTT_INCLUDE_PATH      = $(ENTT_PATH)/single_include
 
 # doctest (header-only; only an include path is needed, no library to build/link). See
-# docs/adr/0004-doctest-for-unit-tests.md. DOCTEST_PATH should point at a checkout of
+# docs/adr/0006-doctest-for-unit-tests.md. DOCTEST_PATH should point at a checkout of
 # https://github.com/doctest/doctest (see test.sh and ci_sanity.yml, which check it out as a
 # sibling directory next to raylib/ and entt/); the header lives at doctest/doctest.h inside that
 # checkout, matching the #include "doctest/doctest.h" used by tests/*.cpp.
@@ -412,7 +412,7 @@ resources:
 %.o: %.cpp
 	$(CXX) -c $< -o $@ $(CXXFLAGS) $(INCLUDE_PATHS) -D$(PLATFORM)
 
-# Unit tests (doctest, see docs/adr/0004-doctest-for-unit-tests.md)
+# Unit tests (doctest, see docs/adr/0006-doctest-for-unit-tests.md)
 #------------------------------------------------------------------------------------------------
 # Deliberately independent of the PLATFORM/RAYLIB/ENTT machinery above: everything under tests/
 # exercises pure-logic systems (EventManager, ProcessManager) with no raylib or EnTT dependency,

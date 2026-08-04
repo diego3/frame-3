@@ -1,4 +1,4 @@
-# 2. Event manager and process manager, ticked from `Engine::Run`
+# 3. Event manager and process manager, ticked from `Engine::Run`
 
 - Status: Accepted
 - Date: 2026-08-03

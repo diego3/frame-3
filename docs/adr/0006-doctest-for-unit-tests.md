@@ -1,11 +1,11 @@
-# 4. Test framework: doctest for `EventManager`/`ProcessManager` unit tests
+# 6. Test framework: doctest for `EventManager`/`ProcessManager` unit tests
 
 - Status: Accepted
 - Date: 2026-08-03
 
 ## Context
 
-ADR-0002 landed `EventManager` and `ProcessManager`, ticked once per frame from `Engine::Run`'s
+ADR-0003 landed `EventManager` and `ProcessManager`, ticked once per frame from `Engine::Run`'s
 shared `TickAndUpdateDraw` trampoline. Neither has any test coverage today. Both are also, by
 construction, pure C++ logic with no dependency on raylib, a window, or a GPU context:
 `EventManager::Subscribe`/`Emit` key off `std::type_index` and `std::function`, and
@@ -66,7 +66,7 @@ doctest and Catch2 today, since neither has it built in. The mitigation isn't "p
 just for gmock": it's that a later need for heavier integration-style tests (faking a raylib call, a
 resource cache, a physics query) is better met by adding a second, purpose-built test target/binary
 for that class of test when it's actually needed — same "revisit once there's a concrete trigger"
-pattern ADR-0003 used for the resource cache's deferred pieces — rather than migrating the
+pattern ADR-0004 used for the resource cache's deferred pieces — rather than migrating the
 already-working unit suite off doctest pre-emptively.
 
 ## Decision
@@ -84,18 +84,18 @@ already does under `ci_sanity.yml`'s `-Werror` gate.
 - `ci_sanity.yml` gains a step that builds and runs the test binary after the main build.
 - If/when a class of test needs mocking, fixtures beyond `SUBCASE` nesting, or parameterized data
   sets doctest handles awkwardly, treat that as its own decision naming the concrete trigger — a new
-  test target alongside doctest, not a framework migration — consistent with how ADR-0003 sequenced
+  test target alongside doctest, not a framework migration — consistent with how ADR-0004 sequenced
   the resource cache's deferred pieces.
 - No CI/build change needed for `EventManager`/`ProcessManager` themselves; this ADR only adds
-  coverage for code ADR-0002 already shipped.
+  coverage for code ADR-0003 already shipped.
 
 ## References
 
 - [ADR-0001](0001-ecs-via-entt-and-cpp-engine-init.md) — Decision 3: Makefile as the project's one
   build system, the constraint this decision had to fit.
-- [ADR-0002](0002-event-manager-and-process-manager-game-loop.md) — `EventManager` and
+- [ADR-0003](0003-event-manager-and-process-manager-game-loop.md) — `EventManager` and
   `ProcessManager`, the systems this decision adds coverage for.
-- [ADR-0003](0003-resource-cache-thin-vs-full-book-rescache.md) — precedent for deferring a heavier
+- [ADR-0004](0004-resource-cache-thin-vs-full-book-rescache.md) — precedent for deferring a heavier
   piece (there: LRU/ZIP bundling/loader registry; here: mocking/fixtures) until a concrete trigger
   justifies it.
 - [doctest](https://github.com/doctest/doctest) — single-header C++ testing framework.

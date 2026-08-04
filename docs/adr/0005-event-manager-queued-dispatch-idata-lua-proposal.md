@@ -1,17 +1,17 @@
-# 4. Event manager: queued dispatch, plus a serialization contract for networking and an event journal
+# 5. Event manager: queued dispatch, plus a serialization contract for networking and an event journal
 
 - Status: Proposed
 - Date: 2026-08-03
 
 ## Context
 
-[ADR-0002](0002-event-manager-and-process-manager-game-loop.md) already shipped `EventManager`
+[ADR-0003](0003-event-manager-and-process-manager-game-loop.md) already shipped `EventManager`
 (`src/app/event_manager.h`): pub/sub keyed by `std::type_index`, handlers are
 `std::function<void(const T&)>`, and `Emit<T>` dispatches **synchronously and immediately** — no
 queue, no per-frame budget. That ADR explicitly chose this over the book's GUID+monolithic-enum
 multicast mechanism, reasoning that `std::type_index` dispatch doesn't carry the lookup/dispatch
 cost the book's `VTick(20ms)` budget was defending against. `Engine` (`src/app/engine.h`) owns the
-one instance, exposed via `Events()`. As of ADR-0002, nothing in the codebase calls `Subscribe`
+one instance, exposed via `Events()`. As of ADR-0003, nothing in the codebase calls `Subscribe`
 or `Emit` yet — no event struct types exist either.
 
 A follow-up proposal asks for "more detail" on the event manager, laying out *Game Coding
@@ -41,7 +41,7 @@ outside a single running process** (`std::type_index`'s ordering/hash is impleme
 and not guaranteed to match between two separately-launched processes, let alone two builds
 compiled months apart), plus an actual byte representation of the event's data. This section
 below replaces §§1-2 of the original evaluation with a revised design that adds that, while
-keeping local pub/sub exactly as lightweight as ADR-0002 shipped it for events that never leave
+keeping local pub/sub exactly as lightweight as ADR-0003 shipped it for events that never leave
 the process.
 
 ## Evaluation, piece by piece
@@ -81,7 +81,7 @@ constexpr uint32_t Fnv1aHash(std::string_view s) {
 ```
 
 This ID is **only required for events that cross a boundary** (network or journal) — see §2. Local,
-in-process pub/sub keeps using `std::type_index` exactly as ADR-0002 shipped it; nothing about this
+in-process pub/sub keeps using `std::type_index` exactly as ADR-0003 shipped it; nothing about this
 changes for an event that never leaves the process.
 
 ### 2. Serialization contract — opt-in per event, not a mandatory base for every event
@@ -228,12 +228,12 @@ void DispatchQueued() {
 }
 ```
 
-- `Emit<T>` stays exactly as ADR-0002 shipped it — immediate, synchronous.
+- `Emit<T>` stays exactly as ADR-0003 shipped it — immediate, synchronous.
 - `Queue<T>` becomes the default recommendation for cross-system events (matches the book's own
   usage pattern) and is also the natural point where a networking or journaling subsystem observes
   events (see §6) — queued events are already "this frame's batch," the same granularity a network
   tick or a journal record wants to work at.
-- Still no time budget (`VTick(20ms)`) — ADR-0002's reasoning holds; the double-buffer swap solves
+- Still no time budget (`VTick(20ms)`) — ADR-0003's reasoning holds; the double-buffer swap solves
   a correctness problem (reentrancy), not a cost problem.
 
 ### 6. Wiring networking/journaling to `EventManager` — via ordinary `Subscribe`, not built into the core
@@ -251,7 +251,7 @@ events.Subscribe<EvtData_Destroy_Actor>([&](const EvtData_Destroy_Actor &e) {
 });
 ```
 
-This keeps `EventManager` a small, dependency-free core (matching ADR-0002's original framing of
+This keeps `EventManager` a small, dependency-free core (matching ADR-0003's original framing of
 it as "the heart" gluing subsystems together) while still making networking/journaling a first-class
 concern *of the design*, not an afterthought bolted onto local-only dispatch later — the stable ID
 (§1) and serialization contract (§2) exist now specifically so that retrofit never has to happen.
@@ -285,7 +285,7 @@ scripting language is decided on its own merits.
 - More moving pieces than a single mandatory interface would be (`ISerializableEvent`,
   `EventTypeRegistry`, `EventJournal`, the FNV-1a helper) — accepted because each is paid for only
   by the events that actually need to cross a boundary; a purely local event (the common case
-  today, since no networking/journal code exists yet) still costs exactly what it did in ADR-0002.
+  today, since no networking/journal code exists yet) still costs exactly what it did in ADR-0003.
 - FNV-1a over a 32-bit space has a theoretical collision risk as the number of serializable event
   types grows — mitigated by keeping the space small in practice (only network/journal-relevant
   events need an ID at all) and by a follow-up: a startup-time assertion/test in
@@ -306,7 +306,7 @@ scripting language is decided on its own merits.
 
 - Once any of `Queue<T>`/`DispatchQueued()`, `ISerializableEvent`, `EventTypeRegistry`, or
   `EventJournal` land in code, update `.claude/skills/engine-architecture` §1 and this ADR's Status
-  to Accepted, per the precedent in ADR-0002's own "update once it lands" note.
+  to Accepted, per the precedent in ADR-0003's own "update once it lands" note.
 - `Engine::Run()`'s `TickAndUpdateDraw` trampoline gains `Events().DispatchQueued()` alongside
   `Processes().Update(...)`.
 - The actual network transport (sockets vs. a library, host/client vs. peer-to-peer topology, tick
@@ -339,7 +339,7 @@ scripting language is decided on its own merits.
 - *Game Coding Complete, 4th Edition* (McShaffry & Graham), Ch. 4 — `IEventData`, `BaseEventData`,
   GUID-based `EventType`, `IEventManager::VTriggerEvent`/`VQueueEvent`, the two-alternating-queue
   processing model, and the Lua `ScriptEvent` bridge.
-- [ADR-0002](0002-event-manager-and-process-manager-game-loop.md) — the shipped `EventManager`
+- [ADR-0003](0003-event-manager-and-process-manager-game-loop.md) — the shipped `EventManager`
   (`std::type_index` dispatch, `Emit<T>`, no GUID/enum, no budget) this ADR builds on and extends.
 - [ADR-0001](0001-ecs-via-entt-and-cpp-engine-init.md) — EnTT as a vendored dependency; `entt::type_hash`
   is discussed in §1 as a candidate mechanism, not adopted for journal-stability reasons.

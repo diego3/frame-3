@@ -97,7 +97,7 @@ jobs:
         # now). Downgraded to a warning instead of blocking every build on pre-existing dead code.
         run: make -C src PLATFORM=PLATFORM_DESKTOP RAYLIB_PATH=../raylib ENTT_PATH=../entt PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=unused-function"
 
-      - name: Build and run unit tests (see docs/adr/0004-doctest-for-unit-tests.md)
+      - name: Build and run unit tests (see docs/adr/0006-doctest-for-unit-tests.md)
         # No raylib/EnTT dependency here -- the systems under test (EventManager, ProcessManager)
         # are pure logic, so this only needs the doctest include path.
         run: |

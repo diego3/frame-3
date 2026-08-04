@@ -73,7 +73,7 @@ clones [EnTT](https://github.com/skypjack/entt) (the ECS library, header-only â€
 ./build-run.sh  # build.sh followed by run.sh
 ```
 
-`test.sh` runs the unit test suite (see [ADR-0004](docs/adr/0004-doctest-for-unit-tests.md)) the
+`test.sh` runs the unit test suite (see [ADR-0006](docs/adr/0006-doctest-for-unit-tests.md)) the
 same way: it vendors [doctest](https://github.com/doctest/doctest) (header-only, `vendor/doctest/`,
 skipped once already there) the first time it runs, then builds and runs `src/tests_runner`. Unlike
 `build.sh`, it doesn't need raylib or EnTT vendored first â€” the systems under test today

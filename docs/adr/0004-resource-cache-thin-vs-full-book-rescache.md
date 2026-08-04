@@ -1,4 +1,4 @@
-# 3. Resource cache: thin raylib-backed cache vs. the book's full `ResCache`
+# 4. Resource cache: thin raylib-backed cache vs. the book's full `ResCache`
 
 - Status: Proposed
 - Date: 2026-08-03
@@ -132,7 +132,7 @@ would exercise it.
   there unless this ADR's recommendation changes on review.
 - When the thin `ResourceCache` sketch actually lands in code, update this ADR's Status to
   Accepted (or Superseded, if review favors the full `ResCache` proposal instead) and update the
-  skill's "Current state" note per its own "update once it lands" convention (see ADR-0002's
+  skill's "Current state" note per its own "update once it lands" convention (see ADR-0003's
   precedent).
 - If/when any of the four deferred pieces above gets pulled forward, record that as its own
   decision (or an amendment here) naming the concrete trigger that justified it, so the "gated on
