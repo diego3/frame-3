@@ -106,3 +106,37 @@ TEST_CASE("Clear() makes a subsequent GetHandle for the same path load fresh") {
     CHECK(fake.loadCount == 2);
     CHECK(first != second);   // Clear() forgot the cache's link to `first`'s entry
 }
+
+// ResourceCacheKeys (used to key ResourceCache<Shader> on a vertex+fragment path pair -- see
+// Engine::GetShader in engine.cpp) is plain string manipulation, no raylib dependency either.
+TEST_CASE("ResourceCacheKeys::Split reverses Combine") {
+    std::string combined = ResourceCacheKeys::Combine("shaders/pbr.vs", "shaders/pbr.fs");
+    auto [vsPath, fsPath] = ResourceCacheKeys::Split(combined);
+
+    CHECK(vsPath == "shaders/pbr.vs");
+    CHECK(fsPath == "shaders/pbr.fs");
+}
+
+TEST_CASE("ResourceCacheKeys round-trips an empty second path") {
+    // Mirrors calling Engine::GetShader("shaders/custom.vs", "") -- raylib's LoadShader treats an
+    // empty/null fragment path as "use the default fragment shader".
+    std::string combined = ResourceCacheKeys::Combine("shaders/custom.vs", "");
+    auto [vsPath, fsPath] = ResourceCacheKeys::Split(combined);
+
+    CHECK(vsPath == "shaders/custom.vs");
+    CHECK(fsPath == "");
+}
+
+TEST_CASE("ResourceCacheKeys::Combine keeps two different vs/fs pairs distinct") {
+    std::string a = ResourceCacheKeys::Combine("a.vs", "shared.fs");
+    std::string b = ResourceCacheKeys::Combine("b.vs", "shared.fs");
+
+    CHECK(a != b);
+}
+
+TEST_CASE("ResourceCacheKeys::Split on a key with no delimiter returns it whole, empty second part") {
+    auto [first, second] = ResourceCacheKeys::Split("not/combined/by/Combine.png");
+
+    CHECK(first == "not/combined/by/Combine.png");
+    CHECK(second == "");
+}

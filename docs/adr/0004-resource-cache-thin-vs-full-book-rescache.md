@@ -253,6 +253,59 @@ weak_ptr-driven early-free behavior noted above):
   type's loader needs something the current shape (`T(*)(const char*)`-compatible, single-argument)
   doesn't fit (e.g. `LoadModelFromMesh` isn't a path-based loader at all).
 
+## Follow-up: `Model`/`Texture2D`/`Shader` caches, and a real crash this surfaced
+
+Added once a concrete need appeared (loading complete 3D models — mesh, materials, and whatever
+textures they reference — plus standalone textures and custom shaders), per this ADR's own
+"pull the next resource type forward the first time something loads one" framing.
+
+- **`ResourceCache<Model>`** (`Engine::Models()`, `LoadModel`/`UnloadModel`) — covers the common
+  case directly: raylib's model loaders (glTF/OBJ/IQM) already pull in referenced textures and
+  populate `Model::materials`/`materialCount` as part of `LoadModel` itself, so "materials" and
+  "textures embedded in a model" need no separate caching path.
+- **`ResourceCache<Texture2D>`** (`Engine::Textures()`, `LoadTexture`/`UnloadTexture`) — for
+  textures used *independently* of a loaded model (swapping a material's texture, a skybox, a UI
+  icon) — a different use case from a model's own bundled textures above, hence a separate cache
+  rather than routing both through one.
+- **`Engine::GetShader(vsPath, fsPath)`** — `LoadShader` takes two file paths, not one, so
+  `ResourceCache<Shader>` alone can't key on a single `path` the way the other two do. Added
+  `ResourceCacheKeys::Combine()`/`Split()` (`resource_cache.h`) to fold two paths into one cache
+  key and unfold them inside the loader lambda — generic (not raylib- or Shader-specific), reusable
+  by any future multi-argument loader, and unit-tested (`resource_cache_test.cpp`) without a raylib
+  dependency, same as `ResourceCache<T>` itself.
+- **Not added: a cache for raylib's standalone `LoadMaterials(fileName, &count)`** (parsing a bare
+  `.mtl` file independent of a full model). Its signature — an out-param array plus a count, not a
+  single `T` — doesn't fit `ResourceCache<T>`'s one-resource-per-key shape without forcing a bad
+  fit; left unbuilt until an actual `.mtl`-without-a-model use case shows up, rather than
+  contorting the cache to cover it speculatively.
+
+### A real crash this surfaced: handles must not outlive `Engine::Shutdown()`
+
+Verified with an extended version of the earlier `Init()`/`Shutdown()` smoke test: after adding
+real calls to `Models().GetHandle(...)`, `Textures().GetHandle(...)`, and `GetShader(...)` against
+raylib's own example assets, `Shutdown()` crashed with a genuine `SIGSEGV` — confirmed under `gdb`
+to be `UnloadShader` → `rlUnloadShaderProgram`, called from a `shared_ptr<Shader>` destructor
+*inside `main()`*, after `Shutdown()` had already run `CloseWindow()`.
+
+Root cause: `fontHandle_`/`soundHandle_` don't have this problem because `Engine` holds and
+releases them itself, in the right order, inside `Shutdown()` (see "What actually shipped" above).
+Nothing plays that role for a `Models()`/`Textures()`/`GetShader()` handle, because *gameplay
+code* holds those, not `Engine` — if that code (a local variable, a component on an entity that
+outlives shutdown, anything) doesn't release the handle before `Shutdown()` runs, its `Unload*`
+call fires into an already-closed GL context the moment it's finally released. Fixed in the smoke
+test by releasing every handle before calling `Shutdown()`; documented as a `WARNING` comment on
+`Models()`/`Textures()`/`GetShader()` (`engine.h`) and on `ResourceCache<T>` itself
+(`resource_cache.h`), since `ResourceCache<T>` has no way to enforce this on its own — it doesn't
+know when the context it depends on closes, only whoever owns both the cache and the shutdown
+sequence does. Not a defect introduced by this design specifically — any scheme wrapping a
+GPU/audio handle in a destructor-driven unload has the same requirement — but worth stating
+explicitly rather than leaving it to be rediscovered as a crash later.
+
+**Consequence for future work**: whatever eventually clears the `entt::registry` (ECS components
+holding a `Model`/`Texture2D`/`Shader` handle) needs to run before `Engine::Shutdown()`, not after
+— worth keeping in mind once real components start holding these handles (§3 of the
+engine-architecture skill; no real components exist yet as of this ADR).
+
 ## References
 
 - *Game Coding Complete, 4th Edition* (McShaffry & Graham), Ch. 8 — `ResCache`, `IResourceFile`,

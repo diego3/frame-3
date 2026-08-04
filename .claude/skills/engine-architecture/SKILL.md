@@ -1,6 +1,6 @@
 ---
 name: engine-architecture
-description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`), and a `ResourceCache<T>` (`src/app/resource_cache.h`, per ADR-0004, backing `Engine::Fonts()`/`Sounds()`); no real components exist yet, and nothing subscribes to the event manager or attaches a process yet either.
+description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`), and a `ResourceCache<T>` (`src/app/resource_cache.h`, per ADR-0004, backing `Engine::Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader()`); no real components exist yet, and nothing subscribes to the event manager or attaches a process yet either.
 ---
 
 # Engine Architecture (Game Coding Complete Ch. 4, 6-8 — modernized)
@@ -204,15 +204,30 @@ beyond a single raylib call, or a measured memory-pressure problem) — that's p
 learning project's early demos; see ADR-0004 for the full comparison and reasoning.
 
 **Current state**: `ResourceCache<T>` (`src/app/resource_cache.h`, header-only, templated) exists.
-`Engine` (`src/app/engine.h`/`.cpp`) owns one `ResourceCache<Font>` and one `ResourceCache<Sound>`,
-exposed via `Fonts()`/`Sounds()`; `Engine::Init()` loads the shared font and coin sound through
-them (`fontHandle_`/`soundHandle_`, kept alive as `Engine` members since `screens.h`'s plain-C
-screen code reads `font`/`fxCoin` as `extern` globals, not through a `shared_ptr`). `Engine::
-Shutdown()` resets those handles and calls `Clear()` on both caches *before*
-`CloseAudioDevice()`/`CloseWindow()` — required, not incidental: a handle's deleter calls
-`UnloadFont`/`UnloadSound`, which need a still-open GL/audio context. No other resource type
-(`Texture2D`, `Model`, ...) is cached yet; add a `ResourceCache<T>` instance the first time
-something actually loads one, don't pre-instantiate for types nothing uses yet.
+`Engine` (`src/app/engine.h`/`.cpp`) owns `ResourceCache<Font>`, `ResourceCache<Sound>`,
+`ResourceCache<Model>`, `ResourceCache<Texture2D>`, and `ResourceCache<Shader>`, exposed via
+`Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader(vsPath, fsPath)`. `LoadShader` takes two
+file paths, not one, so the `Shader` cache is keyed via `ResourceCacheKeys::Combine()`/`Split()`
+(`resource_cache.h`) rather than a bare path — generic, reusable by any future multi-argument
+loader, not raylib- or `Shader`-specific. `Engine::Init()` loads the shared font and coin sound
+through their caches (`fontHandle_`/`soundHandle_`, kept alive as `Engine` members since
+`screens.h`'s plain-C screen code reads `font`/`fxCoin` as `extern` globals, not through a
+`shared_ptr`); nothing loads a `Model`/`Texture2D`/`Shader` at `Init()` time — those three exist
+for gameplay code to call once it needs to.
+
+**Handle lifetime is a real hazard, not a theoretical one** — reproduced as an actual `SIGSEGV`
+while implementing this (see ADR-0004's "A real crash this surfaced"): any handle from
+`Models()`/`Textures()`/`GetShader()` **must** be released before `Engine::Shutdown()` runs, or
+its `Unload*` call fires into an already-closed GL/audio context. `fontHandle_`/`soundHandle_`
+don't have this problem because `Engine` holds and releases them itself, in the right order,
+inside `Shutdown()`; nothing plays that role for a handle gameplay code holds. Once real ECS
+components hold one of these handles (§3 — no real components exist yet), whatever clears the
+`entt::registry` needs to run before `Shutdown()`, not after.
+
+Not cached: raylib's standalone `LoadMaterials(fileName, &count)` (an out-param array + count,
+not a single `T` — doesn't fit `ResourceCache<T>`'s shape). `Model`'s own bundled materials
+(populated automatically by `LoadModel`) cover the common case; this is only relevant for a bare
+`.mtl` file used independent of a full model, which nothing needs yet.
 
 ## Decisions Made
 

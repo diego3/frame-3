@@ -7,6 +7,19 @@
     #include <emscripten/emscripten.h>
 #endif
 
+Engine::Engine()
+    : shaderCache_(
+          [](const char *key) {
+              auto [vsPath, fsPath] = ResourceCacheKeys::Split(key);
+              return LoadShader(vsPath.empty() ? nullptr : vsPath.c_str(),
+                                 fsPath.empty() ? nullptr : fsPath.c_str());
+          },
+          UnloadShader) {}
+
+std::shared_ptr<Shader> Engine::GetShader(const std::string &vsPath, const std::string &fsPath) {
+    return shaderCache_.GetHandle(ResourceCacheKeys::Combine(vsPath, fsPath));
+}
+
 bool Engine::Init(int screenWidth, int screenHeight, const char *title) {
     InitWindow(screenWidth, screenHeight, title);
 
@@ -84,6 +97,16 @@ void Engine::Shutdown() {
     soundHandle_.reset();
     fontCache_.Clear();
     soundCache_.Clear();
+
+    // modelCache_/textureCache_/shaderCache_ don't have an Engine-held handle the way
+    // fontCache_/soundCache_ do (nothing loads a model/texture/shader at Init() time yet) -- so
+    // there's no live shared_ptr here for Clear() to race against. Cleared anyway, for the same
+    // reason: any caller who *is* still holding one of their handles at this point keeps it
+    // working exactly as before (Clear() never force-unloads), this just drops the caches' own
+    // now-pointless bookkeeping before the GL/audio context it describes goes away.
+    modelCache_.Clear();
+    textureCache_.Clear();
+    shaderCache_.Clear();
 
     UnloadMusicStream(music);
 

@@ -15,6 +15,15 @@
 // explicitly defers LRU until a concrete memory-pressure reason to build it shows up), while still
 // not leaking a resource nobody references anymore -- "no eviction" (ADR-0004's stated starting
 // point) becomes "no eviction *policy* needed" rather than "resources pile up forever."
+//
+// WARNING: that same "unloads via the deleter the moment the last handle is released" property
+// means a handle must never outlive whatever closed the GL/audio context its Unloader needs (e.g.
+// raylib's CloseWindow()/CloseAudioDevice()). A ResourceCache<T> itself has no way to enforce
+// this -- it doesn't know when that context closes, only whoever owns the cache (Engine, for the
+// caches it owns -- see engine.h) does. Reproduced as a real crash (SIGSEGV in
+// rlUnloadShaderProgram) while implementing Engine::Models()/Textures()/GetShader(): a caller-held
+// Model/Texture2D/Shader handle that outlived Engine::Shutdown() called Unload* into an
+// already-closed context the moment it finally went out of scope. See ADR-0004.
 #ifndef RESOURCE_CACHE_H
 #define RESOURCE_CACHE_H
 
@@ -22,6 +31,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 template <typename T>
 class ResourceCache {
@@ -67,5 +77,31 @@ private:
     Unloader unloader_;
     std::unordered_map<std::string, std::weak_ptr<T>> resources_;
 };
+
+// ResourceCache<T> keys on a single string. Most raylib Load* functions take one file path
+// (LoadModel, LoadTexture, LoadFont, LoadSound, ...) and fit that directly -- but a few take more
+// than one (LoadShader(vsFileName, fsFileName)). Rather than redesigning ResourceCache<T> itself
+// around a variadic key, Combine()/Split() let a caller fold N related paths into one cache key
+// and unfold it back inside the Loader lambda. Not raylib-specific -- any multi-argument loader
+// can reuse this instead of hand-rolling its own delimiter scheme.
+namespace ResourceCacheKeys {
+    // ASCII Unit Separator: not a character any of this project's asset paths would plausibly
+    // contain, unlike more common delimiter choices (':', ';', '|', all valid in real filenames on
+    // at least one platform this project targets).
+    constexpr char kDelimiter = '\x1f';
+
+    inline std::string Combine(const std::string &a, const std::string &b) {
+        return a + kDelimiter + b;
+    }
+
+    // Splits a key built by Combine() back into its two parts. If `combined` has no delimiter
+    // (i.e. it wasn't built by Combine()), returns it whole as the first part and an empty second
+    // part, rather than failing -- lets a caller treat "no fragment path" as a valid input.
+    inline std::pair<std::string, std::string> Split(const std::string &combined) {
+        size_t pos = combined.find(kDelimiter);
+        if (pos == std::string::npos) return {combined, std::string()};
+        return {combined.substr(0, pos), combined.substr(pos + 1)};
+    }
+}
 
 #endif // RESOURCE_CACHE_H
