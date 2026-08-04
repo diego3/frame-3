@@ -7,15 +7,36 @@
     #include <emscripten/emscripten.h>
 #endif
 
+Engine::Engine()
+    : shaderCache_(
+          [](const char *key) {
+              auto [vsPath, fsPath] = ResourceCacheKeys::Split(key);
+              return LoadShader(vsPath.empty() ? nullptr : vsPath.c_str(),
+                                 fsPath.empty() ? nullptr : fsPath.c_str());
+          },
+          UnloadShader) {}
+
+std::shared_ptr<Shader> Engine::GetShader(const std::string &vsPath, const std::string &fsPath) {
+    return shaderCache_.GetHandle(ResourceCacheKeys::Combine(vsPath, fsPath));
+}
+
 bool Engine::Init(int screenWidth, int screenHeight, const char *title) {
     InitWindow(screenWidth, screenHeight, title);
 
     InitAudioDevice();
 
-    // Load global data (assets that must be available in all screens, i.e. font)
-    font = LoadFont("resources/characters/mecha.png");
+    // Load global data (assets that must be available in all screens, i.e. font) through the
+    // resource caches (Ch. 8, ADR-0004) rather than calling LoadFont/LoadSound directly. screens.h's
+    // screen_*.c files are still plain C and read font/fxCoin as plain extern globals (ADR-0001,
+    // Decision 2), not through Engine or a shared_ptr -- so the cache's handle is kept alive here
+    // (fontHandle_/soundHandle_) and the plain globals get a copy of the raylib value type, which
+    // is how raylib itself expects Font/Sound to be passed around (a lightweight handle to
+    // GPU/audio-resident data, not the data itself).
+    fontHandle_ = fontCache_.GetHandle("resources/characters/mecha.png");
+    font = *fontHandle_;
     //music = LoadMusicStream("resources/audio/music/ambient.ogg"); // TODO: Load music
-    fxCoin = LoadSound("resources/audio/fx/coin.wav");
+    soundHandle_ = soundCache_.GetHandle("resources/audio/fx/coin.wav");
+    fxCoin = *soundHandle_;
 
     SetMusicVolume(music, 1.0f);
     PlayMusicStream(music);
@@ -67,9 +88,27 @@ void Engine::Run(void (*updateAndDraw)(void)) {
 }
 
 void Engine::Shutdown() {
-    UnloadFont(font);
+    // Release the cache handles (running UnloadFont/UnloadSound, via ResourceCache's own deleter)
+    // before CloseAudioDevice()/CloseWindow() below tear down the contexts those Unload* calls
+    // need to still be open -- reset explicitly here rather than left to whatever order Engine's
+    // own members would otherwise be destroyed in, since that could run after this function
+    // returns and the window/audio device are already closed.
+    fontHandle_.reset();
+    soundHandle_.reset();
+    fontCache_.Clear();
+    soundCache_.Clear();
+
+    // modelCache_/textureCache_/shaderCache_ don't have an Engine-held handle the way
+    // fontCache_/soundCache_ do (nothing loads a model/texture/shader at Init() time yet) -- so
+    // there's no live shared_ptr here for Clear() to race against. Cleared anyway, for the same
+    // reason: any caller who *is* still holding one of their handles at this point keeps it
+    // working exactly as before (Clear() never force-unloads), this just drops the caches' own
+    // now-pointless bookkeeping before the GL/audio context it describes goes away.
+    modelCache_.Clear();
+    textureCache_.Clear();
+    shaderCache_.Clear();
+
     UnloadMusicStream(music);
-    UnloadSound(fxCoin);
 
     CloseAudioDevice();     // Close audio context
 

@@ -415,13 +415,16 @@ resources:
 # Unit tests (doctest, see docs/adr/0006-doctest-for-unit-tests.md)
 #------------------------------------------------------------------------------------------------
 # Deliberately independent of the PLATFORM/RAYLIB/ENTT machinery above: everything under tests/
-# exercises pure-logic systems (EventManager, ProcessManager) with no raylib or EnTT dependency,
-# so building and running them needs no window, GL, or platform library -- just CXX/CXXFLAGS and
-# the doctest include path.
+# exercises pure-logic systems (EventManager, ProcessManager, ResourceCache) with no raylib or EnTT
+# dependency, so building and running them needs no window, GL, or platform library -- just
+# CXX/CXXFLAGS and the doctest include path. ResourceCache is templated over its Load/Unload pair
+# (docs/adr/0004), so its test exercises it with a fake int-based loader/unloader rather than a
+# real raylib type, the same reason it needs no window/GL context here either.
 TEST_SOURCE_FILES_CPP ?= \
     tests/main_test.cpp \
     tests/event_manager_test.cpp \
-    tests/process_manager_test.cpp
+    tests/process_manager_test.cpp \
+    tests/resource_cache_test.cpp
 
 TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH)
 
