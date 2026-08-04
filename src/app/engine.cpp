@@ -31,10 +31,21 @@ namespace {
     Engine *g_runningEngine = nullptr;
     void (*g_updateAndDraw)(void) = nullptr;
 
+    // Frame budget SLO: both loop paths below target 60 FPS (SetTargetFPS(60) on desktop,
+    // emscripten_set_main_loop(..., 60, 1) on web), so a frame is "in budget" under ~16.67ms.
+    constexpr float kFrameBudgetMs = 1000.0f / 60.0f;
+
     // Advances attached processes by the frame's delta time (Ch. 4) before handing off to the
     // screen's own update/draw, on both desktop and web.
     void TickAndUpdateDraw() {
-        g_runningEngine->Processes().Update(GetFrameTime());
+        float dt = GetFrameTime();
+
+        float dtMs = dt * 1000.0f;
+        if (dtMs > kFrameBudgetMs) {
+            TraceLog(LOG_WARNING, "Frame budget exceeded: %.2fms (budget %.2fms)", dtMs, kFrameBudgetMs);
+        }
+
+        g_runningEngine->Processes().Update(dt);
         g_updateAndDraw();
     }
 }
