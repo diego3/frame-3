@@ -48,9 +48,9 @@ any code, same as everything above did.
   the player) — not designed anywhere yet. [ADR-0010](adr/0010-base-game-logic-and-igameview.md)
   decided `HumanView` polls raylib input directly (`IsKeyDown`/etc.) rather than a Win32-style
   message-proc layer, but explicitly left "which key/gesture drives which actor action" as an open
-  question (§ Open Questions) — that's this item. Distinct from the config-file bullet below
-  (resolution/audio settings vs. actual action mapping + a rebinding UI + persisting the player's
-  choice).
+  question (§ Open Questions) — that's this item. Distinct from the config-file item above
+  ("Proposed" section — [ADR-0011](adr/0011-engine-and-game-config.md), resolution/audio/window
+  settings) vs. actual action mapping + a rebinding UI + persisting the player's choice.
 - [ ] **Network transport** (sockets/library choice, client/server architecture) — the event-level
   contract (`ISerializableEvent`/`EventTypeRegistry`, ADR-0005 §§1-3) already shipped above; the
   actual wire transport is explicitly left for a future ADR "once multiplayer work actually
