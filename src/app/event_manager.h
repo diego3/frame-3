@@ -29,8 +29,31 @@ public:
         for (auto &handler : it->second) handler(&event);
     }
 
+    // Defers event to the next DispatchQueued() call instead of dispatching it immediately
+    // (ADR-0005 Sec 5). Prefer this over Emit<T> for events crossing system boundaries: nothing
+    // stops a handler from Subscribe<T>/Emit<T>-ing the same type it's currently handling, which
+    // would invalidate Emit<T>'s in-progress iteration over handlers_[type]. Queue<T> sidesteps
+    // that by never running a handler during another handler's own dispatch.
+    template <typename T>
+    void Queue(T event) {
+        pending_.push_back([this, event = std::move(event)] { Emit(event); });
+    }
+
+    // Dispatches every event Queue()'d since the last call. Intended to be ticked once per frame
+    // (see Engine::Run's TickAndUpdateDraw). Swaps pending_ into a local vector first, so an event
+    // Queue()'d *during* this dispatch (e.g. a handler reacting to one queued event by queuing
+    // another) lands in the now-empty pending_ and runs on the *next* DispatchQueued() call, not
+    // this one -- avoids iterating a vector that's still being appended to mid-loop.
+    void DispatchQueued() {
+        std::vector<std::function<void()>> active;
+        std::swap(active, pending_);
+
+        for (auto &dispatch : active) dispatch();
+    }
+
 private:
     std::unordered_map<std::type_index, std::vector<std::function<void(const void *)>>> handlers_;
+    std::vector<std::function<void()>> pending_;
 };
 
 #endif // EVENT_MANAGER_H

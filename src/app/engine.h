@@ -28,9 +28,11 @@ public:
 
     // Drives the main loop until the window should close, calling updateAndDraw() once per frame.
     // Branches internally on PLATFORM_WEB (emscripten_set_main_loop) vs. desktop (a plain while
-    // loop) -- the platform-specific mechanics this is meant to hide from main(). Each frame,
-    // attached processes are advanced by the frame's delta time (Ch. 4) before updateAndDraw()
-    // runs, so multi-frame behavior (camera shake, timed effects) stays out of the screen code.
+    // loop) -- the platform-specific mechanics this is meant to hide from main(). Each frame, any
+    // events Queue()'d since the last frame are dispatched (ADR-0005), then attached processes are
+    // advanced by the frame's delta time (Ch. 4), both before updateAndDraw() runs -- so neither
+    // deferred cross-system events nor multi-frame behavior (camera shake, timed effects) need to
+    // live in the screen code.
     void Run(void (*updateAndDraw)(void));
 
     // Unwinds exactly what Init() set up, in reverse.
