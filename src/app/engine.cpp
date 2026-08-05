@@ -57,9 +57,10 @@ namespace {
     // emscripten_set_main_loop(..., 60, 1) on web), so a frame is "in budget" under ~16.67ms.
     constexpr float kFrameBudgetMs = 1000.0f / 60.0f;
 
-    // Advances attached processes by the frame's delta time (Ch. 4), then recomputes every
-    // entity's WorldTransform from the (possibly just-updated) hierarchy (docs/adr/0002) -- both
-    // before handing off to the screen's own update/draw, on both desktop and web.
+    // Dispatches queued events (ADR-0005), advances attached processes by the frame's delta time
+    // (Ch. 4), then recomputes every entity's WorldTransform from the (possibly just-updated)
+    // hierarchy (docs/adr/0002) -- all before handing off to the screen's own update/draw, on both
+    // desktop and web.
     void TickAndUpdateDraw() {
         float dt = GetFrameTime();
 
@@ -68,6 +69,7 @@ namespace {
             TraceLog(LOG_WARNING, "Frame budget exceeded: %.2fms (budget %.2fms)", dtMs, kFrameBudgetMs);
         }
 
+        g_runningEngine->Events().DispatchQueued();
         g_runningEngine->Processes().Update(dt);
         PropagateTransforms(g_runningEngine->Registry());
         g_updateAndDraw();

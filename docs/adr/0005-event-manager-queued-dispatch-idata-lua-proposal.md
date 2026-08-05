@@ -1,7 +1,28 @@
 # 5. Event manager: queued dispatch, plus a serialization contract for networking and an event journal
 
-- Status: Proposed
+- Status: Partially Accepted — Decisions 1-4 implemented; 5-7 still just designed here
 - Date: 2026-08-03
+
+## Implementation status (2026-08-04)
+
+Landed, matching the Decision list below:
+
+- **Decision 1** (`Queue<T>`/`DispatchQueued()`) — `src/app/event_manager.h`, ticked once per frame
+  from `Engine::Run`'s `TickAndUpdateDraw` (`src/app/engine.cpp`), alongside `ProcessManager::Update`.
+- **Decision 2** (`ISerializableEvent`, opt-in) — `src/app/serializable_event.h`, backed by a small
+  in-memory `ByteWriter`/`ByteReader` (`src/app/byte_stream.h`) standing in for the concrete
+  serialization primitives §4/Consequences flagged as not yet existing.
+- **Decision 3** (stable FNV-1a type ID) — `src/app/event_type_id.h`.
+- **Decision 4** (`EventTypeRegistry`) — `src/app/event_type_registry.h`.
+
+Not implemented yet, and still exactly as designed below: **Decision 5** (`EventJournal` — no
+concrete on-disk format has been chosen, per that section's own open follow-up), **Decision 6**
+(wiring networking/journaling via `Subscribe` — nothing to wire until a transport/journal exists),
+and **Decision 7** (Lua — still not applicable, no scripting layer exists). No real event type in
+the codebase implements `ISerializableEvent` yet either; the tests exercising Decisions 2-4
+(`src/tests/serializable_event_test.cpp`) use a stand-in event mirroring this ADR's own
+`EvtData_Destroy_Actor` example, the same way `resource_cache_test.cpp` exercises `ResourceCache<T>`
+with a fake loader instead of a real raylib type (ADR-0004).
 
 ## Context
 
