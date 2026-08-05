@@ -126,20 +126,46 @@ constructible and callable from wherever gameplay code currently lives (today: a
 kind of bridge already needed anywhere `screens.h`'s plain-C files reach into this project's C++
 systems — not a new problem this ADR introduces).
 
-### Why firing an event per spawned entity is optional, not "how rendering finds out"
+### Why `LevelLoader` fires `EvtData_EntitySpawned` unconditionally — the View-plurality seam, kept on purpose
 
-The book's `EvtData_New_Actor` exists because the Actor class hierarchy + Scene Graph (Ch. 9-10)
-is *push*-based: nothing renders an Actor until the View layer is explicitly told one now exists,
-so it can build a matching Scene Node. This project's ECS is *pull*-based instead
-(`.claude/skills/engine-architecture` §3): once `EntityFactory::Create` emplaces a `Renderable`
-(or whatever component marks something drawable) on an entity, any system that runs
-`registry.view<Renderable, ...>()` next frame picks it up automatically — no notification required
-for rendering specifically. `EvtData_EntitySpawned` (fired via `EventManager::Emit`, ADR-0003 —
-`Queue` per ADR-0005 isn't built yet) is for anything that needs a one-shot reaction *at the moment
-of creation* instead of "every frame this entity exists" — a spawn sound/VFX, analytics, an AI
-director noticing enemy count go up. No handler subscribes to it yet, matching the same "define
-the event type when something needs to announce it, don't presuppose consumers" guidance the
-engine-architecture skill already states for event types generally.
+Earlier framing of this ADR (before review) called this event optional, on the reasoning that a
+pull-based renderer (`registry.view<Renderable, ...>()`, run every frame) never needs to be told a
+new entity exists — it just finds it on the next query. That's true, but it's the wrong lens for
+*why* the book fires this event at all, and undersells what Ch. 9's View abstraction is actually
+for.
+
+`BaseGameLogic` in the book doesn't know or care how many `IGameView`s are attached, or what kind:
+a local `HumanView` (renders), a `RemoteView` (a proxy that forwards world changes to an actual
+networked client — no local rendering at all), an `AIView` (a bot's own decision-making state, also
+no rendering). Logic never special-cases any of them — it just fires events (`EvtData_New_Actor`,
+`EvtData_Destroy_Actor`, ...) and stays completely ignorant of who's listening or how many. That
+decoupling is the actual payoff, and it doesn't reduce to "how does rendering find out":
+
+- **A `RemoteView` cannot pull.** It's not in this process — there is no shared registry for a
+  networked client to query. The *only* way to tell it a new entity exists is to push something
+  across the network, which is exactly the serialization path already designed in
+  [ADR-0005](0005-event-manager-queued-dispatch-idata-lua-proposal.md) (`ISerializableEvent`,
+  `EventTypeRegistry`) — this ADR's `EvtData_EntitySpawned` is the natural first real event that
+  design would carry once a `RemoteView`-equivalent subscribes and forwards it.
+- **An `AIView`-style bot could technically pull** (it's in-process, same as the renderer) — but
+  reacting to "something happened" as a discrete event is how the book's AI subsystems
+  (`.claude/skills/engine-ai-behavior`, Ch. 11-13) are meant to key off world changes, not by
+  diffing the full registry every tick to reconstruct what changed since last frame.
+
+**Decided: fire `EvtData_EntitySpawned` from `LevelLoader::Load` unconditionally, even though no
+`RemoteView`/`AIView`-equivalent subscriber exists yet.** This is a deliberate exception to this
+project's usual "don't build ahead of need" discipline (ADR-0001's ECS choice, ADR-0004's thin
+cache, ADR-0008's mini-yaml pick) — and the exception is principled, not just "the book does it so
+we will too": the whole value of firing this event is that `LevelLoader` (and whatever Logic-side
+code eventually calls it) never has to change when a second kind of view gets added later. That
+property only holds if the event is fired from the start; unlike LRU eviction or a pluggable
+resource loader (things genuinely retrofittable later with no cost to waiting), *this* seam is the
+one place where waiting for "a concrete need" would mean touching `LevelLoader` again the day a
+`RemoteView` or `AIView` actually gets built — defeating the point of decoupling Logic from View in
+the first place. Local rendering keeps using pull regardless (it's simpler, and correct, for a
+same-process renderer reading the same registry things were created in) — this isn't "replace pull
+with push," it's "keep pushing lifecycle events *in addition to* whatever pulls, because pull only
+ever covers same-process consumers."
 
 ## Tradeoffs accepted
 
@@ -150,8 +176,10 @@ engine-architecture skill already states for event types generally.
 - No `BaseGameLogic`/Logic-View split — this ADR explicitly defers that (see above), consistent
   with ADR-0001 Decision 2's original deferral; `LevelLoader` is deliberately unopinionated about
   which future layer calls it.
-- `EvtData_EntitySpawned` has no subscriber yet — same pattern as every other event type defined
-  in this codebase so far (ADR-0003); not a gap specific to this ADR.
+- `EvtData_EntitySpawned` has no subscriber yet (no `RemoteView`/`AIView`-equivalent exists) —
+  accepted *deliberately*, unlike this project's usual defer-until-needed discipline: see "Why
+  `LevelLoader` fires... unconditionally" above for why this specific seam doesn't get the same
+  treatment as, say, LRU eviction or a pluggable loader registry.
 - No unloading/level-transition story (despawning the previous level's entities before loading a
   new one) — not designed here; `LevelLoader::Load` only adds entities, it doesn't know how to
   tear a level back down. Revisit once a second level actually needs loading.
@@ -170,6 +198,16 @@ engine-architecture skill already states for event types generally.
   `EvtData_EntitySpawned` should switch from `Emit` to `Queue` — mechanical, not a design change.
 - The "is it time for `BaseGameLogic`" question is answered "not yet" here, but explicitly not
   closed — see Open Questions.
+- Whatever eventually builds a `RemoteView`-equivalent should reach for
+  `EvtData_EntitySpawned` + ADR-0005's `ISerializableEvent`/`EventTypeRegistry` as the forwarding
+  path, rather than inventing a separate network-replication mechanism — that pairing is exactly
+  what both ADRs exist to hand it.
+- **Symmetry gap, not designed here**: this ADR only covers entities appearing (`LevelLoader`
+  creates, never destroys). Whatever eventually despawns entities will need an
+  `EvtData_EntityDestroyed` counterpart for the same reason `EvtData_EntitySpawned` exists — a
+  `RemoteView` needs to know when to stop replicating something, an `AIView` needs to forget a
+  dead target. Flagged so it isn't rediscovered as a gap only once something actually destroys an
+  entity.
 
 ## Open Questions
 
