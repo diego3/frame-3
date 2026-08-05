@@ -1,7 +1,44 @@
 # 8. Data-driven entity/component loading, starting with YAML behind a swappable format abstraction
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-08-04
+
+## Implementation status (2026-08-04)
+
+Landed as designed below, with two deviations discovered while implementing:
+
+- `EntityDefNode` (`src/app/entity_def.h`) — the format-agnostic value tree. Scalars are stored as
+  a single `std::string` alternative rather than the sketch's separate `double`/`bool` variant
+  slots, converted to a target type on demand (`AsFloat()`/`AsInt()`) -- simpler than eagerly
+  guessing a scalar's "real" type during parsing, and exactly how mini-yaml's own `Node::As<T>()`
+  already works. Documented in the header itself.
+- `IEntityFileParser` (`src/app/entity_file_parser.h`) and `YamlEntityFileParser`
+  (`src/app/entity_file_parser_yaml.h`/`.cpp`) — the swappable seam and its one implementation,
+  backed by mini-yaml (`vendor/mini-yaml`, vendored at commit `22d3dcf5684a11f9c0508c1ad8b3282a1d888319`
+  -- **no release tags exist upstream** (`git ls-remote --tags` is empty), so this pins a commit
+  SHA instead of a tag; `build.sh`'s raylib/EnTT pattern of `--depth 1 --branch <tag>` doesn't
+  reliably work for an arbitrary commit, so `test.sh`/CI do a full clone + `git checkout <sha>`
+  instead.
+- `EntityFactory` (`src/app/entity_factory.h`) — the component-loader registry, with one deviation:
+  the "unknown component" case takes a plain callback (default: no-op) instead of the sketch's
+  hardcoded `TraceLog` call. `TraceLog` needs `libraylib.a` linked, which would have dragged this
+  header's own unit tests into linking raylib -- breaking this project's established "pure-logic
+  systems need no window/GL context to test" property (`src/Makefile`'s tests section). A real
+  caller (once ADR-0009's `LevelLoader` exists) passes a `TraceLog`-calling callback explicitly.
+- **A real, previously-unknown mini-yaml limitation, confirmed empirically**: this checkout does
+  not parse flow-style maps/sequences (`{ x: 1, y: 2 }`, `[a, b, c]`) -- a flow-style map silently
+  parses as an empty scalar, not a `Map`, rather than throwing. ADR-0008's own example YAML used
+  flow style for compactness; entity/level definition files must use block style (newline +
+  indentation) instead. This is beyond what this ADR's own comparison table anticipated (it only
+  named anchors/aliases/tags/multi-document as gaps) -- worth ADR-0009 knowing when its own example
+  level file gets implemented, since it also used flow style.
+
+Not yet wired into any real gameplay code -- `EntityFactory`/`YamlEntityFileParser` exist and are
+tested (`src/tests/entity_def_test.cpp`, `entity_file_parser_yaml_test.cpp`,
+`entity_factory_test.cpp`) against fake components, the same "prove it against a stand-in first"
+pattern `ResourceCache<T>`/`EventManager`'s serializable-event pieces already used. Actually
+constructing an `EntityFactory`, registering real component loaders, and loading a real definition
+file is [ADR-0009](0009-level-loading-actor-placement.md)'s job.
 
 ## Context
 

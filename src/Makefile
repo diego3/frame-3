@@ -79,6 +79,16 @@ ENTT_INCLUDE_PATH      = $(ENTT_PATH)/single_include
 DOCTEST_PATH          ?= C:\doctest\doctest
 DOCTEST_INCLUDE_PATH   = $(DOCTEST_PATH)
 
+# mini-yaml (docs/adr/0008): one header (yaml/Yaml.hpp) + one small .cpp (yaml/Yaml.cpp), the same
+# vendoring shape EnTT/doctest already use, just not header-only -- Yaml.cpp needs compiling
+# wherever entity_file_parser_yaml.cpp is (currently: only the test build; nothing in the main
+# product consumes ADR-0008's pieces yet, that's ADR-0009's job). No release tags exist upstream
+# (see test.sh's comment), so MINI_YAML_PATH is expected to point at a checkout pinned by commit
+# SHA, not a tag. yaml/Yaml.hpp lives directly under the checkout root, so unlike ENTT_INCLUDE_PATH
+# there's no single_include-style subdirectory to add.
+MINI_YAML_PATH        ?= C:\mini-yaml\mini-yaml
+MINI_YAML_INCLUDE_PATH = $(MINI_YAML_PATH)
+
 # Build mode for project: DEBUG or RELEASE
 BUILD_MODE            ?= RELEASE
 
@@ -423,6 +433,9 @@ resources:
 # (docs/adr/0002) is the one exception needing real headers -- entt::registry and raylib's
 # Vector3/Quaternion/Matrix math (raymath.h) -- but raymath.h's functions are header-only
 # (RMAPI/static inline), so this still never links libraylib.a or opens a window/GL context.
+# entity_factory_test.cpp (docs/adr/0008) needs entt::registry too, same reasoning as hierarchy's.
+# entity_file_parser_yaml_test.cpp needs mini-yaml, which is genuinely compiled (not header-only) --
+# see the tests/entity_file_parser_yaml.o rule below.
 TEST_SOURCE_FILES_CPP ?= \
     tests/main_test.cpp \
     tests/event_manager_test.cpp \
@@ -431,15 +444,22 @@ TEST_SOURCE_FILES_CPP ?= \
     tests/event_type_id_test.cpp \
     tests/byte_stream_test.cpp \
     tests/serializable_event_test.cpp \
-    tests/hierarchy_test.cpp
+    tests/hierarchy_test.cpp \
+    tests/entity_def_test.cpp \
+    tests/entity_file_parser_yaml_test.cpp \
+    tests/entity_factory_test.cpp
 
-TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH) -I$(RAYLIB_INCLUDE_PATH) -I$(ENTT_INCLUDE_PATH)
+TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH) -I$(RAYLIB_INCLUDE_PATH) -I$(ENTT_INCLUDE_PATH) -I$(MINI_YAML_INCLUDE_PATH)
 
 # ProcessManager's implementation lives in app/process_manager.cpp (EventManager is header-only,
 # needs no object of its own). Built into a tests/-local object, never app/process_manager.o, so
 # it can't collide with the object the main product target above produces from the same source
-# with different flags.
-TEST_OBJS = $(patsubst tests/%.cpp, tests/%.o, $(TEST_SOURCE_FILES_CPP)) tests/process_manager.o
+# with different flags. entity_file_parser_yaml.cpp (docs/adr/0008) gets the same treatment: it's
+# not in PROJECT_SOURCE_FILES_CPP yet (nothing in the main product calls it until ADR-0009 lands),
+# but the test build needs its object to link entity_file_parser_yaml_test.cpp against -- and,
+# unlike EnTT/doctest/raymath.h, mini-yaml isn't header-only, so its own yaml/Yaml.cpp needs
+# compiling into the test binary too (tests/mini_yaml.o below).
+TEST_OBJS = $(patsubst tests/%.cpp, tests/%.o, $(TEST_SOURCE_FILES_CPP)) tests/process_manager.o tests/entity_file_parser_yaml.o tests/mini_yaml.o
 
 tests: $(TEST_OBJS)
 	$(CXX) -o tests_runner $(TEST_OBJS) $(TEST_CXXFLAGS)
@@ -449,6 +469,19 @@ test-run: tests
 
 tests/process_manager.o: app/process_manager.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
+
+tests/entity_file_parser_yaml.o: app/entity_file_parser_yaml.cpp
+	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
+
+# NOTE: deliberately no prerequisite on this rule's own line (unlike process_manager.o/
+# entity_file_parser_yaml.o above) -- MINI_YAML_PATH's default placeholder value is a Windows path
+# ("C:\mini-yaml\mini-yaml"), and a colon inside a prerequisite makes GNU Make misparse the whole
+# line as a static pattern rule ("target pattern contains no '%'"), even on platforms that never
+# hit this rule's recipe. Referencing $(MINI_YAML_PATH) only inside the recipe body sidesteps that
+# parse-time failure; the tradeoff is Make can't tell if Yaml.cpp itself changed and needs a
+# rebuild, which is fine for a pinned, never-locally-edited vendored file.
+tests/mini_yaml.o:
+	$(CXX) -c $(MINI_YAML_PATH)/yaml/Yaml.cpp -o $@ $(TEST_CXXFLAGS)
 
 tests/%.o: tests/%.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
