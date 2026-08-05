@@ -1,5 +1,6 @@
 #include "engine.h"
 
+#include "hierarchy.h"
 #include "raylib.h"
 #include "../game/screens.h"    // NOTE: font/fxCoin/music are declared here, shared with screens
 
@@ -56,8 +57,9 @@ namespace {
     // emscripten_set_main_loop(..., 60, 1) on web), so a frame is "in budget" under ~16.67ms.
     constexpr float kFrameBudgetMs = 1000.0f / 60.0f;
 
-    // Advances attached processes by the frame's delta time (Ch. 4) before handing off to the
-    // screen's own update/draw, on both desktop and web.
+    // Advances attached processes by the frame's delta time (Ch. 4), then recomputes every
+    // entity's WorldTransform from the (possibly just-updated) hierarchy (docs/adr/0002) -- both
+    // before handing off to the screen's own update/draw, on both desktop and web.
     void TickAndUpdateDraw() {
         float dt = GetFrameTime();
 
@@ -67,6 +69,7 @@ namespace {
         }
 
         g_runningEngine->Processes().Update(dt);
+        PropagateTransforms(g_runningEngine->Registry());
         g_updateAndDraw();
     }
 }

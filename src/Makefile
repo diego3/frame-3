@@ -414,19 +414,23 @@ resources:
 
 # Unit tests (doctest, see docs/adr/0006-doctest-for-unit-tests.md)
 #------------------------------------------------------------------------------------------------
-# Deliberately independent of the PLATFORM/RAYLIB/ENTT machinery above: everything under tests/
-# exercises pure-logic systems (EventManager, ProcessManager, ResourceCache) with no raylib or EnTT
-# dependency, so building and running them needs no window, GL, or platform library -- just
-# CXX/CXXFLAGS and the doctest include path. ResourceCache is templated over its Load/Unload pair
-# (docs/adr/0004), so its test exercises it with a fake int-based loader/unloader rather than a
-# real raylib type, the same reason it needs no window/GL context here either.
+# Mostly independent of the PLATFORM machinery above: everything under tests/ needs no window, GL,
+# or platform library, or linking against libraylib.a -- just CXX/CXXFLAGS plus whichever headers
+# a given test includes. Most tests exercise pure-logic systems (EventManager, ProcessManager,
+# ResourceCache) with no raylib or EnTT dependency at all; ResourceCache is templated over its
+# Load/Unload pair (docs/adr/0004), so its test exercises it with a fake int-based loader/unloader
+# rather than a real raylib type, the same reason it needs neither header. hierarchy_test.cpp
+# (docs/adr/0002) is the one exception needing real headers -- entt::registry and raylib's
+# Vector3/Quaternion/Matrix math (raymath.h) -- but raymath.h's functions are header-only
+# (RMAPI/static inline), so this still never links libraylib.a or opens a window/GL context.
 TEST_SOURCE_FILES_CPP ?= \
     tests/main_test.cpp \
     tests/event_manager_test.cpp \
     tests/process_manager_test.cpp \
-    tests/resource_cache_test.cpp
+    tests/resource_cache_test.cpp \
+    tests/hierarchy_test.cpp
 
-TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH)
+TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH) -I$(RAYLIB_INCLUDE_PATH) -I$(ENTT_INCLUDE_PATH)
 
 # ProcessManager's implementation lives in app/process_manager.cpp (EventManager is header-only,
 # needs no object of its own). Built into a tests/-local object, never app/process_manager.o, so
