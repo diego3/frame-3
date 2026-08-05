@@ -32,6 +32,10 @@ _(nothing currently — the last item here, scene graph/hierarchy, shipped above
 
 ## Proposed (ADR merged into `main`, `Status: Proposed` — design not yet built)
 
+- [ ] Game-module boundary and raylib-template C→C++ migration —
+  [ADR-0013](adr/0013-game-module-boundary-and-template-migration.md), establishes the
+  game-agnostic `app/` → concrete `game/<game-id>/` dependency direction; implement before or
+  alongside ADR-0010
 - [ ] Event journal for save/replay (`EventJournal`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §4 — the serialization contract it would sit on (§§1-3) already shipped above; no concrete on-disk format decided yet
 - [ ] Physics / collision (`IGamePhysics`, raylib-collision-backed, owned by `BaseGameLogic`) — [ADR-0012](adr/0012-physics-thin-raylib-collision-layer.md) — its dependency (`BaseGameLogic`, ADR-0010) just shipped above, unblocked now
 - [ ] Input / key-binding system (`InputAction`/`InputBindings`, data-driven action↔key mapping consumed by `HumanView`; gamepad and a rebinding UI explicitly deferred) — [ADR-0013](adr/0013-input-key-binding-system.md) — depends on `HumanView`/ADR-0010, which as of this ADR only exists on PR #26 (`claude/base-game-logic-impl`), not yet merged to `main`
