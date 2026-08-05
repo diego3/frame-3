@@ -29,14 +29,13 @@ the chapter reference and full reasoning.
 - [ ] Data-driven entity/component loading (YAML) — [ADR-0008](adr/0008-data-driven-entity-loading-yaml.md) — PR #12
 - [ ] Level loading (`LevelLoader`, actor placement + overrides) — [ADR-0009](adr/0009-level-loading-actor-placement.md) — PR #13, depends on #12
 - [ ] Event serialization for networking + save/replay journal (`ISerializableEvent`, `EventJournal`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §§1-4
+- [ ] Physics / collision (`IGamePhysics`, raylib-collision-backed) — [ADR-0010](adr/0010-physics-thin-raylib-collision-layer.md)
 
 ## Not started — no ADR yet
 
 Ordered by rough impact, not book chapter order. Each of these needs its own ADR before landing
 any code, same as everything above did.
 
-- [ ] **Physics / collision** — nothing exists yet: no ADR, no skill, no library choice made. The
-  book dedicates a full chapter to this; biggest unaddressed gap in the project.
 - [ ] **`BaseGameLogic`/`IGameView` split** (HumanView/RemoteView/AIView) — deliberately deferred
   since [ADR-0001](adr/0001-ecs-via-entt-and-cpp-engine-init.md) Decision 2, reaffirmed in
   [ADR-0009](adr/0009-level-loading-actor-placement.md). Unlocks AI reacting to world events and
