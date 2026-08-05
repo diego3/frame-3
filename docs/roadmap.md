@@ -43,6 +43,13 @@ any code, same as everything above did.
 - [ ] **AI** (FSM, utility scoring, steering, perception, pathfinding) — design guidance already
   exists in `.claude/skills/engine-ai-behavior`, but zero code and zero entities to apply it to.
   Unlocked by `AIView` once [ADR-0010](adr/0010-base-game-logic-and-igameview.md) is implemented.
+- [ ] **Input / key-binding system** (data-driven action↔key/gamepad-button mapping, rebindable by
+  the player) — not designed anywhere yet. [ADR-0010](adr/0010-base-game-logic-and-igameview.md)
+  decided `HumanView` polls raylib input directly (`IsKeyDown`/etc.) rather than a Win32-style
+  message-proc layer, but explicitly left "which key/gesture drives which actor action" as an open
+  question (§ Open Questions) — that's this item. Distinct from the config-file bullet below
+  (resolution/audio settings vs. actual action mapping + a rebinding UI + persisting the player's
+  choice).
 - [ ] **Network transport** (sockets/library choice, client/server architecture) — the event-level
   contract (`ISerializableEvent`/`EventTypeRegistry`, ADR-0005 §§1-3) already shipped above; the
   actual wire transport is explicitly left for a future ADR "once multiplayer work actually
@@ -51,7 +58,9 @@ any code, same as everything above did.
   [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §7 ("no scripting layer
   exists to attach it to"); revisit only if embedding a scripting language is decided on its own
   merits.
-- [ ] **Game options/config file** (resolution, controls, etc.) — not discussed anywhere yet.
+- [ ] **Game options/config file** (resolution, audio volume, window mode, etc.) — not discussed
+  anywhere yet. Distinct from the input/key-binding item above (display/audio settings, not action
+  mapping).
 - [ ] **Save/load of actual game state** — distinct from ADR-0005's event journal (which persists
   *events*, not a snapshot of world state); not designed.
 - [ ] **UI/HUD as a system** (the book's `IScreenElement` stack) — what exists today is just the
