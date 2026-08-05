@@ -21,8 +21,17 @@ std::shared_ptr<Shader> Engine::GetShader(const std::string &vsPath, const std::
     return shaderCache_.GetHandle(ResourceCacheKeys::Combine(vsPath, fsPath));
 }
 
+namespace {
+    // Shared with the Run()/TickAndUpdateDraw namespace block below -- declared up here so
+    // Init() can also set it (see Engine::Current()'s comment in engine.h for why this exists).
+    Engine *g_runningEngine = nullptr;
+}
+
+Engine *Engine::Current() { return g_runningEngine; }
+
 bool Engine::Init(const EngineConfig &config, const char *title) {
     config_ = config;
+    g_runningEngine = this;
 
     InitWindow(config_.screenWidth, config_.screenHeight, title);
 
@@ -49,10 +58,8 @@ bool Engine::Init(const EngineConfig &config, const char *title) {
 
 namespace {
     // emscripten_set_main_loop only accepts a plain function pointer, so on PLATFORM_WEB there's
-    // no way to pass `this` through to the per-frame tick -- these globals give the trampoline
-    // below a way to reach the running Engine. Only one Engine ever runs at a time (Run() is
-    // called once from main()), so a pair of globals is simpler than reaching for a singleton.
-    Engine *g_runningEngine = nullptr;
+    // no way to pass `this` through to the per-frame tick -- g_runningEngine (declared above,
+    // set by both Init() and Run()) gives the trampoline below a way to reach the running Engine.
     void (*g_updateAndDraw)(void) = nullptr;
 
     // Dispatches queued events (ADR-0005), advances attached processes by the frame's delta time

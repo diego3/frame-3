@@ -1,7 +1,54 @@
 # 10. `BaseGameLogic` + `IGameView`: activating the Logic/View split
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-08-04
+
+## Implementation status (2026-08-05)
+
+Landed as designed, with deviations/additions discovered while wiring it into the real product:
+
+- `IGameView` (`src/app/game_view.h`), `BaseGameLogic` (`src/app/base_game_logic.h`/`.cpp`),
+  `HumanView` (`src/app/human_view.h`/`.cpp`) — all as sketched. `BaseGameLogic` gained `Pause()`/
+  `Resume()` (not in the original sketch): the sketch left "what pausing actually freezes" as an
+  explicit Open Question but still included `GameLogicState::Paused` and a `VOnUpdate` guard
+  against it; without a way to actually reach `Paused`, that state and guard would have been dead
+  code. `Pause()`/`Resume()` are the minimal resolution -- freezes attached views' `VOnUpdate` only,
+  nothing else (`ProcessManager` keeps running regardless, ticked independently by `Engine::Run`).
+  Known sharp edge: `Resume()` before a level has ever loaded (state still `Loading`) incorrectly
+  claims `Running` -- accepted since nothing calls `Resume()` in that state today.
+- `screen_gameplay.c` → `src/app/gameplay_bridge.h`/`.cpp` (`extern "C"`, per Sec 3) is the actual
+  bridge: `InitGameplayScreen`/`UpdateGameplayScreen`/`DrawGameplayScreen`/`UnloadGameplayScreen`
+  now call `GameplayBridge_Init/Update/Draw/Unload`, which hold `BaseGameLogic`/`HumanView` as
+  file-local statics across calls, exactly the shape Sec 3/Consequences anticipated without fully
+  specifying.
+- **New, not anticipated by the ADR**: `Engine::Current()` (`src/app/engine.h`/`.cpp`) — a static
+  accessor for the one running `Engine`, backed by the same de facto singleton
+  (`g_runningEngine`) `Run()`'s emscripten trampoline already relied on internally, now exposed so
+  `GameplayBridge_Init` can reach `engine->Registry()`/`Events()`/`Processes()`. The ADR's Sec 3
+  table decided *where* `BaseGameLogic` lives but not *how the bridge reaches `Engine`* to
+  construct it -- this is that missing piece, set by both `Init()` and `Run()` so it's valid by
+  the time any screen's `Init`/`Update`/`Draw` runs (screens only run inside `Run()`'s loop).
+- **Reordered from Sec 3's literal sketch**: attach `HumanView` *after* `VLoadLevel`, not before.
+  The sketch's prose order ("attaches a HumanView, calls VLoadLevel") has no entity for the view to
+  possess yet at attach time; `BaseGameLogic` itself doesn't enforce either ordering, so this is a
+  safe reordering, not a workaround. The possessed actor is currently just "the first entity with a
+  `LocalTransform`" -- there's no `PlayerTag`/possession concept yet, unambiguous only because
+  today's one level spawns exactly one entity (flagged below as a real limitation).
+- **The first real, non-test-fake `EntityFactory` component loader**: `"Position"` →
+  `LocalTransform` + `WorldTransform` (`gameplay_bridge.cpp`). Deliberately the only one --
+  "render component design" is still this ADR's own unresolved Open Question, so `HumanView`
+  renders a placeholder wireframe box per entity with a `WorldTransform`, not a real `Model`.
+- **First real level/entity content**: `assets/levels/level_01.yaml`,
+  `assets/entities/player.yaml` (staged into `resources/` at build time, same as other assets) --
+  one entity, one placement, enough to prove the whole chain end to end.
+- **Verified end-to-end** with a standalone smoke test (`Engine::Init` → `GameplayBridge_Init` →
+  several `Update`/`Draw` cycles → `GameplayBridge_Unload` → `Engine::Shutdown`, run under
+  `xvfb-run`): the level loads, one entity spawns with a `LocalTransform`, `HumanView` reads input
+  and renders without crashing, and shutdown is clean (exit code 0) -- the same verification
+  discipline ADR-0004's resource-cache work established.
+- `RemoteView`/`AIView` remain named, not built, exactly as decided.
+
+## Context
 
 ## Context
 

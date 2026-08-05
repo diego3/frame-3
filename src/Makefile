@@ -48,17 +48,23 @@ PROJECT_SOURCE_FILES  ?= \
 
 # C++ sources (EnTT-using code, etc.), compiled/linked separately from the plain-C sources above
 # since they need a C++ standard and the EnTT include path (see ENTT_INCLUDE_PATH below).
-# entity_file_parser_yaml.cpp (docs/adr/0008) and engine_config.cpp (docs/adr/0011) are here (not
-# test-only, unlike entity_factory.h/level_loader.cpp/game_config.h) because Engine::Init() now
-# actually calls LoadOrCreateEngineConfig() -> YamlEntityFileParser -> mini-yaml, the first time
-# any of ADR-0008's pieces are wired into the real product rather than only tested in isolation.
+# entity_file_parser_yaml.cpp (docs/adr/0008) and engine_config.cpp (docs/adr/0011) are here
+# because Engine::Init() now actually calls LoadOrCreateEngineConfig() -> YamlEntityFileParser ->
+# mini-yaml. level_loader.cpp, base_game_logic.cpp, human_view.cpp, and gameplay_bridge.cpp
+# (docs/adr/0010) join them here for the same reason: GameplayBridge_Init() (called from
+# screen_gameplay.c's InitGameplayScreen(), via gameplay_bridge.h's extern "C" seam) is the first
+# real caller of BaseGameLogic/HumanView/LevelLoader/EntityFactory, not just their own unit tests.
 PROJECT_SOURCE_FILES_CPP ?= \
     app/raylib_game.cpp \
     app/engine.cpp \
     app/process_manager.cpp \
     app/debug_overlay.cpp \
     app/entity_file_parser_yaml.cpp \
-    app/engine_config.cpp
+    app/engine_config.cpp \
+    app/level_loader.cpp \
+    app/base_game_logic.cpp \
+    app/human_view.cpp \
+    app/gameplay_bridge.cpp
 
 # Source location of game content, staged into ./resources before linking (see 'resources' target)
 PROJECT_RESOURCES_PATH ?= ../assets
@@ -469,21 +475,27 @@ TEST_SOURCE_FILES_CPP ?= \
     tests/level_loader_test.cpp \
     tests/file_io_test.cpp \
     tests/engine_config_test.cpp \
-    tests/game_config_test.cpp
+    tests/game_config_test.cpp \
+    tests/base_game_logic_test.cpp
 
 TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH) -I$(RAYLIB_INCLUDE_PATH) -I$(ENTT_INCLUDE_PATH) -I$(MINI_YAML_INCLUDE_PATH)
 
 # ProcessManager's implementation lives in app/process_manager.cpp (EventManager is header-only,
 # needs no object of its own). Built into a tests/-local object, never app/process_manager.o, so
 # it can't collide with the object the main product target above produces from the same source
-# with different flags. entity_file_parser_yaml.cpp/engine_config.cpp (both now also in
-# PROJECT_SOURCE_FILES_CPP, docs/adr/0008/0011) get the same tests/-local treatment, so the test
-# build's flags (TEST_CXXFLAGS) never collide with the main product's (CXXFLAGS). level_loader.cpp
-# (docs/adr/0009) isn't in PROJECT_SOURCE_FILES_CPP at all yet (nothing in the main product calls
-# it until ADR-0010 wires a real gameplay screen up to it) but still needs a tests/-local object to
-# link level_loader_test.cpp against. mini-yaml isn't header-only either, so its own yaml/Yaml.cpp
-# needs compiling into the test binary too (tests/mini_yaml.o below).
-TEST_OBJS = $(patsubst tests/%.cpp, tests/%.o, $(TEST_SOURCE_FILES_CPP)) tests/process_manager.o tests/entity_file_parser_yaml.o tests/engine_config.o tests/level_loader.o tests/mini_yaml.o
+# with different flags. entity_file_parser_yaml.cpp/engine_config.cpp/level_loader.cpp/
+# base_game_logic.cpp (all now also in PROJECT_SOURCE_FILES_CPP, docs/adr/0008/0009/0010/0011) get
+# the same tests/-local treatment, so the test build's flags (TEST_CXXFLAGS) never collide with the
+# main product's (CXXFLAGS). human_view.cpp/gameplay_bridge.cpp (docs/adr/0010) deliberately do NOT
+# get a tests/-local object -- both call real raylib runtime functions (IsKeyDown, DrawCubeWires,
+# BeginMode3D, ...), and the test build never links -lraylib (see TEST_CXXFLAGS above: raylib's
+# *headers* are on the include path for types like Camera3D, but nothing links its library), so
+# either would fail at link time. base_game_logic.cpp has no such dependency (only entt::registry,
+# EventManager, ProcessManager, LevelLoader -- none of them touch raylib), so it's tested the same
+# way level_loader.cpp already is, with a FakeView standing in for HumanView. mini-yaml isn't
+# header-only either, so its own yaml/Yaml.cpp needs compiling into the test binary too
+# (tests/mini_yaml.o below).
+TEST_OBJS = $(patsubst tests/%.cpp, tests/%.o, $(TEST_SOURCE_FILES_CPP)) tests/process_manager.o tests/entity_file_parser_yaml.o tests/engine_config.o tests/level_loader.o tests/base_game_logic.o tests/mini_yaml.o
 
 tests: $(TEST_OBJS)
 	$(CXX) -o tests_runner $(TEST_OBJS) $(TEST_CXXFLAGS)
@@ -501,6 +513,9 @@ tests/engine_config.o: app/engine_config.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
 tests/level_loader.o: app/level_loader.cpp
+	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
+
+tests/base_game_logic.o: app/base_game_logic.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
 # NOTE: deliberately no prerequisite on this rule's own line (unlike process_manager.o/
