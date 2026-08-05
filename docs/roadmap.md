@@ -32,6 +32,7 @@ _(nothing currently — the last item here, scene graph/hierarchy, shipped above
 - [ ] Level loading (`LevelLoader`, actor placement + overrides) — [ADR-0009](adr/0009-level-loading-actor-placement.md), depends on ADR-0008 (now shipped above) — nothing in the codebase constructs a real `EntityFactory`/registers a real `ComponentLoader` yet, that's this item's job
 - [ ] Event journal for save/replay (`EventJournal`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §4 — the serialization contract it would sit on (§§1-3) already shipped above; no concrete on-disk format decided yet
 - [ ] `BaseGameLogic`/`IGameView` split (`HumanView` built; `RemoteView`/`AIView` named, not built) — [ADR-0010](adr/0010-base-game-logic-and-igameview.md), depends on ADR-0008/0009 landing first
+- [ ] Game options/config file (`EngineConfig`/`GameConfig`, two-tier, writable `src/config/`) — [ADR-0011](adr/0011-engine-and-game-config.md), depends on ADR-0008's parser landing first (design dependency only, not a git/PR one)
 
 ## Not started — no ADR yet
 
@@ -58,9 +59,6 @@ any code, same as everything above did.
   [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §7 ("no scripting layer
   exists to attach it to"); revisit only if embedding a scripting language is decided on its own
   merits.
-- [ ] **Game options/config file** (resolution, audio volume, window mode, etc.) — not discussed
-  anywhere yet. Distinct from the input/key-binding item above (display/audio settings, not action
-  mapping).
 - [ ] **Save/load of actual game state** — distinct from ADR-0005's event journal (which persists
   *events*, not a snapshot of world state); not designed.
 - [ ] **UI/HUD as a system** (the book's `IScreenElement` stack) — what exists today is just the
