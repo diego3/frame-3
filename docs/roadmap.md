@@ -34,6 +34,7 @@ _(nothing currently — the last item here, scene graph/hierarchy, shipped above
 
 - [ ] Event journal for save/replay (`EventJournal`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §4 — the serialization contract it would sit on (§§1-3) already shipped above; no concrete on-disk format decided yet
 - [ ] Physics / collision (`IGamePhysics`, raylib-collision-backed, owned by `BaseGameLogic`) — [ADR-0012](adr/0012-physics-thin-raylib-collision-layer.md) — its dependency (`BaseGameLogic`, ADR-0010) just shipped above, unblocked now
+- [ ] Input / key-binding system (`InputAction`/`InputBindings`, data-driven action↔key mapping consumed by `HumanView`; gamepad and a rebinding UI explicitly deferred) — [ADR-0013](adr/0013-input-key-binding-system.md) — depends on `HumanView`/ADR-0010, which as of this ADR only exists on PR #26 (`claude/base-game-logic-impl`), not yet merged to `main`
 
 ## Not started — no ADR yet
 
@@ -44,13 +45,6 @@ any code, same as everything above did.
   exists in `.claude/skills/engine-ai-behavior`, but zero code, and one entity now exists (ADR-0010)
   with nothing AI-shaped to apply it to yet. `IGameView`/`BaseGameLogic` shipped, but `AIView`
   itself is still just named in the type enum, not built — that's the remaining unblock.
-- [ ] **Input / key-binding system** (data-driven action↔key/gamepad-button mapping, rebindable by
-  the player) — not designed anywhere yet. [ADR-0010](adr/0010-base-game-logic-and-igameview.md)
-  decided `HumanView` polls raylib input directly (`IsKeyDown`/etc.) rather than a Win32-style
-  message-proc layer, but explicitly left "which key/gesture drives which actor action" as an open
-  question (§ Open Questions) — that's this item. Distinct from the config-file item above
-  ("Proposed" section — [ADR-0011](adr/0011-engine-and-game-config.md), resolution/audio/window
-  settings) vs. actual action mapping + a rebinding UI + persisting the player's choice.
 - [ ] **Network transport** (sockets/library choice, client/server architecture) — the event-level
   contract (`ISerializableEvent`/`EventTypeRegistry`, ADR-0005 §§1-3) already shipped above; the
   actual wire transport is explicitly left for a future ADR "once multiplayer work actually
