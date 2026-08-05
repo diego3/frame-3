@@ -91,6 +91,9 @@ jobs:
 
     # Generating static library, note that i386 architecture is deprecated
     # Defining GL_SILENCE_DEPRECATION because OpenGL is deprecated on macOS
+    # x86_64 target is macos10.15, not the template's original 10.12: app/file_io.h (backing
+    # engine_config.cpp since docs/adr/0011) uses std::filesystem::path, unavailable before 10.15.
+    # Kept in sync with the same target in the "Build Product" step below.
     - name: Build raylib Library
       run: |
         cd raylib/src
@@ -102,7 +105,7 @@ jobs:
         RAYLIB_VERSION=`ggrep -Po 'RAYLIB_VERSION\s*=\s\K(.*)' Makefile`
 
         # Build raylib x86_64 static
-        make PLATFORM=PLATFORM_DESKTOP RAYLIB_LIBTYPE=STATIC CUSTOM_CFLAGS="-target x86_64-apple-macos10.12 -DGL_SILENCE_DEPRECATION"
+        make PLATFORM=PLATFORM_DESKTOP RAYLIB_LIBTYPE=STATIC CUSTOM_CFLAGS="-target x86_64-apple-macos10.15 -DGL_SILENCE_DEPRECATION"
         mv -v -f libraylib.a libraylib_x86_64.a
         make clean
 
@@ -122,7 +125,7 @@ jobs:
 
         # Build project x86_64 binary
         # TODO: Link with x86_64 raylib library: libraylib_x86_64.a
-        make PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE PROJECT_CUSTOM_FLAGS=${{ env.PROJECT_CUSTOM_FLAGS }} PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib ENTT_PATH=../../entt MINI_YAML_PATH=../../mini-yaml PROJECT_CUSTOM_FLAGS="-target x86_64-apple-macos10.12"
+        make PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE PROJECT_CUSTOM_FLAGS=${{ env.PROJECT_CUSTOM_FLAGS }} PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib ENTT_PATH=../../entt MINI_YAML_PATH=../../mini-yaml PROJECT_CUSTOM_FLAGS="-target x86_64-apple-macos10.15"
         mv -v -f ${{ env.PROJECT_NAME }} ${{ env.PROJECT_NAME }}_x86_64
         make clean
 
