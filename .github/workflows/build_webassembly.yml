@@ -26,6 +26,9 @@ jobs:
       PROJECT_BUILD_PATH: ${{ github.event.repository.name }}\\src
       PROJECT_RELEASE_PATH: ${{ github.event.repository.name }}_dev_wasm
       BUILD_WEB_SHELL: platform/minshell.html
+      # No release tags exist upstream for mini-yaml (docs/adr/0008), same reason ci_sanity.yml
+      # pins a commit SHA instead of a tag.
+      MINI_YAML_COMMIT: 22d3dcf5684a11f9c0508c1ad8b3282a1d888319
 
     steps:
     - name: Checkout this repo
@@ -46,6 +49,17 @@ jobs:
         repository: skypjack/entt
         ref: v4.0.0
         path: entt
+
+    # mini-yaml (docs/adr/0008) backs entity_file_parser_yaml.cpp, part of the main product build
+    # since docs/adr/0011 (Engine::Init() calls LoadOrCreateEngineConfig()) -- without this, "Build
+    # Product" below fails with "yaml/Yaml.hpp: No such file or directory" against the Makefile's
+    # own MINI_YAML_PATH default (a Windows-only placeholder path, not a real checkout).
+    - name: Checkout mini-yaml repo
+      uses: actions/checkout@master
+      with:
+        repository: jimmiebergmann/mini-yaml
+        ref: ${{ env.MINI_YAML_COMMIT }}
+        path: mini-yaml
 
     - name: Setup emsdk
       uses: emscripten-core/setup-emsdk@v15
@@ -74,7 +88,7 @@ jobs:
     - name: Build Product
       run: |
         cd ${{ env.PROJECT_REPO_NAME }}/src
-        make PLATFORM=PLATFORM_WEB BUILD_MODE=RELEASE EMSDK_PATH="D:/a/${{ env.PROJECT_REPO_NAME }}/${{ env.PROJECT_REPO_NAME }}/emsdk-cache/emsdk-main" PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib ENTT_PATH=../../entt -B
+        make PLATFORM=PLATFORM_WEB BUILD_MODE=RELEASE EMSDK_PATH="D:/a/${{ env.PROJECT_REPO_NAME }}/${{ env.PROJECT_REPO_NAME }}/emsdk-cache/emsdk-main" PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib ENTT_PATH=../../entt MINI_YAML_PATH=../../mini-yaml -B
 
     - name: Generate Artifacts
       run: |
