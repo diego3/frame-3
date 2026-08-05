@@ -79,6 +79,22 @@ yet. No event struct types exist yet either; define one per event kind as gamepl
 announce something (e.g. a future `EvtData_EnemyDied`), don't pre-build a taxonomy of events
 speculatively.
 
+Per [ADR-0005](../../../docs/adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md)
+(Partially Accepted), `EventManager` also has `Queue<T>`/`DispatchQueued()` — a deferred-dispatch
+path that avoids the reentrancy hazard of a handler `Emit`-ing the same type it's currently
+handling — ticked once per frame from `Engine::Run`'s `TickAndUpdateDraw`
+(`src/app/engine.cpp`), right alongside `ProcessManager::Update`. `Emit<T>` is unchanged. Separately,
+for events that need to cross a process or time boundary (networking, an event journal — neither
+exists yet), there's now an **opt-in** serialization path: `ISerializableEvent`
+(`src/app/serializable_event.h`), a stable compile-time type ID via `Fnv1aHash`
+(`src/app/event_type_id.h`), a factory table to reconstruct a concrete type from raw bytes
+(`EventTypeRegistry`, `src/app/event_type_registry.h`), and a minimal in-memory
+`ByteWriter`/`ByteReader` (`src/app/byte_stream.h`). Purely local events (everything today) never
+touch any of this — it's paid for only by an event type that explicitly implements
+`ISerializableEvent`, and no real event type does yet (`src/tests/serializable_event_test.cpp`
+exercises it with a stand-in event). `EventJournal` and the actual network transport are still just
+designed, not implemented — see the ADR's Implementation status note.
+
 ### 2. Process manager (Ch. 4) — cooperative multitasking for timed behavior
 
 Genuinely not Windows/DirectX-specific in the book — this ports close to as-is. A `Process` runs

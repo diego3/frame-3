@@ -62,3 +62,63 @@ TEST_CASE("Handlers only fire for the event type they subscribed to") {
     CHECK_FALSE(damageFired);
     CHECK(healFired);
 }
+
+TEST_CASE("Queue does not dispatch until DispatchQueued is called") {
+    EventManager events;
+    int callCount = 0;
+
+    events.Subscribe<DamageEvent>([&](const DamageEvent &) { callCount++; });
+    events.Queue(DamageEvent{5});
+
+    CHECK(callCount == 0);
+
+    events.DispatchQueued();
+
+    CHECK(callCount == 1);
+}
+
+TEST_CASE("DispatchQueued runs queued events in the order they were queued") {
+    EventManager events;
+    std::vector<int> order;
+
+    events.Subscribe<DamageEvent>([&](const DamageEvent &e) { order.push_back(e.amount); });
+    events.Queue(DamageEvent{1});
+    events.Queue(DamageEvent{2});
+    events.DispatchQueued();
+
+    REQUIRE(order.size() == 2);
+    CHECK(order[0] == 1);
+    CHECK(order[1] == 2);
+}
+
+TEST_CASE("DispatchQueued only runs each queued event once, even across multiple calls") {
+    EventManager events;
+    int callCount = 0;
+
+    events.Subscribe<DamageEvent>([&](const DamageEvent &) { callCount++; });
+    events.Queue(DamageEvent{1});
+
+    events.DispatchQueued();
+    events.DispatchQueued();
+
+    CHECK(callCount == 1);
+}
+
+TEST_CASE("A handler queuing another event during DispatchQueued defers it to the next call") {
+    EventManager events;
+    int dispatchCount = 0;
+
+    events.Subscribe<DamageEvent>([&](const DamageEvent &e) {
+        dispatchCount++;
+        if (e.amount == 1) events.Queue(DamageEvent{2});
+    });
+
+    events.Queue(DamageEvent{1});
+    events.DispatchQueued();
+
+    CHECK(dispatchCount == 1);   // the re-queued event hasn't run yet...
+
+    events.DispatchQueued();
+
+    CHECK(dispatchCount == 2);   // ...until the next call.
+}

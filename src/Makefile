@@ -424,7 +424,10 @@ TEST_SOURCE_FILES_CPP ?= \
     tests/main_test.cpp \
     tests/event_manager_test.cpp \
     tests/process_manager_test.cpp \
-    tests/resource_cache_test.cpp
+    tests/resource_cache_test.cpp \
+    tests/event_type_id_test.cpp \
+    tests/byte_stream_test.cpp \
+    tests/serializable_event_test.cpp
 
 TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH)
 

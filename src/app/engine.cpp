@@ -66,6 +66,7 @@ namespace {
             TraceLog(LOG_WARNING, "Frame budget exceeded: %.2fms (budget %.2fms)", dtMs, kFrameBudgetMs);
         }
 
+        g_runningEngine->Events().DispatchQueued();
         g_runningEngine->Processes().Update(dt);
         g_updateAndDraw();
     }
