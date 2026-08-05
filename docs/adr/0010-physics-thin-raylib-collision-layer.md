@@ -110,27 +110,76 @@ today (the fused `screen_gameplay.c`, via a small `extern "C"` bridge — the sa
 
 ## Options considered for adopting a real rigid-body engine now instead
 
-| | **raylib collision only** (recommended) | **Jolt Physics** | **Bullet** (book's own pick) | **Hand-rolled dynamics** |
-|---|---|---|---|---|
-| Vendoring shape | None — already in raylib, already a dependency. | CMake-based build. | CMake-based build (legacy Makefiles exist but aren't the maintained path). | None — no new dependency. |
-| Fits Makefile-only build (ADR-0001 Decision 3, reaffirmed ADR-0006) | Yes, trivially. | **No**, as-is — see note below. | **No**, as-is — see note below. | Yes. |
-| Capability | Discrete overlap checks + raycasts only — no forces, mass, momentum, joints, continuous collision detection. | Full rigid-body dynamics, modern C++17/20, MIT, actively maintained, used in shipped AAA titles (e.g. Horizon Forbidden West) — genuinely the strongest modern option on technical merit. | Full rigid-body dynamics, the book's own choice, mature, zlib license, but an older (C++03-era) codebase than Jolt. | Whatever we implement — a real from-scratch dynamics/constraint solver is a substantial, error-prone undertaking (this is precisely the kind of problem serious engines spend years on). |
-| Matches this project's current need | Yes — no gameplay exists yet; likely first real needs are "did the player's capsule hit a wall," "did a projectile hit a hitbox," not realistic momentum transfer. | Overkill for a project with zero entities today. | Overkill, same as Jolt, plus a less modern codebase. | Rejected — the "build it ourselves" call that worked for the scene graph (ADR-0002, a genuinely small, well-scoped problem) does not scale to rigid-body dynamics, which is not a small problem. |
+Four real third-party rigid-body engines were surveyed, spanning "smallest real engine" to
+"heaviest, most enterprise," plus the two non-engine options (today's recommendation, and building
+dynamics ourselves):
+
+### `ReactPhysics3D`
+
+A deliberately lightweight, real-time 3D physics library — rigid bodies, joints (ball-and-socket,
+hinge, slider, fixed), and a modest set of collision shapes (box, sphere, capsule, convex mesh,
+height field). zlib license. Smaller community than the other three engines below, and not used in
+any AAA title this ADR is aware of, but genuinely maintained and genuinely a real rigid-body
+engine, not a toy. Its codebase is meaningfully smaller than Bullet/Jolt/PhysX's, which matters
+specifically for this project's build constraint (see below).
+
+### Jolt Physics
+
+Modern C++17/20, MIT license, actively maintained by Jorrit Rouwe (a former Guerrilla Games
+physics programmer) and used in shipped AAA titles (Horizon Forbidden West). Full rigid-body
+dynamics: forces, constraints/joints, continuous collision detection, designed from the start for
+high entity counts and multithreading. Widely regarded today as the strongest modern option on
+technical merit among open-source C++ physics engines.
+
+### Bullet (the book's own pick)
+
+zlib license, in active (if slower-paced than Jolt's) community maintenance
+(`bulletphysics/bullet3`). The most battle-tested and widely deployed of the four historically —
+used across countless games and tools (Blender's physics, for one) since the mid-2000s. Broader
+niche feature coverage than Jolt in some areas (e.g. soft-body simulation), at the cost of an older
+(C++03-era) codebase and API style.
+
+### PhysX (NVIDIA)
+
+BSD-3-Clause (open-sourced since v4/v5). The default physics engine behind Unreal Engine and many
+other AAA titles; NVIDIA-maintained, with a lineage that includes optional GPU-accelerated rigid
+body simulation. The heaviest option surveyed both in capability and in integration cost: its build
+isn't a plain CMake invocation the way Jolt's/Bullet's/ReactPhysics3D's are — it's generated via
+NVIDIA's own Python-driven preset scripts that call CMake underneath, one more moving part than the
+other three.
+
+### Comparison
+
+| | **raylib collision only** (recommended) | **ReactPhysics3D** | **Jolt Physics** | **Bullet** (book's pick) | **PhysX** | **Hand-rolled dynamics** |
+|---|---|---|---|---|---|---|
+| License | N/A (already raylib) | zlib | MIT | zlib | BSD-3-Clause | N/A |
+| Codebase era / style | N/A | Modern C++ | Modern C++17/20 | Older, C++03-era roots | Modern C++, NVIDIA house style | Whatever we write |
+| Build system | None | CMake | CMake | CMake (legacy Makefiles exist, unmaintained) | CMake, via NVIDIA's own Python preset-generation scripts — the heaviest build of the four | None |
+| Fits Makefile-only build (ADR-0001 Decision 3, ADR-0006) | Yes, trivially | **No** as-is, but its smaller codebase makes a hand-written "compile every `.cpp`" Makefile rule the most *plausible* of the four to pull off without CMake at all | **No** as-is | **No** as-is | **No** as-is, and the extra preset-generation layer makes even a CMake-invoked-from-`build.sh` step harder than for the other three | Yes |
+| Maintenance / community | N/A | Real, but smaller than the other three; no major shipped-title track record found | Very active; strong recent track record (Horizon Forbidden West) | Active but slower-paced than Jolt; the longest track record of the four | Very active; NVIDIA-backed | None — we'd own every bug |
+| Capability | Overlap checks + raycasts only — no forces, mass, momentum, joints, continuous collision detection | Real rigid-body dynamics, joints, a modest shape set — the smallest *real* engine of the four | Full rigid-body dynamics, CCD, built for high entity counts/multithreading | Full rigid-body dynamics, broadest niche coverage (e.g. soft-body) of the four | Full rigid-body dynamics, the most capable/heaviest, optional GPU acceleration lineage | Whatever we implement — a real dynamics/constraint solver is a substantial, error-prone undertaking serious engines spend years on |
+| Matches this project's current need | Yes — no gameplay exists yet; likely first real needs are "did the capsule hit a wall," not realistic momentum transfer | Closest-fitting *real engine* if/when dynamics is needed but full AAA feature breadth isn't | Best technical pick if capability/performance matters more than build-footprint | The book's own choice; still viable, just no longer the clear technical leader | Overkill for this project at any foreseeable scale | Rejected — unlike the scene graph (ADR-0002, genuinely small/well-scoped), rigid-body dynamics is not a small problem |
 
 **Note on the Makefile-only constraint and physics specifically**: unlike the YAML case
 (ADR-0008), where a genuinely simpler, equally-fit-for-purpose header-only alternative
-(mini-yaml) existed, there is no realistic "mini-yaml of rigid-body physics" — every serious
-option is CMake-based, because the problem itself (broad-phase, narrow-phase, SIMD, constraint
-solving) is bigger than what a header-only library reasonably covers. When real dynamics is
-actually needed, this project will have to either (a) invoke the chosen engine's own CMake as a
-one-time `build.sh` preprocessing step producing a `.a` to link normally (the same *shape* raylib's
-own Makefile-invoked-from-`build.sh` already uses, but a CMake invocation specifically — which
-ADR-0006 previously avoided even as a one-time step, by picking doctest over GoogleTest instead),
-or (b) hand-write a Makefile rule compiling the engine's sources directly (possible in principle —
-compiling all of a library's `.cpp` files with consistent flags doesn't strictly require its own
-build system — but riskier for a codebase whose CMake does meaningful platform/SIMD/precision
-feature detection that a naive compile-everything rule could silently get wrong). Recorded now so
-this cost is visible before it's paid, not discovered by surprise in a future ADR.
+(mini-yaml) existed, there is no realistic "mini-yaml of rigid-body physics" among the four real
+engines surveyed — all of them are CMake-based, because the problem itself (broad-phase,
+narrow-phase, SIMD, constraint solving) is bigger than what a header-only library reasonably
+covers. When real dynamics is actually needed, this project will have to pick one of:
+
+1. **Invoke the chosen engine's own CMake as a one-time `build.sh` preprocessing step**, producing
+   a `.a` to link normally — the same *shape* raylib's own Makefile-invoked-from-`build.sh` already
+   uses, but a CMake invocation specifically, which ADR-0006 previously avoided even as a one-time
+   step by picking doctest over GoogleTest instead.
+2. **Hand-write a Makefile rule compiling the engine's sources directly**, skipping its build
+   system entirely — possible in principle (compiling every `.cpp` with consistent flags doesn't
+   strictly require the upstream build system), but riskier the larger and more
+   platform/SIMD/precision-feature-detecting the target's CMake logic is. This is meaningfully more
+   *plausible* for **ReactPhysics3D** specifically (smallest of the four codebases, least exotic
+   build-time feature detection) than for Jolt, Bullet, or especially PhysX (whose build is the
+   heaviest of the four even by CMake's own standards).
+
+Recorded now so this cost is visible before it's paid, not discovered by surprise in a future ADR.
 
 ## Tradeoffs accepted
 
@@ -159,9 +208,14 @@ this cost is visible before it's paid, not discovered by surprise in a future AD
 - The first real gameplay entity with a collider is also the first test of whether
   `EvtData_CollisionBegin`/`End`'s pairwise-entity shape is the right granularity, or whether a
   higher-level "hit" concept (with damage/impulse data attached) belongs on top of it.
-- When real dynamics is actually needed: Jolt is the recommended starting point over Bullet on
-  technical merit (modern C++, active maintenance) — but the CMake-vendoring problem named above
-  needs its own resolution first, as its own ADR, not assumed away by this one.
+- When real dynamics is actually needed, this ADR leans toward two candidates depending on what
+  actually drives the decision: **Jolt** if capability/performance/modern-C++ fit matters most,
+  **ReactPhysics3D** if minimizing vendoring/build footprint matters most (its smaller codebase is
+  the one most plausibly hand-compiled without CMake at all, per the note above). Bullet remains
+  viable (the book's own pick, longest track record) but is no longer the clear technical leader
+  among the four; PhysX is judged overkill for this project at any foreseeable scale. Whichever
+  gets picked, the CMake-vendoring problem needs its own resolution first, as its own ADR, not
+  assumed away by this one.
 
 ## Open Questions
 
@@ -194,5 +248,8 @@ this cost is visible before it's paid, not discovered by surprise in a future AD
 - [`docs/roadmap.md`](../roadmap.md) — flagged this as the top unaddressed gap, prompting this ADR.
 - raylib `raylib.h` — `CheckCollisionBoxes`/`Spheres`/`BoxSphere`, `GetRayCollisionSphere`/`Box`/
   `Mesh`/`Triangle`/`Quad` (raylib 6.0).
-- [Jolt Physics](https://github.com/jrouwe/JoltPhysics), [Bullet](https://github.com/bulletphysics/bullet3) —
-  the two real rigid-body engines compared above.
+- [Jolt Physics](https://github.com/jrouwe/JoltPhysics),
+  [Bullet](https://github.com/bulletphysics/bullet3),
+  [PhysX](https://github.com/NVIDIA-Omniverse/PhysX),
+  [ReactPhysics3D](https://github.com/DanielChappuis/reactphysics3d) — the four real rigid-body
+  engines compared above.
