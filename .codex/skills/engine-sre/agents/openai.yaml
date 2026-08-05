@@ -1,0 +1,4 @@
+interface:
+  display_name: "Engine Reliability"
+  short_description: "Guide frame-3 reliability and observability"
+  default_prompt: "Use $engine-sre to assess this frame-3 reliability work."

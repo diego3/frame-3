@@ -1,0 +1,4 @@
+interface:
+  display_name: "Engine Architecture"
+  short_description: "Guide frame-3 engine architecture"
+  default_prompt: "Use $engine-architecture to assess this frame-3 engine design."

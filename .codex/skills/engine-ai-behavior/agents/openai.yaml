@@ -1,0 +1,4 @@
+interface:
+  display_name: "Engine AI Behavior"
+  short_description: "Design frame-3 NPC and enemy behavior"
+  default_prompt: "Use $engine-ai-behavior to design this enemy behavior."
