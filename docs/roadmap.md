@@ -21,6 +21,7 @@ the chapter reference and full reasoning.
 - [x] Queued event dispatch (`Queue`/`DispatchQueued`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §5
 - [x] Scene graph / transform hierarchy (`Relationship`, `LocalTransform`/`WorldTransform`, `PropagateTransforms`) — [ADR-0002](adr/0002-scene-graph-hierarchy-options.md)
 - [x] Event serialization contract (`ISerializableEvent`, `EventTypeRegistry`, FNV-1a stable type ID) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §§1-3
+- [x] Data-driven entity/component loading (`EntityDefNode`, `IEntityFileParser`/`YamlEntityFileParser`, `EntityFactory`) — [ADR-0008](adr/0008-data-driven-entity-loading-yaml.md)
 
 ## Decided (ADR merged), not yet built
 
@@ -28,8 +29,7 @@ _(nothing currently — the last item here, scene graph/hierarchy, shipped above
 
 ## Proposed (ADR merged into `main`, `Status: Proposed` — design not yet built)
 
-- [ ] Data-driven entity/component loading (YAML) — [ADR-0008](adr/0008-data-driven-entity-loading-yaml.md)
-- [ ] Level loading (`LevelLoader`, actor placement + overrides) — [ADR-0009](adr/0009-level-loading-actor-placement.md), depends on ADR-0008
+- [ ] Level loading (`LevelLoader`, actor placement + overrides) — [ADR-0009](adr/0009-level-loading-actor-placement.md), depends on ADR-0008 (now shipped above) — nothing in the codebase constructs a real `EntityFactory`/registers a real `ComponentLoader` yet, that's this item's job
 - [ ] Event journal for save/replay (`EventJournal`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §4 — the serialization contract it would sit on (§§1-3) already shipped above; no concrete on-disk format decided yet
 - [ ] `BaseGameLogic`/`IGameView` split (`HumanView` built; `RemoteView`/`AIView` named, not built) — [ADR-0010](adr/0010-base-game-logic-and-igameview.md), depends on ADR-0008/0009 landing first
 

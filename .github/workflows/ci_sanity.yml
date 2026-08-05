@@ -28,6 +28,9 @@ env:
   RAYLIB_VERSION: "6.0"
   ENTT_VERSION: v4.0.0
   DOCTEST_VERSION: v2.5.3
+  # No release tags exist upstream for mini-yaml (docs/adr/0008) -- see test.sh's comment -- so
+  # this pins a commit SHA instead of a tag, same as test.sh does for local/dev builds.
+  MINI_YAML_COMMIT: 22d3dcf5684a11f9c0508c1ad8b3282a1d888319
 
 jobs:
   build:
@@ -82,6 +85,21 @@ jobs:
           ref: ${{ env.DOCTEST_VERSION }}
           path: doctest
 
+      - name: Cache mini-yaml
+        id: cache-mini-yaml
+        uses: actions/cache@v4
+        with:
+          path: mini-yaml
+          key: mini-yaml-${{ env.MINI_YAML_COMMIT }}-v1
+
+      - name: Checkout mini-yaml repo
+        if: steps.cache-mini-yaml.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: jimmiebergmann/mini-yaml
+          ref: ${{ env.MINI_YAML_COMMIT }}
+          path: mini-yaml
+
       - name: Install raylib system dependencies
         run: |
           sudo apt-get update -qq
@@ -99,9 +117,14 @@ jobs:
 
       - name: Build and run unit tests (see docs/adr/0006-doctest-for-unit-tests.md)
         # Most tests under test (EventManager, ProcessManager, ResourceCache) are pure logic and
-        # need no raylib/EnTT dependency; hierarchy_test.cpp (docs/adr/0002) is the one exception,
-        # needing entt::registry and raylib's header-only raymath.h -- reusing the same raylib/entt
-        # checkouts the build step above already has, not linking against libraylib.a either way.
+        # need no raylib/EnTT dependency; hierarchy_test.cpp (docs/adr/0002) and
+        # entity_factory_test.cpp (docs/adr/0008) are the exceptions needing entt::registry and
+        # raylib's header-only raymath.h -- reusing the same raylib/entt checkouts the build step
+        # above already has, not linking against libraylib.a either way.
+        # entity_file_parser_yaml_test.cpp additionally needs mini-yaml, which -Werror also treats
+        # as strictly as this project's own code -- excluded via -Wno-error, since warnings in
+        # vendored code aren't this project's to fix (see PROJECT_CUSTOM_FLAGS applying to every
+        # %.cpp compiled here, including tests/mini_yaml.o's copy of mini-yaml's own Yaml.cpp).
         run: |
-          make -C src tests DOCTEST_PATH=../doctest RAYLIB_PATH=../raylib ENTT_PATH=../entt PROJECT_CUSTOM_FLAGS="-Werror"
+          make -C src tests DOCTEST_PATH=../doctest RAYLIB_PATH=../raylib ENTT_PATH=../entt MINI_YAML_PATH=../mini-yaml PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=catch-value"
           src/tests_runner

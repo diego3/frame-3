@@ -174,7 +174,8 @@ utilities prematurely; a plain data table is enough until it visibly isn't.
 `Position`, `Health`, or any other real component exists, and no factory functions like
 `SpawnEnemy` above exist yet either — this section describes the shape to use once they're
 written, not something already in the codebase. (The earlier `ecs_smoke_test.cpp` proof-of-build
-file has been deleted now that `Engine` gives EnTT a real, permanent home in the codebase.)
+file has been deleted now that `Engine` gives EnTT a real, permanent home in the codebase.) The
+"small data table read by one generic factory" extension mentioned above is now real — see §6.
 
 ### 4. Resource cache (Ch. 8) — a thin layer over raylib, not a new loader
 
@@ -292,6 +293,66 @@ entity uses any of this yet (no real components exist — §3); `src/tests/hiera
 exercises `SetParent`/`RemoveParent`/`PropagateTransforms` directly against bare `entt::registry`
 entities, including a three-level hierarchy attached in scrambled (non-parent-before-child)
 creation order, specifically to prove correctness doesn't depend on EnTT's storage order.
+
+### 6. Data-driven entity/component loading (Ch. 6-7) — `EntityFactory` over a format-agnostic tree, via ADR-0008
+
+The book's `ActorFactory` reads an `<Actor>` XML element and dispatches each child element to a
+registered creation function by tag name. [ADR-0008](../../../docs/adr/0008-data-driven-entity-loading-yaml.md)
+(Accepted) adapts this to a component-loader registry over a small, concrete value tree —
+`EntityDefNode` — rather than a virtual per-format node interface, so the one thing that actually
+varies between formats (file syntax) is fully consumed during parsing and nothing downstream needs
+runtime polymorphism to stay format-agnostic:
+
+```cpp
+// Sketch — matches src/app/entity_def.h, entity_file_parser.h/_yaml.h/.cpp, entity_factory.h;
+// adjust here if those files' shape changes.
+class EntityDefNode {
+public:
+    using List = std::vector<EntityDefNode>;
+    using Map  = std::unordered_map<std::string, EntityDefNode>;
+    bool HasKey(const std::string& key) const;
+    const EntityDefNode& Get(const std::string& key) const;    // throws if absent
+    const EntityDefNode* TryGet(const std::string& key) const; // nullptr if absent
+    std::string AsString(const std::string& fallback = "") const;
+    float AsFloat(float fallback = 0.0f) const;
+    int AsInt(int fallback = 0) const;
+    const List& AsList() const;
+    const Map& AsMap() const;
+};
+
+class IEntityFileParser {
+public:
+    virtual EntityDefNode Parse(const std::string& fileContents) = 0;
+};
+
+class EntityFactory {
+public:
+    using ComponentLoader = std::function<void(entt::registry&, entt::entity, const EntityDefNode&)>;
+    void RegisterComponentLoader(const std::string& componentName, ComponentLoader loader);
+    entt::entity Create(entt::registry& registry, const EntityDefNode& def) const;
+};
+```
+
+`YamlEntityFileParser` (backed by [mini-yaml](https://github.com/jimmiebergmann/mini-yaml),
+vendored) is the one `IEntityFileParser` implementation that landed; swapping to JSON or another
+format later means writing a new implementation and changing which one gets constructed, with no
+change to `EntityDefNode`/`EntityFactory`/any `ComponentLoader`. `EntityFactory::Create` skips a
+component name with no registered loader (forward-compatible with a definition file written for a
+newer build) rather than failing the whole entity.
+
+**A real mini-yaml limitation, confirmed while implementing this**: this checkout doesn't parse
+flow-style maps/sequences (`{ x: 1 }`, `[a, b]`) — silently misparses them as an empty scalar
+rather than throwing. Entity/level definition files must use block style (newline + indentation).
+See ADR-0008's Implementation status note.
+
+**Current state**: `EntityDefNode` (`src/app/entity_def.h`), `IEntityFileParser`
+(`src/app/entity_file_parser.h`), `YamlEntityFileParser`
+(`src/app/entity_file_parser_yaml.h`/`.cpp`), and `EntityFactory` (`src/app/entity_factory.h`) all
+exist and are unit-tested against fake components (`src/tests/entity_def_test.cpp`,
+`entity_file_parser_yaml_test.cpp`, `entity_factory_test.cpp`) — but nothing in the codebase
+constructs a real `EntityFactory`, registers a real `ComponentLoader`, or loads a real definition
+file yet. That's [ADR-0009](../../../docs/adr/0009-level-loading-actor-placement.md)'s
+(`LevelLoader`, Proposed) job, once it lands.
 
 ## Decisions Made
 
