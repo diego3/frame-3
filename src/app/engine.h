@@ -30,9 +30,10 @@ public:
     // Branches internally on PLATFORM_WEB (emscripten_set_main_loop) vs. desktop (a plain while
     // loop) -- the platform-specific mechanics this is meant to hide from main(). Each frame, any
     // events Queue()'d since the last frame are dispatched (ADR-0005), then attached processes are
-    // advanced by the frame's delta time (Ch. 4), both before updateAndDraw() runs -- so neither
-    // deferred cross-system events nor multi-frame behavior (camera shake, timed effects) need to
-    // live in the screen code.
+    // advanced by the frame's delta time (Ch. 4), then every entity's WorldTransform is recomputed
+    // from its Relationship/LocalTransform (Ch. 9-10, ADR-0002) -- all before updateAndDraw() runs,
+    // so none of deferred cross-system events, multi-frame behavior (camera shake, timed effects),
+    // or hierarchy propagation need to live in the screen code.
     void Run(void (*updateAndDraw)(void));
 
     // Unwinds exactly what Init() set up, in reverse.

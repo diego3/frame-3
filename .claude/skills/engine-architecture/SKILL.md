@@ -245,6 +245,54 @@ not a single `T` — doesn't fit `ResourceCache<T>`'s shape). `Model`'s own bund
 (populated automatically by `LoadModel`) cover the common case; this is only relevant for a bare
 `.mtl` file used independent of a full model, which nothing needs yet.
 
+### 5. Entity hierarchy (Ch. 9-10) — `Relationship` + `LocalTransform`/`WorldTransform`, via ADR-0002
+
+The book's `SceneNode` tree doesn't fit an ECS directly — there's no per-node object to hang
+parent/child pointers off of, just `entt::entity` handles. [ADR-0002](../../../docs/adr/0002-scene-graph-hierarchy-options.md)
+(Accepted) evaluated adopting a ready-made scene graph (flecs' `ChildOf`, OpenSceneGraph,
+VulkanSceneGraph, a raylib-specific community project) against building the small amount of code
+this actually needs, fused directly into EnTT — every "adopt" option either meant abandoning EnTT
+(already decided non-swappable, §3) or bringing a competing renderer (raylib is already the
+renderer). The chosen shape is EnTT's own documented "Pattern A" for exactly this problem
+(`docs/md/entity.md`, "Hierarchies and the like"): an intrusive doubly-linked list of children,
+plus a topological transform-propagation system:
+
+```cpp
+// Sketch — matches src/app/hierarchy.h + src/app/transform.h; adjust here if those files' shape
+// changes.
+struct Relationship {
+    std::size_t children{};
+    entt::entity first{entt::null};
+    entt::entity prev{entt::null};
+    entt::entity next{entt::null};
+    entt::entity parent{entt::null};
+};
+
+struct LocalTransform { Vector3 position; Quaternion rotation; Vector3 scale; };
+struct WorldTransform  { Matrix matrix; };
+
+void SetParent(entt::registry& registry, entt::entity child, entt::entity parent);
+void RemoveParent(entt::registry& registry, entt::entity child);
+void PropagateTransforms(entt::registry& registry);
+```
+
+**Not `registry.sort<Relationship>(...)`.** ADR-0002 left "sort for topological order vs. something
+else" as an explicit open question. What actually shipped recurses down from every root instead
+(an entity with no `Relationship`, or one whose `parent == entt::null`), computing each child's
+`WorldTransform` only once its parent's has already been written by the same call — correct at any
+hierarchy depth regardless of EnTT's internal storage order, with no sort step to keep synchronized
+as parents change. Simpler to reason about at this project's scale (a handful of entities per
+scene); worth revisiting only if profiling ever shows the recursion itself is hot.
+
+**Current state**: `Relationship` (`src/app/hierarchy.h`) and `LocalTransform`/`WorldTransform`
+(`src/app/transform.h`) exist, both header-only. `PropagateTransforms` is ticked once per frame from
+`Engine::Run`'s `TickAndUpdateDraw` (`src/app/engine.cpp`), after `ProcessManager::Update` and
+before `updateAndDraw()` — the same per-frame-tick spot §§1-2's systems use. No real gameplay
+entity uses any of this yet (no real components exist — §3); `src/tests/hierarchy_test.cpp`
+exercises `SetParent`/`RemoveParent`/`PropagateTransforms` directly against bare `entt::registry`
+entities, including a three-level hierarchy attached in scrambled (non-parent-before-child)
+creation order, specifically to prove correctness doesn't depend on EnTT's storage order.
+
 ## Decisions Made
 
 - **Actor (OOP class hierarchy) vs. ECS: ECS, via [EnTT](https://github.com/skypjack/entt)**
@@ -267,13 +315,10 @@ not a single `T` — doesn't fit `ResourceCache<T>`'s shape). `Model`'s own bund
 
 ## Open Questions
 
-- **Hierarchy (scene graph fused into ECS)** — not built yet, and not documented in any skill
-  file so far (only discussed in conversation). The plan: `Parent`/`Children` relationship
-  components plus a topological transform-propagation system, not a separate tree-of-node-objects
-  structure — the GCC `SceneNode` idea, reimplemented as ECS components + a system instead of an
-  object tree. EnTT's `registry.sort<Parent>(...)` is the likely mechanism for keeping iteration
-  in topological (parent-before-child) order cheaply; worth using rather than re-deriving a
-  custom sort. Give this its own section in this skill (or a new skill) once it actually lands.
+- **How hierarchy (§5) interacts with `ModelSkeleton`'s bone hierarchy**, for an entity whose
+  `Model` is itself skinned/animated — likely orthogonal (bone hierarchy stays internal to one
+  `Model`'s skinning; entity-to-entity hierarchy via `Relationship` is a separate concern) but not
+  yet worked through in code, per ADR-0002's own Open Questions.
 
 ## Related Skills
 

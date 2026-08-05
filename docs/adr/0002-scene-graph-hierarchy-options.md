@@ -1,7 +1,29 @@
 # 2. Scene graph / transform hierarchy — build our own vs. adopt existing
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-08-03
+
+## Implementation status (2026-08-04)
+
+Option 1 (build our own, fused into EnTT) landed as designed below:
+
+- `Relationship` (Pattern A, the intrusive doubly-linked list) — `src/app/hierarchy.h`, along with
+  `SetParent`/`RemoveParent` to maintain it.
+- `LocalTransform`/`WorldTransform` — `src/app/transform.h`.
+- `PropagateTransforms` — `src/app/hierarchy.h`, ticked once per frame from `Engine::Run`'s
+  `TickAndUpdateDraw` (`src/app/engine.cpp`).
+
+One Open Question below is now resolved by what actually shipped: **`registry.sort<Parent>(...)`
+was not used.** `PropagateTransforms` instead recurses down from every root entity (no
+`Relationship`, or `parent == entt::null`), writing a child's `WorldTransform` only after its
+parent's own has already been computed within that same recursive call — correct at any hierarchy
+depth regardless of EnTT's internal storage order, with no sort step to keep synchronized as the
+hierarchy changes at runtime. `src/tests/hierarchy_test.cpp` specifically tests a three-level
+hierarchy attached in scrambled (non-parent-before-child) creation order to prove this.
+
+Still open, unchanged from below: Pattern A vs. B was decided (A shipped, per the reasoning
+already given), but the `ModelSkeleton`/bone-hierarchy interaction was not worked through — no
+skinned `Model` is loaded anywhere in the codebase yet to test it against.
 
 ## Context
 
