@@ -19,16 +19,18 @@ the chapter reference and full reasoning.
 - [x] Resource cache (`ResourceCache<T>`: Font/Sound/Model/Texture2D/Shader) — [ADR-0004](adr/0004-resource-cache-thin-vs-full-book-rescache.md)
 - [x] Unit test framework (doctest) — [ADR-0006](adr/0006-doctest-for-unit-tests.md)
 - [x] Queued event dispatch (`Queue`/`DispatchQueued`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §5
+- [x] Scene graph / transform hierarchy (`Relationship`, `LocalTransform`/`WorldTransform`, `PropagateTransforms`) — [ADR-0002](adr/0002-scene-graph-hierarchy-options.md)
+- [x] Event serialization contract (`ISerializableEvent`, `EventTypeRegistry`, FNV-1a stable type ID) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §§1-3
 
 ## Decided (ADR merged), not yet built
 
-- [ ] Scene graph / transform hierarchy — [ADR-0002](adr/0002-scene-graph-hierarchy-options.md)
+_(nothing currently — the last item here, scene graph/hierarchy, shipped above)_
 
-## Proposed (ADR written, PR open, not yet merged)
+## Proposed (ADR merged into `main`, `Status: Proposed` — design not yet built)
 
-- [ ] Data-driven entity/component loading (YAML) — [ADR-0008](adr/0008-data-driven-entity-loading-yaml.md) — PR #12
-- [ ] Level loading (`LevelLoader`, actor placement + overrides) — [ADR-0009](adr/0009-level-loading-actor-placement.md) — PR #13, depends on #12
-- [ ] Event serialization for networking + save/replay journal (`ISerializableEvent`, `EventJournal`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §§1-4
+- [ ] Data-driven entity/component loading (YAML) — [ADR-0008](adr/0008-data-driven-entity-loading-yaml.md)
+- [ ] Level loading (`LevelLoader`, actor placement + overrides) — [ADR-0009](adr/0009-level-loading-actor-placement.md), depends on ADR-0008
+- [ ] Event journal for save/replay (`EventJournal`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §4 — the serialization contract it would sit on (§§1-3) already shipped above; no concrete on-disk format decided yet
 - [ ] `BaseGameLogic`/`IGameView` split (`HumanView` built; `RemoteView`/`AIView` named, not built) — [ADR-0010](adr/0010-base-game-logic-and-igameview.md), depends on ADR-0008/0009 landing first
 
 ## Not started — no ADR yet
@@ -42,8 +44,9 @@ any code, same as everything above did.
   exists in `.claude/skills/engine-ai-behavior`, but zero code and zero entities to apply it to.
   Unlocked by `AIView` once [ADR-0010](adr/0010-base-game-logic-and-igameview.md) is implemented.
 - [ ] **Network transport** (sockets/library choice, client/server architecture) — the event-level
-  contract is proposed in ADR-0005 §§1-4 above; the actual wire transport is explicitly left for a
-  future ADR "once multiplayer work actually starts."
+  contract (`ISerializableEvent`/`EventTypeRegistry`, ADR-0005 §§1-3) already shipped above; the
+  actual wire transport is explicitly left for a future ADR "once multiplayer work actually
+  starts."
 - [ ] **Scripting (Lua)** — explicitly rejected for now in
   [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §7 ("no scripting layer
   exists to attach it to"); revisit only if embedding a scripting language is decided on its own
