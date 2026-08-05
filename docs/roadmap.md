@@ -22,6 +22,8 @@ the chapter reference and full reasoning.
 - [x] Scene graph / transform hierarchy (`Relationship`, `LocalTransform`/`WorldTransform`, `PropagateTransforms`) — [ADR-0002](adr/0002-scene-graph-hierarchy-options.md)
 - [x] Event serialization contract (`ISerializableEvent`, `EventTypeRegistry`, FNV-1a stable type ID) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §§1-3
 - [x] Data-driven entity/component loading (`EntityDefNode`, `IEntityFileParser`/`YamlEntityFileParser`, `EntityFactory`) — [ADR-0008](adr/0008-data-driven-entity-loading-yaml.md)
+- [x] Level loading (`LevelLoader`, `MergeOverrides`, `EvtData_EntitySpawned`) — [ADR-0009](adr/0009-level-loading-actor-placement.md) — not wired into any real gameplay screen yet (no `HumanView` to render what it spawns), see the ADR's Implementation status note
+- [x] Game options/config file (`EngineConfig`/`GameConfig`, two-tier, writable `src/config/`) — [ADR-0011](adr/0011-engine-and-game-config.md) — `EngineConfig` is wired into the real `Engine::Init()`/`Run()`; `GameConfig` has no caller yet, as decided
 
 ## Decided (ADR merged), not yet built
 
@@ -29,10 +31,8 @@ _(nothing currently — the last item here, scene graph/hierarchy, shipped above
 
 ## Proposed (ADR merged into `main`, `Status: Proposed` — design not yet built)
 
-- [ ] Level loading (`LevelLoader`, actor placement + overrides) — [ADR-0009](adr/0009-level-loading-actor-placement.md), depends on ADR-0008 (now shipped above) — nothing in the codebase constructs a real `EntityFactory`/registers a real `ComponentLoader` yet, that's this item's job
 - [ ] Event journal for save/replay (`EventJournal`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §4 — the serialization contract it would sit on (§§1-3) already shipped above; no concrete on-disk format decided yet
-- [ ] `BaseGameLogic`/`IGameView` split (`HumanView` built; `RemoteView`/`AIView` named, not built) — [ADR-0010](adr/0010-base-game-logic-and-igameview.md), depends on ADR-0008/0009 landing first
-- [ ] Game options/config file (`EngineConfig`/`GameConfig`, two-tier, writable `src/config/`) — [ADR-0011](adr/0011-engine-and-game-config.md), depends on ADR-0008's parser landing first (design dependency only, not a git/PR one)
+- [ ] `BaseGameLogic`/`IGameView` split (`HumanView` built; `RemoteView`/`AIView` named, not built) — [ADR-0010](adr/0010-base-game-logic-and-igameview.md), depends on ADR-0008/0009 (both now shipped above) — this is what will finally give `LevelLoader` a real gameplay screen to spawn into
 
 ## Not started — no ADR yet
 

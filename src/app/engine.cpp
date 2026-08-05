@@ -21,8 +21,10 @@ std::shared_ptr<Shader> Engine::GetShader(const std::string &vsPath, const std::
     return shaderCache_.GetHandle(ResourceCacheKeys::Combine(vsPath, fsPath));
 }
 
-bool Engine::Init(int screenWidth, int screenHeight, const char *title) {
-    InitWindow(screenWidth, screenHeight, title);
+bool Engine::Init(const EngineConfig &config, const char *title) {
+    config_ = config;
+
+    InitWindow(config_.screenWidth, config_.screenHeight, title);
 
     InitAudioDevice();
 
@@ -53,10 +55,6 @@ namespace {
     Engine *g_runningEngine = nullptr;
     void (*g_updateAndDraw)(void) = nullptr;
 
-    // Frame budget SLO: both loop paths below target 60 FPS (SetTargetFPS(60) on desktop,
-    // emscripten_set_main_loop(..., 60, 1) on web), so a frame is "in budget" under ~16.67ms.
-    constexpr float kFrameBudgetMs = 1000.0f / 60.0f;
-
     // Dispatches queued events (ADR-0005), advances attached processes by the frame's delta time
     // (Ch. 4), then recomputes every entity's WorldTransform from the (possibly just-updated)
     // hierarchy (docs/adr/0002) -- all before handing off to the screen's own update/draw, on both
@@ -64,9 +62,13 @@ namespace {
     void TickAndUpdateDraw() {
         float dt = GetFrameTime();
 
+        // Frame budget SLO: both loop paths in Run() below target config.targetFps (ADR-0011;
+        // SetTargetFPS on desktop, emscripten_set_main_loop's rate argument on web), so a frame is
+        // "in budget" under roughly 1000/targetFps ms.
         float dtMs = dt * 1000.0f;
-        if (dtMs > kFrameBudgetMs) {
-            TraceLog(LOG_WARNING, "Frame budget exceeded: %.2fms (budget %.2fms)", dtMs, kFrameBudgetMs);
+        float frameBudgetMs = 1000.0f / static_cast<float>(g_runningEngine->Config().targetFps);
+        if (dtMs > frameBudgetMs) {
+            TraceLog(LOG_WARNING, "Frame budget exceeded: %.2fms (budget %.2fms)", dtMs, frameBudgetMs);
         }
 
         g_runningEngine->Events().DispatchQueued();
@@ -81,9 +83,9 @@ void Engine::Run(void (*updateAndDraw)(void)) {
     g_updateAndDraw = updateAndDraw;
 
 #if defined(PLATFORM_WEB)
-    emscripten_set_main_loop(TickAndUpdateDraw, 60, 1);
+    emscripten_set_main_loop(TickAndUpdateDraw, config_.targetFps, 1);
 #else
-    SetTargetFPS(60);       // Set our game to run at 60 frames-per-second
+    SetTargetFPS(config_.targetFps);
 
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {

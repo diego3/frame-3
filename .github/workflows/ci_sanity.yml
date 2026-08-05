@@ -113,18 +113,23 @@ jobs:
         # -Wno-error=unused-function: raylib_game.cpp still carries ChangeToScreen(), an unused
         # leftover from the original C template (TransitionToScreen() handles all transitions
         # now). Downgraded to a warning instead of blocking every build on pre-existing dead code.
-        run: make -C src PLATFORM=PLATFORM_DESKTOP RAYLIB_PATH=../raylib ENTT_PATH=../entt PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=unused-function"
+        # -Wno-error=catch-value: mini-yaml's own Yaml.cpp (docs/adr/0008) is now part of the main
+        # product build too (Engine::Init() calls LoadOrCreateEngineConfig(), docs/adr/0011, which
+        # reuses ADR-0008's YAML parser) -- warnings in vendored code aren't this project's to fix.
+        run: make -C src PLATFORM=PLATFORM_DESKTOP RAYLIB_PATH=../raylib ENTT_PATH=../entt MINI_YAML_PATH=../mini-yaml PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=unused-function -Wno-error=catch-value"
 
       - name: Build and run unit tests (see docs/adr/0006-doctest-for-unit-tests.md)
         # Most tests under test (EventManager, ProcessManager, ResourceCache) are pure logic and
-        # need no raylib/EnTT dependency; hierarchy_test.cpp (docs/adr/0002) and
-        # entity_factory_test.cpp (docs/adr/0008) are the exceptions needing entt::registry and
-        # raylib's header-only raymath.h -- reusing the same raylib/entt checkouts the build step
-        # above already has, not linking against libraylib.a either way.
-        # entity_file_parser_yaml_test.cpp additionally needs mini-yaml, which -Werror also treats
-        # as strictly as this project's own code -- excluded via -Wno-error, since warnings in
-        # vendored code aren't this project's to fix (see PROJECT_CUSTOM_FLAGS applying to every
-        # %.cpp compiled here, including tests/mini_yaml.o's copy of mini-yaml's own Yaml.cpp).
+        # need no raylib/EnTT dependency; hierarchy_test.cpp (docs/adr/0002), entity_factory_test.cpp
+        # (docs/adr/0008), and level_loader_test.cpp (docs/adr/0009) are the exceptions needing
+        # entt::registry and raylib's header-only raymath.h -- reusing the same raylib/entt
+        # checkouts the build step above already has, not linking against libraylib.a either way.
+        # entity_file_parser_yaml_test.cpp/level_loader_test.cpp/engine_config_test.cpp
+        # additionally need mini-yaml, which -Werror also treats as strictly as this project's own
+        # code -- excluded via -Wno-error, since warnings in vendored code aren't this project's to
+        # fix (see PROJECT_CUSTOM_FLAGS applying to every %.cpp compiled here, including
+        # tests/mini_yaml.o's copy of mini-yaml's own Yaml.cpp). engine_config_test.cpp/
+        # file_io_test.cpp/game_config_test.cpp do real file I/O against a gitignored scratch dir.
         run: |
           make -C src tests DOCTEST_PATH=../doctest RAYLIB_PATH=../raylib ENTT_PATH=../entt MINI_YAML_PATH=../mini-yaml PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=catch-value"
           src/tests_runner

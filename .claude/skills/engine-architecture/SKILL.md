@@ -349,10 +349,76 @@ See ADR-0008's Implementation status note.
 (`src/app/entity_file_parser.h`), `YamlEntityFileParser`
 (`src/app/entity_file_parser_yaml.h`/`.cpp`), and `EntityFactory` (`src/app/entity_factory.h`) all
 exist and are unit-tested against fake components (`src/tests/entity_def_test.cpp`,
-`entity_file_parser_yaml_test.cpp`, `entity_factory_test.cpp`) — but nothing in the codebase
-constructs a real `EntityFactory`, registers a real `ComponentLoader`, or loads a real definition
-file yet. That's [ADR-0009](../../../docs/adr/0009-level-loading-actor-placement.md)'s
-(`LevelLoader`, Proposed) job, once it lands.
+`entity_file_parser_yaml_test.cpp`, `entity_factory_test.cpp`) — composed into a real
+`LevelLoader` now (§7), though nothing constructs one for real gameplay yet either.
+
+### 7. Level loading (Ch. 6-7, "book's `VLoadGame`") — `LevelLoader`, without a `BaseGameLogic` yet, via ADR-0009
+
+[ADR-0009](../../../docs/adr/0009-level-loading-actor-placement.md) (Accepted) composes §6's pieces
+with placement + per-instance overrides, without needing a `BaseGameLogic` host object (`m_actors`
+is just this project's `entt::registry`; process management is already `ProcessManager`, §2):
+
+```cpp
+// Sketch — matches src/app/level_loader.h/.cpp, entity_def.h's MergeOverrides; adjust here if
+// those files' shape changes.
+struct EvtData_EntitySpawned { entt::entity entity; };  // this project's first real event type
+
+EntityDefNode MergeOverrides(const EntityDefNode& base, const EntityDefNode& overrides);
+
+class LevelLoader {
+public:
+    using FileReader = std::function<std::string(const std::string& path)>;
+    LevelLoader(EntityFactory& entityFactory, IEntityFileParser& parser,
+                FileReader readFile = ReadWholeFile);   // file_io.h
+    std::vector<entt::entity> Load(entt::registry& registry, EventManager& events,
+                                    const std::string& levelPath);
+};
+```
+
+`Load` fires `EvtData_EntitySpawned` via `EventManager::Queue` (§1) for every entity it creates —
+unconditionally, even though no `RemoteView`/`AIView`-equivalent subscriber exists yet (see
+ADR-0009's "View-plurality seam, kept on purpose": the whole value is that `LevelLoader` never has
+to change once one does — a deliberate exception to this project's usual defer-until-needed
+discipline).
+
+**Current state**: `MergeOverrides` (`src/app/entity_def.h`), `LevelLoader`
+(`src/app/level_loader.h`/`.cpp`), and `EvtData_EntitySpawned` (`src/app/level_loader.h`) all exist,
+tested against in-memory fake files (`src/tests/level_loader_test.cpp`) via `LevelLoader`'s
+injectable `FileReader`. Not wired into any real gameplay screen yet — `LevelLoader` has nothing to
+draw what it spawns (no render component, no `HumanView`); that's [ADR-0010](../../../docs/adr/0010-base-game-logic-and-igameview.md)'s
+(Logic/View split, Proposed) job.
+
+### 8. Engine/game config (Ch. 5) — two-tier, writable, via ADR-0011
+
+[ADR-0011](../../../docs/adr/0011-engine-and-game-config.md) (Accepted) splits config along the
+same boundary ADR-0001 Decision 2 already drew: `Engine` owns exactly the parameters it already
+takes/uses, a specific game owns whatever it needs beyond that:
+
+```cpp
+// Sketch — matches src/app/engine_config.h/.cpp, src/game/game_config.h.
+struct EngineConfig {
+    int screenWidth = 800, screenHeight = 450;
+    bool fullscreen = false;
+    int targetFps = 60;
+    float masterVolume = 1.0f;
+};
+EngineConfig LoadOrCreateEngineConfig(const std::string& path = "config/engine.yaml");
+
+struct GameConfig { /* nothing yet -- add fields as a specific game needs them */ };
+GameConfig LoadOrCreateGameConfig(const std::string& path = "config/game.yaml");
+```
+
+Both read via §6's `YamlEntityFileParser`; writing (new — §6's parser only ever needed to read) is
+a minimal hand-written emitter scoped to each struct's own flat fields, not a general
+`EntityDefNode`-to-YAML serializer. `config/` lives outside `assets/` (gitignored, generated at
+runtime with defaults on first run) for the same reason the book keeps `PlayerOptions.xml` out of
+its packaged resource bundle (§4's read-only, version-controlled content root).
+
+**Current state**: `Engine::Init()` takes an `EngineConfig` (not raw `screenWidth`/`screenHeight`
+ints); `Engine::Run()` uses `config.targetFps` for `SetTargetFPS`/`emscripten_set_main_loop`'s rate
+argument and the frame-budget-SLO warning threshold. `raylib_game.cpp`'s `main()` calls
+`engine.Init(LoadOrCreateEngineConfig(), title)`. `fullscreen`/`masterVolume` are loaded/saved but
+not yet applied to real window/audio state. `GameConfig` has no caller anywhere yet, as decided.
 
 ## Decisions Made
 

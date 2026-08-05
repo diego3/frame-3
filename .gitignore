@@ -81,6 +81,11 @@ compile_commands.json
 # Unit test binary built by `make tests` / test.sh (see docs/adr/0006-doctest-for-unit-tests.md)
 /src/tests_runner
 
+# Real files engine_config_test.cpp/game_config_test.cpp/file_io_test.cpp read/write and clean up
+# around each test -- isolated from /src/config/ above so tests never collide with a real dev's
+# local config.
+/src/test_scratch/
+
 # raylib checkout auto-vendored by build.sh
 /vendor/
 

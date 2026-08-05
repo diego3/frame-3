@@ -1,7 +1,48 @@
 # 11. Game options: two-tier config (`EngineConfig` + `GameConfig`), writable, outside `assets/`
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-08-04
+
+## Implementation status (2026-08-05)
+
+Landed as designed, with two additions beyond the ADR's own sketch:
+
+- `EngineConfig`/`LoadOrCreateEngineConfig` — `src/app/engine_config.h`/`.cpp`. Reads via
+  `YamlEntityFileParser` (ADR-0008) as decided; writes via a minimal hand-written emitter
+  (`SerializeEngineConfig`, file-local to `engine_config.cpp`) scoped to exactly this struct's flat
+  fields, as decided. A field missing from an existing file keeps its struct default rather than
+  failing the load, using `EntityDefNode::TryGet` (not `Get`) throughout.
+- `GameConfig`/`LoadOrCreateGameConfig` — `src/game/game_config.h`, header-only (not a `.cpp` the
+  ADR's sketch implied): with zero fields there's nothing to parse, so it never needs ADR-0008's
+  YAML machinery at all, just a file-existence check and an empty/comment-only file written on
+  first run.
+- **New shared utility, not named in the ADR**: `src/app/file_io.h`
+  (`TryReadWholeFile`/`ReadWholeFile`/`WriteWholeFile`, header-only) — factored out once it became
+  clear `LevelLoader` (ADR-0009) and `EngineConfig`/`GameConfig` both needed the same "read a whole
+  file, creating parent directories on write" primitive, rather than duplicating it.
+- `EntityDefNode` gained `AsBool()` (`src/app/entity_def.h`) — `EngineConfig::fullscreen` is the
+  first real bool field this project's config/entity data has needed; mirrors mini-yaml's own
+  `StringConverter<bool>` (case-insensitive `true`/`yes`/`1` vs. `false`/`no`/`0`).
+
+**Wired into the real product, unlike ADR-0008/0009's pieces**: `Engine::Init()` now takes an
+`EngineConfig` instead of raw `screenWidth`/`screenHeight` ints (`src/app/engine.h`/`.cpp`);
+`Engine::Run()` uses `config.targetFps` for `SetTargetFPS`/`emscripten_set_main_loop`'s rate
+argument, and the frame-budget-SLO warning threshold (`src/app/engine.cpp`) now tracks
+`config.targetFps` too, not a fixed 60. `raylib_game.cpp`'s `main()` calls
+`engine.Init(LoadOrCreateEngineConfig(), title)`, replacing the two hardcoded constants. Verified
+end-to-end by hand: first run creates `config/engine.yaml` with the documented defaults; editing
+`targetFps` in that file and re-running picks up the new value (confirmed via the frame-budget
+warning's threshold changing to match).
+
+**Not wired in**: `fullscreen`/`masterVolume` are loaded/saved but not yet applied to real
+window/audio state (`ToggleFullscreen`, `SetMasterVolume`) -- the ADR's own phrasing ("or will")
+treated these as fields to make room for, not a commitment to apply them in this pass; revisit once
+a concrete need does. `GameConfig` has no caller anywhere in the codebase, exactly as decided.
+
+**A build-system ripple beyond what ADR-0008 needed**: because `Engine::Init()` now calls
+`LoadOrCreateEngineConfig()` for real, `entity_file_parser_yaml.cpp` and mini-yaml itself had to
+move from test-only into the main product build (`PROJECT_SOURCE_FILES_CPP`, `build.sh`,
+`ci_sanity.yml`'s "Build project" step) — previously only the test build needed them.
 
 ## Context
 

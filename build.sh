@@ -22,4 +22,17 @@ if [ ! -d "$ENTT_PATH" ]; then
     git clone --depth 1 --branch "$ENTT_VERSION" https://github.com/skypjack/entt "$ENTT_PATH"
 fi
 
-make -C "$SCRIPT_DIR/src" PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE RAYLIB_PATH="$RAYLIB_PATH" ENTT_PATH="$ENTT_PATH"
+# mini-yaml (docs/adr/0008): Engine::Init() now calls LoadOrCreateEngineConfig() (docs/adr/0011),
+# which reuses ADR-0008's YamlEntityFileParser -- the main product build needs it too now, not
+# just the test build. No release tags exist upstream, so this pins a commit instead (confirmed
+# via `git ls-remote --tags` -- empty); a full clone + checkout, not --depth 1, since a shallow
+# clone can't reliably target an arbitrary commit SHA the way --depth 1 --branch <tag> does above.
+MINI_YAML_COMMIT="22d3dcf5684a11f9c0508c1ad8b3282a1d888319"
+MINI_YAML_PATH="$SCRIPT_DIR/vendor/mini-yaml"
+
+if [ ! -d "$MINI_YAML_PATH" ]; then
+    git clone https://github.com/jimmiebergmann/mini-yaml "$MINI_YAML_PATH"
+    git -C "$MINI_YAML_PATH" checkout "$MINI_YAML_COMMIT"
+fi
+
+make -C "$SCRIPT_DIR/src" PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE RAYLIB_PATH="$RAYLIB_PATH" ENTT_PATH="$ENTT_PATH" MINI_YAML_PATH="$MINI_YAML_PATH"

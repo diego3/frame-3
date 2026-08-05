@@ -10,6 +10,7 @@
 #include <entt/entt.hpp>
 #include <raylib.h>
 
+#include "engine_config.h"
 #include "event_manager.h"
 #include "process_manager.h"
 #include "resource_cache.h"
@@ -21,23 +22,29 @@ public:
     // below (fontCache_ etc.) can't express, so it's built in the constructor body instead.
     Engine();
 
-    // Opens the window, initializes the audio device, and loads the resources shared across all
-    // screens (font, fxCoin -- see screens.h) through fontCache_/soundCache_ (Ch. 8, ADR-0004).
-    // Returns false if window creation failed.
-    bool Init(int screenWidth, int screenHeight, const char *title);
+    // Opens the window (sized per config.screenWidth/screenHeight, ADR-0011), initializes the
+    // audio device, and loads the resources shared across all screens (font, fxCoin -- see
+    // screens.h) through fontCache_/soundCache_ (Ch. 8, ADR-0004). Returns false if window
+    // creation failed. config.fullscreen/masterVolume are stored (Config()) but not yet applied
+    // to real window/audio state -- ADR-0011 only decided the config file's read/write round
+    // trip, not wiring every field into behavior; revisit once a concrete need shows up.
+    bool Init(const EngineConfig &config, const char *title);
 
-    // Drives the main loop until the window should close, calling updateAndDraw() once per frame.
-    // Branches internally on PLATFORM_WEB (emscripten_set_main_loop) vs. desktop (a plain while
-    // loop) -- the platform-specific mechanics this is meant to hide from main(). Each frame, any
-    // events Queue()'d since the last frame are dispatched (ADR-0005), then attached processes are
-    // advanced by the frame's delta time (Ch. 4), then every entity's WorldTransform is recomputed
-    // from its Relationship/LocalTransform (Ch. 9-10, ADR-0002) -- all before updateAndDraw() runs,
-    // so none of deferred cross-system events, multi-frame behavior (camera shake, timed effects),
-    // or hierarchy propagation need to live in the screen code.
+    // Drives the main loop until the window should close, calling updateAndDraw() once per frame
+    // at config.targetFps (ADR-0011; SetTargetFPS on desktop, emscripten_set_main_loop's own rate
+    // argument on web). Branches internally on PLATFORM_WEB vs. desktop -- the platform-specific
+    // mechanics this is meant to hide from main(). Each frame, any events Queue()'d since the last
+    // frame are dispatched (ADR-0005), then attached processes are advanced by the frame's delta
+    // time (Ch. 4), then every entity's WorldTransform is recomputed from its Relationship/
+    // LocalTransform (Ch. 9-10, ADR-0002) -- all before updateAndDraw() runs, so none of deferred
+    // cross-system events, multi-frame behavior (camera shake, timed effects), or hierarchy
+    // propagation need to live in the screen code.
     void Run(void (*updateAndDraw)(void));
 
     // Unwinds exactly what Init() set up, in reverse.
     void Shutdown();
+
+    const EngineConfig &Config() const { return config_; }
 
     entt::registry &Registry() { return registry_; }
     EventManager &Events() { return eventManager_; }
@@ -66,6 +73,7 @@ public:
     std::shared_ptr<Shader> GetShader(const std::string &vsPath, const std::string &fsPath);
 
 private:
+    EngineConfig config_;
     entt::registry registry_;
     EventManager eventManager_;
     ProcessManager processManager_;

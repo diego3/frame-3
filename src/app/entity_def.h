@@ -14,6 +14,8 @@
 #ifndef ENTITY_DEF_H
 #define ENTITY_DEF_H
 
+#include <algorithm>
+#include <cctype>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -66,6 +68,23 @@ public:
     float AsFloat(float fallback = 0.0f) const { return AsNumber(fallback); }
     int AsInt(int fallback = 0) const { return AsNumber(fallback); }
 
+    // Added for ADR-0011 (EngineConfig::fullscreen is the first real bool field this project's
+    // config/entity data has needed). Mirrors mini-yaml's own StringConverter<bool>: case-
+    // insensitive "true"/"yes"/"1" or "false"/"no"/"0"; anything else (including a non-scalar
+    // node) falls back.
+    bool AsBool(bool fallback = false) const {
+        const std::string *value = std::get_if<std::string>(&value_);
+        if (value == nullptr) return fallback;
+
+        std::string lower = *value;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                        [](unsigned char c) { return std::tolower(c); });
+
+        if (lower == "true" || lower == "yes" || lower == "1") return true;
+        if (lower == "false" || lower == "no" || lower == "0") return false;
+        return fallback;
+    }
+
     // Empty (not a throw) if this node isn't actually a list/map -- consistent with AsString/
     // AsFloat/AsInt's fallback-on-mismatch behavior, and with EntityFactory's own forward-
     // compatible "skip what doesn't match" handling of a malformed/unexpected definition file.
@@ -95,5 +114,19 @@ private:
 
     std::variant<std::monostate, std::string, List, Map> value_;
 };
+
+// Shallow merge for level-file per-instance overrides (docs/adr/0009): for each top-level key
+// (component name) present in `overrides`, that whole component's data node replaces the one in
+// `base`; components not mentioned in `overrides` are copied from `base` unchanged. Does not
+// deep-merge individual fields *within* one component -- an override replaces a whole component's
+// node, not one field inside it. Simpler than a recursive field-level merge, and enough for "this
+// instance has less health" without needing partial-field merge semantics yet.
+inline EntityDefNode MergeOverrides(const EntityDefNode &base, const EntityDefNode &overrides) {
+    EntityDefNode::Map merged = base.AsMap();
+    for (const auto &[key, value] : overrides.AsMap()) {
+        merged[key] = value;
+    }
+    return EntityDefNode(merged);
+}
 
 #endif // ENTITY_DEF_H

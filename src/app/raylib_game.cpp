@@ -14,6 +14,7 @@
 #include "../game/screens.h"    // NOTE: Declares global (extern) variables and screens functions
 #include "debug_overlay.h"
 #include "engine.h"
+#include "engine_config.h"
 
 #include <stdio.h>                          // Required for: printf()
 #include <stdlib.h>                         // Required for:
@@ -43,8 +44,8 @@ Sound fxCoin = { 0 };
 //----------------------------------------------------------------------------------
 // Global Variables Definition (local to this module)
 //----------------------------------------------------------------------------------
-static const int screenWidth = 800;
-static const int screenHeight = 450;
+// screenWidth/screenHeight moved into EngineConfig (docs/adr/0011), loaded below in main() --
+// no longer hardcoded constants here.
 
 // Required variables to manage screen transitions (fade-in, fade-out)
 static float transAlpha = 0.0f;
@@ -72,7 +73,7 @@ int main(void)
     // Initialization
     //---------------------------------------------------------
     Engine engine;
-    if (!engine.Init(screenWidth, screenHeight, "raylib game template")) return 1;
+    if (!engine.Init(LoadOrCreateEngineConfig(), "raylib game template")) return 1;
 
     // Setup and init first screen
     currentScreen = LOGO;

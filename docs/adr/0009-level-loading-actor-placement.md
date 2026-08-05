@@ -1,7 +1,36 @@
 # 9. Level loading: actor placement over a level file, without a `BaseGameLogic` yet
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-08-04
+
+## Implementation status (2026-08-05)
+
+Landed as designed, with two deviations documented in code:
+
+- `MergeOverrides` — `src/app/entity_def.h` (a free function alongside `EntityDefNode`, per the
+  ADR's own "entity_def.h addition" sketch).
+- `LevelLoader` — `src/app/level_loader.h`/`.cpp`. **Deviation**: the constructor takes an
+  injectable `FileReader` (defaulting to `ReadWholeFile`, `src/app/file_io.h`) instead of doing
+  file I/O directly — the ADR's own sketch didn't show file reading explicitly, and making it
+  injectable lets `level_loader_test.cpp` exercise `Load()` fully against in-memory fake files,
+  the same fake-first pattern `EntityFactory`/`ResourceCache<T>`'s own tests already use, instead
+  of needing real files on disk.
+- `EvtData_EntitySpawned` — `src/app/level_loader.h`, this project's first real (non-test-fake)
+  event type. Fired via `EventManager::Queue` (ADR-0005), not `Emit` — that ADR's own §5 decision
+  (`Queue`/`DispatchQueued`) had already landed by the time this did, so there was no need to ship
+  with `Emit` first and switch later as this ADR's own follow-up note anticipated.
+- **Confirms ADR-0008's flow-style YAML finding applies here too**: this ADR's own example level
+  file used flow-style `position: { x: 10, y: 0, z: 5 }` — doesn't parse correctly with this
+  project's mini-yaml checkout (see ADR-0008's Implementation status note). `level_loader_test.cpp`
+  uses block style throughout.
+
+**Still not wired into any real gameplay code** — the extern "C" bridge from `screen_gameplay.c`
+this ADR's own Consequences section names is deliberately not built here either; `LevelLoader` has
+no way to draw anything it spawns yet (no `HumanView`, no render component — ADR-0010), so wiring
+it into the one real screen that exists would spawn entities nothing can show. That wiring is
+ADR-0010's job, once a `HumanView` exists to make it meaningful.
+
+The "is it time for `BaseGameLogic`" question remains open, unchanged from below.
 
 ## Context
 

@@ -28,7 +28,9 @@ if [ ! -d "$ENTT_PATH" ]; then
     git clone --depth 1 --branch "$ENTT_VERSION" https://github.com/skypjack/entt "$ENTT_PATH"
 fi
 
-# mini-yaml (docs/adr/0008): entity_file_parser_yaml_test.cpp needs it. No release tags exist
+# mini-yaml (docs/adr/0008): entity_file_parser_yaml_test.cpp/level_loader_test.cpp/
+# engine_config_test.cpp need it (build.sh vendors it too now -- Engine::Init() calls
+# LoadOrCreateEngineConfig(), docs/adr/0011, which reuses this same parser). No release tags exist
 # upstream, so this pins a specific commit instead (confirmed via `git ls-remote --tags` -- empty)
 # -- a full clone + checkout, not --depth 1, since a shallow clone can't reliably target an
 # arbitrary commit SHA the way --depth 1 --branch <tag> does for raylib/EnTT above. The repo is

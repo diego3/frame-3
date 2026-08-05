@@ -48,11 +48,17 @@ PROJECT_SOURCE_FILES  ?= \
 
 # C++ sources (EnTT-using code, etc.), compiled/linked separately from the plain-C sources above
 # since they need a C++ standard and the EnTT include path (see ENTT_INCLUDE_PATH below).
+# entity_file_parser_yaml.cpp (docs/adr/0008) and engine_config.cpp (docs/adr/0011) are here (not
+# test-only, unlike entity_factory.h/level_loader.cpp/game_config.h) because Engine::Init() now
+# actually calls LoadOrCreateEngineConfig() -> YamlEntityFileParser -> mini-yaml, the first time
+# any of ADR-0008's pieces are wired into the real product rather than only tested in isolation.
 PROJECT_SOURCE_FILES_CPP ?= \
     app/raylib_game.cpp \
     app/engine.cpp \
     app/process_manager.cpp \
-    app/debug_overlay.cpp
+    app/debug_overlay.cpp \
+    app/entity_file_parser_yaml.cpp \
+    app/engine_config.cpp
 
 # Source location of game content, staged into ./resources before linking (see 'resources' target)
 PROJECT_RESOURCES_PATH ?= ../assets
@@ -251,7 +257,7 @@ CXXFLAGS = $(filter-out -Wno-pointer-sign,$(patsubst -std=c99,-std=c++20,$(patsu
 
 # Define include paths for required headers: INCLUDE_PATHS
 #------------------------------------------------------------------------------------------------
-INCLUDE_PATHS += -I. -Iexternal -I$(RAYLIB_INCLUDE_PATH) -I$(ENTT_INCLUDE_PATH)
+INCLUDE_PATHS += -I. -Iexternal -I$(RAYLIB_INCLUDE_PATH) -I$(ENTT_INCLUDE_PATH) -I$(MINI_YAML_INCLUDE_PATH)
 
 # Define additional directories containing required header files
 ifeq ($(PLATFORM),PLATFORM_DRM)
@@ -382,7 +388,10 @@ endif
 
 # Define all object files from source files
 #------------------------------------------------------------------------------------------------
-OBJS = $(patsubst %.c, %.o, $(PROJECT_SOURCE_FILES)) $(patsubst %.cpp, %.o, $(PROJECT_SOURCE_FILES_CPP))
+# mini_yaml.o: mini-yaml (docs/adr/0008) lives outside src/ (vendored, like raylib/EnTT), so it
+# can't go through PROJECT_SOURCE_FILES_CPP's %.o:%.cpp pattern the way in-tree sources do -- gets
+# its own object + rule below, same as tests/mini_yaml.o does for the test build.
+OBJS = $(patsubst %.c, %.o, $(PROJECT_SOURCE_FILES)) $(patsubst %.cpp, %.o, $(PROJECT_SOURCE_FILES_CPP)) mini_yaml.o
 
 # Define processes to execute
 #------------------------------------------------------------------------------------------------
@@ -422,6 +431,12 @@ resources:
 %.o: %.cpp
 	$(CXX) -c $< -o $@ $(CXXFLAGS) $(INCLUDE_PATHS) -D$(PLATFORM)
 
+# NOTE: deliberately no prerequisite on this rule's own line, same reason as tests/mini_yaml.o
+# below -- MINI_YAML_PATH's default placeholder is a Windows path ("C:\mini-yaml\mini-yaml"), and
+# a colon inside a prerequisite makes GNU Make misparse the line as a static pattern rule.
+mini_yaml.o:
+	$(CXX) -c $(MINI_YAML_PATH)/yaml/Yaml.cpp -o $@ $(CXXFLAGS) $(INCLUDE_PATHS) -D$(PLATFORM)
+
 # Unit tests (doctest, see docs/adr/0006-doctest-for-unit-tests.md)
 #------------------------------------------------------------------------------------------------
 # Mostly independent of the PLATFORM machinery above: everything under tests/ needs no window, GL,
@@ -435,7 +450,10 @@ resources:
 # (RMAPI/static inline), so this still never links libraylib.a or opens a window/GL context.
 # entity_factory_test.cpp (docs/adr/0008) needs entt::registry too, same reasoning as hierarchy's.
 # entity_file_parser_yaml_test.cpp needs mini-yaml, which is genuinely compiled (not header-only) --
-# see the tests/entity_file_parser_yaml.o rule below.
+# see the tests/entity_file_parser_yaml.o rule below. level_loader_test.cpp (docs/adr/0009) needs
+# entt::registry + mini-yaml too, for the same reasons. engine_config_test.cpp/file_io_test.cpp/
+# game_config_test.cpp (docs/adr/0011) do real file I/O against a gitignored scratch directory
+# (test_scratch/), not fakes -- their whole job is that read/write round trip.
 TEST_SOURCE_FILES_CPP ?= \
     tests/main_test.cpp \
     tests/event_manager_test.cpp \
@@ -447,19 +465,25 @@ TEST_SOURCE_FILES_CPP ?= \
     tests/hierarchy_test.cpp \
     tests/entity_def_test.cpp \
     tests/entity_file_parser_yaml_test.cpp \
-    tests/entity_factory_test.cpp
+    tests/entity_factory_test.cpp \
+    tests/level_loader_test.cpp \
+    tests/file_io_test.cpp \
+    tests/engine_config_test.cpp \
+    tests/game_config_test.cpp
 
 TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH) -I$(RAYLIB_INCLUDE_PATH) -I$(ENTT_INCLUDE_PATH) -I$(MINI_YAML_INCLUDE_PATH)
 
 # ProcessManager's implementation lives in app/process_manager.cpp (EventManager is header-only,
 # needs no object of its own). Built into a tests/-local object, never app/process_manager.o, so
 # it can't collide with the object the main product target above produces from the same source
-# with different flags. entity_file_parser_yaml.cpp (docs/adr/0008) gets the same treatment: it's
-# not in PROJECT_SOURCE_FILES_CPP yet (nothing in the main product calls it until ADR-0009 lands),
-# but the test build needs its object to link entity_file_parser_yaml_test.cpp against -- and,
-# unlike EnTT/doctest/raymath.h, mini-yaml isn't header-only, so its own yaml/Yaml.cpp needs
-# compiling into the test binary too (tests/mini_yaml.o below).
-TEST_OBJS = $(patsubst tests/%.cpp, tests/%.o, $(TEST_SOURCE_FILES_CPP)) tests/process_manager.o tests/entity_file_parser_yaml.o tests/mini_yaml.o
+# with different flags. entity_file_parser_yaml.cpp/engine_config.cpp (both now also in
+# PROJECT_SOURCE_FILES_CPP, docs/adr/0008/0011) get the same tests/-local treatment, so the test
+# build's flags (TEST_CXXFLAGS) never collide with the main product's (CXXFLAGS). level_loader.cpp
+# (docs/adr/0009) isn't in PROJECT_SOURCE_FILES_CPP at all yet (nothing in the main product calls
+# it until ADR-0010 wires a real gameplay screen up to it) but still needs a tests/-local object to
+# link level_loader_test.cpp against. mini-yaml isn't header-only either, so its own yaml/Yaml.cpp
+# needs compiling into the test binary too (tests/mini_yaml.o below).
+TEST_OBJS = $(patsubst tests/%.cpp, tests/%.o, $(TEST_SOURCE_FILES_CPP)) tests/process_manager.o tests/entity_file_parser_yaml.o tests/engine_config.o tests/level_loader.o tests/mini_yaml.o
 
 tests: $(TEST_OBJS)
 	$(CXX) -o tests_runner $(TEST_OBJS) $(TEST_CXXFLAGS)
@@ -471,6 +495,12 @@ tests/process_manager.o: app/process_manager.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
 tests/entity_file_parser_yaml.o: app/entity_file_parser_yaml.cpp
+	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
+
+tests/engine_config.o: app/engine_config.cpp
+	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
+
+tests/level_loader.o: app/level_loader.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
 # NOTE: deliberately no prerequisite on this rule's own line (unlike process_manager.o/

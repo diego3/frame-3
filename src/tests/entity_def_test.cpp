@@ -73,3 +73,43 @@ TEST_CASE("AsMap returns map contents, empty for a non-map node") {
     EntityDefNode node(map);
     CHECK(node.AsMap().size() == 1);
 }
+
+TEST_CASE("AsBool parses common truthy/falsy spellings, case-insensitively") {
+    CHECK(EntityDefNode(std::string("true")).AsBool());
+    CHECK(EntityDefNode(std::string("Yes")).AsBool());
+    CHECK(EntityDefNode(std::string("1")).AsBool());
+    CHECK_FALSE(EntityDefNode(std::string("false")).AsBool(true));
+    CHECK_FALSE(EntityDefNode(std::string("No")).AsBool(true));
+    CHECK_FALSE(EntityDefNode(std::string("0")).AsBool(true));
+}
+
+TEST_CASE("AsBool falls back on unrecognized or absent values") {
+    CHECK(EntityDefNode(std::string("maybe")).AsBool(true) == true);
+    CHECK(EntityDefNode().AsBool(true) == true);
+}
+
+TEST_CASE("MergeOverrides replaces only the components mentioned in overrides") {
+    EntityDefNode::Map baseMap;
+    baseMap.emplace("Position", EntityDefNode(std::string("base-pos")));
+    baseMap.emplace("Health", EntityDefNode(std::string("base-health")));
+    EntityDefNode base(baseMap);
+
+    EntityDefNode::Map overridesMap;
+    overridesMap.emplace("Health", EntityDefNode(std::string("override-health")));
+    EntityDefNode overrides(overridesMap);
+
+    EntityDefNode merged = MergeOverrides(base, overrides);
+
+    CHECK(merged.Get("Position").AsString() == "base-pos");
+    CHECK(merged.Get("Health").AsString() == "override-health");
+}
+
+TEST_CASE("MergeOverrides with an empty overrides node returns base unchanged") {
+    EntityDefNode::Map baseMap;
+    baseMap.emplace("Position", EntityDefNode(std::string("base-pos")));
+    EntityDefNode base(baseMap);
+
+    EntityDefNode merged = MergeOverrides(base, EntityDefNode(EntityDefNode::Map()));
+
+    CHECK(merged.Get("Position").AsString() == "base-pos");
+}
