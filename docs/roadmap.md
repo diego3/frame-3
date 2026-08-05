@@ -29,6 +29,7 @@ the chapter reference and full reasoning.
 - [ ] Data-driven entity/component loading (YAML) — [ADR-0008](adr/0008-data-driven-entity-loading-yaml.md) — PR #12
 - [ ] Level loading (`LevelLoader`, actor placement + overrides) — [ADR-0009](adr/0009-level-loading-actor-placement.md) — PR #13, depends on #12
 - [ ] Event serialization for networking + save/replay journal (`ISerializableEvent`, `EventJournal`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §§1-4
+- [ ] `BaseGameLogic`/`IGameView` split (`HumanView` built; `RemoteView`/`AIView` named, not built) — [ADR-0010](adr/0010-base-game-logic-and-igameview.md), depends on ADR-0008/0009 landing first
 
 ## Not started — no ADR yet
 
@@ -37,12 +38,9 @@ any code, same as everything above did.
 
 - [ ] **Physics / collision** — nothing exists yet: no ADR, no skill, no library choice made. The
   book dedicates a full chapter to this; biggest unaddressed gap in the project.
-- [ ] **`BaseGameLogic`/`IGameView` split** (HumanView/RemoteView/AIView) — deliberately deferred
-  since [ADR-0001](adr/0001-ecs-via-entt-and-cpp-engine-init.md) Decision 2, reaffirmed in
-  [ADR-0009](adr/0009-level-loading-actor-placement.md). Unlocks AI reacting to world events and
-  network replication (both listed below) once it exists.
 - [ ] **AI** (FSM, utility scoring, steering, perception, pathfinding) — design guidance already
   exists in `.claude/skills/engine-ai-behavior`, but zero code and zero entities to apply it to.
+  Unlocked by `AIView` once [ADR-0010](adr/0010-base-game-logic-and-igameview.md) is implemented.
 - [ ] **Network transport** (sockets/library choice, client/server architecture) — the event-level
   contract is proposed in ADR-0005 §§1-4 above; the actual wire transport is explicitly left for a
   future ADR "once multiplayer work actually starts."
