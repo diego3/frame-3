@@ -33,14 +33,13 @@ _(nothing currently — the last item here, scene graph/hierarchy, shipped above
 
 - [ ] Event journal for save/replay (`EventJournal`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §4 — the serialization contract it would sit on (§§1-3) already shipped above; no concrete on-disk format decided yet
 - [ ] `BaseGameLogic`/`IGameView` split (`HumanView` built; `RemoteView`/`AIView` named, not built) — [ADR-0010](adr/0010-base-game-logic-and-igameview.md), depends on ADR-0008/0009 (both now shipped above) — this is what will finally give `LevelLoader` a real gameplay screen to spawn into
+- [ ] Physics / collision (`IGamePhysics`, raylib-collision-backed, owned by `BaseGameLogic`) — [ADR-0012](adr/0012-physics-thin-raylib-collision-layer.md), depends on ADR-0010's `BaseGameLogic` landing first
 
 ## Not started — no ADR yet
 
 Ordered by rough impact, not book chapter order. Each of these needs its own ADR before landing
 any code, same as everything above did.
 
-- [ ] **Physics / collision** — nothing exists yet: no ADR, no skill, no library choice made. The
-  book dedicates a full chapter to this; biggest unaddressed gap in the project.
 - [ ] **AI** (FSM, utility scoring, steering, perception, pathfinding) — design guidance already
   exists in `.claude/skills/engine-ai-behavior`, but zero code and zero entities to apply it to.
   Unlocked by `AIView` once [ADR-0010](adr/0010-base-game-logic-and-igameview.md) is implemented.
