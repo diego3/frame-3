@@ -22,8 +22,9 @@ the chapter reference and full reasoning.
 - [x] Scene graph / transform hierarchy (`Relationship`, `LocalTransform`/`WorldTransform`, `PropagateTransforms`) — [ADR-0002](adr/0002-scene-graph-hierarchy-options.md)
 - [x] Event serialization contract (`ISerializableEvent`, `EventTypeRegistry`, FNV-1a stable type ID) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §§1-3
 - [x] Data-driven entity/component loading (`EntityDefNode`, `IEntityFileParser`/`YamlEntityFileParser`, `EntityFactory`) — [ADR-0008](adr/0008-data-driven-entity-loading-yaml.md)
-- [x] Level loading (`LevelLoader`, `MergeOverrides`, `EvtData_EntitySpawned`) — [ADR-0009](adr/0009-level-loading-actor-placement.md) — not wired into any real gameplay screen yet (no `HumanView` to render what it spawns), see the ADR's Implementation status note
+- [x] Level loading (`LevelLoader`, `MergeOverrides`, `EvtData_EntitySpawned`) — [ADR-0009](adr/0009-level-loading-actor-placement.md) — now wired into a real gameplay screen via ADR-0010's `gameplay_bridge`
 - [x] Game options/config file (`EngineConfig`/`GameConfig`, two-tier, writable `src/config/`) — [ADR-0011](adr/0011-engine-and-game-config.md) — `EngineConfig` is wired into the real `Engine::Init()`/`Run()`; `GameConfig` has no caller yet, as decided
+- [x] `BaseGameLogic`/`IGameView` split (`HumanView` built and wired into `screen_gameplay.c`; `RemoteView`/`AIView` named, not built) — [ADR-0010](adr/0010-base-game-logic-and-igameview.md) — the first real, non-test-fake `EntityFactory` component loader (`"Position"` → `LocalTransform`/`WorldTransform`) and the first real level/entity content (`assets/levels/level_01.yaml`, `assets/entities/player.yaml`) landed alongside it
 
 ## Decided (ADR merged), not yet built
 
@@ -32,8 +33,8 @@ _(nothing currently — the last item here, scene graph/hierarchy, shipped above
 ## Proposed (ADR merged into `main`, `Status: Proposed` — design not yet built)
 
 - [ ] Event journal for save/replay (`EventJournal`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §4 — the serialization contract it would sit on (§§1-3) already shipped above; no concrete on-disk format decided yet
-- [ ] `BaseGameLogic`/`IGameView` split (`HumanView` built; `RemoteView`/`AIView` named, not built) — [ADR-0010](adr/0010-base-game-logic-and-igameview.md), depends on ADR-0008/0009 (both now shipped above) — this is what will finally give `LevelLoader` a real gameplay screen to spawn into
-- [ ] Physics / collision (`IGamePhysics`, raylib-collision-backed, owned by `BaseGameLogic`) — [ADR-0012](adr/0012-physics-thin-raylib-collision-layer.md), depends on ADR-0010's `BaseGameLogic` landing first
+- [ ] Physics / collision (`IGamePhysics`, raylib-collision-backed, owned by `BaseGameLogic`) — [ADR-0012](adr/0012-physics-thin-raylib-collision-layer.md) — its dependency (`BaseGameLogic`, ADR-0010) just shipped above, unblocked now
+- [ ] Input / key-binding system (`InputAction`/`InputBindings`, data-driven action↔key mapping consumed by `HumanView`; gamepad and a rebinding UI explicitly deferred) — [ADR-0013](adr/0013-input-key-binding-system.md) — depends on `HumanView`/ADR-0010, which as of this ADR only exists on PR #26 (`claude/base-game-logic-impl`), not yet merged to `main`
 
 ## Not started — no ADR yet
 
@@ -41,15 +42,9 @@ Ordered by rough impact, not book chapter order. Each of these needs its own ADR
 any code, same as everything above did.
 
 - [ ] **AI** (FSM, utility scoring, steering, perception, pathfinding) — design guidance already
-  exists in `.claude/skills/engine-ai-behavior`, but zero code and zero entities to apply it to.
-  Unlocked by `AIView` once [ADR-0010](adr/0010-base-game-logic-and-igameview.md) is implemented.
-- [ ] **Input / key-binding system** (data-driven action↔key/gamepad-button mapping, rebindable by
-  the player) — not designed anywhere yet. [ADR-0010](adr/0010-base-game-logic-and-igameview.md)
-  decided `HumanView` polls raylib input directly (`IsKeyDown`/etc.) rather than a Win32-style
-  message-proc layer, but explicitly left "which key/gesture drives which actor action" as an open
-  question (§ Open Questions) — that's this item. Distinct from the config-file item above
-  ("Proposed" section — [ADR-0011](adr/0011-engine-and-game-config.md), resolution/audio/window
-  settings) vs. actual action mapping + a rebinding UI + persisting the player's choice.
+  exists in `.claude/skills/engine-ai-behavior`, but zero code, and one entity now exists (ADR-0010)
+  with nothing AI-shaped to apply it to yet. `IGameView`/`BaseGameLogic` shipped, but `AIView`
+  itself is still just named in the type enum, not built — that's the remaining unblock.
 - [ ] **Network transport** (sockets/library choice, client/server architecture) — the event-level
   contract (`ISerializableEvent`/`EventTypeRegistry`, ADR-0005 §§1-3) already shipped above; the
   actual wire transport is explicitly left for a future ADR "once multiplayer work actually

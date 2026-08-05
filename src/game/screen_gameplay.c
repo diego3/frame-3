@@ -25,6 +25,7 @@
 
 #include "raylib.h"
 #include "screens.h"
+#include "../app/gameplay_bridge.h"    // extern "C" bridge to BaseGameLogic/HumanView (ADR-0010)
 
 //----------------------------------------------------------------------------------
 // Module Variables Definition (local)
@@ -39,15 +40,16 @@ static int finishScreen = 0;
 // Gameplay Screen Initialization logic
 void InitGameplayScreen(void)
 {
-    // TODO: Initialize GAMEPLAY screen variables here!
     framesCounter = 0;
     finishScreen = 0;
+
+    GameplayBridge_Init();
 }
 
 // Gameplay Screen Update logic
 void UpdateGameplayScreen(void)
 {
-    // TODO: Update GAMEPLAY screen variables here!
+    GameplayBridge_Update(GetFrameTime());
 
     // Press enter or tap to change to ENDING screen
     if (IsKeyPressed(KEY_ENTER) || IsGestureDetected(GESTURE_TAP))
@@ -60,17 +62,15 @@ void UpdateGameplayScreen(void)
 // Gameplay Screen Draw logic
 void DrawGameplayScreen(void)
 {
-    // TODO: Draw GAMEPLAY screen here!
-    DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), PURPLE);
-    Vector2 pos = { 20, 10 };
-    DrawTextEx(font, "GAMEPLAY SCREEN", pos, font.baseSize*3.0f, 4, MAROON);
-    DrawText("PRESS ENTER or TAP to JUMP to ENDING SCREEN", 130, 220, 20, MAROON);
+    GameplayBridge_Draw();
+
+    DrawText("PRESS ENTER or TAP to JUMP to ENDING SCREEN", 130, 20, 20, MAROON);
 }
 
 // Gameplay Screen Unload logic
 void UnloadGameplayScreen(void)
 {
-    // TODO: Unload GAMEPLAY screen variables here!
+    GameplayBridge_Unload();
 }
 
 // Gameplay Screen should finish?

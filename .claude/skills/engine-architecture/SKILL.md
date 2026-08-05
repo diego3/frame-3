@@ -1,6 +1,6 @@
 ---
 name: engine-architecture
-description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`), and a `ResourceCache<T>` (`src/app/resource_cache.h`, per ADR-0004, backing `Engine::Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader()`); no real components exist yet, and nothing subscribes to the event manager or attaches a process yet either.
+description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`), and a `ResourceCache<T>` (`src/app/resource_cache.h`, per ADR-0004, backing `Engine::Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader()`); one real component (`LocalTransform`/`WorldTransform`, via a `"Position"` `EntityFactory` loader) and a `BaseGameLogic`/`HumanView` Logic/View split (§9, ADR-0010) exist and are wired into the gameplay screen, but nothing subscribes to the event manager or attaches a process yet.
 ---
 
 # Engine Architecture (Game Coding Complete Ch. 4, 6-8 — modernized)
@@ -170,12 +170,14 @@ read by one generic factory — still not a reason to reach for EnTT's snapshot/
 utilities prematurely; a plain data table is enough until it visibly isn't.
 
 **Current state**: EnTT compiles/links/runs as part of the build, and `Engine::Registry()`
-(`src/app/engine.h`) owns the one `entt::registry` instance — but nothing populates it yet. No
-`Position`, `Health`, or any other real component exists, and no factory functions like
-`SpawnEnemy` above exist yet either — this section describes the shape to use once they're
-written, not something already in the codebase. (The earlier `ecs_smoke_test.cpp` proof-of-build
-file has been deleted now that `Engine` gives EnTT a real, permanent home in the codebase.) The
-"small data table read by one generic factory" extension mentioned above is now real — see §6.
+(`src/app/engine.h`) owns the one `entt::registry` instance. `SpawnEnemy`-style hardcoded factory
+functions still don't exist — but the "small data table read by one generic factory" extension
+mentioned above is now real (§6), and one real component pairing has actually landed through it:
+`"Position"` → `LocalTransform`/`WorldTransform` (§9's `gameplay_bridge.cpp`), the first
+non-test-fake `EntityFactory::RegisterComponentLoader` call in the codebase. `Health`/`EnemyTag`
+and any other component beyond that still don't exist — write one per real need, same discipline
+as always. (The earlier `ecs_smoke_test.cpp` proof-of-build file has been deleted now that
+`Engine` gives EnTT a real, permanent home in the codebase.)
 
 ### 4. Resource cache (Ch. 8) — a thin layer over raylib, not a new loader
 
@@ -237,9 +239,10 @@ while implementing this (see ADR-0004's "A real crash this surfaced"): any handl
 `Models()`/`Textures()`/`GetShader()` **must** be released before `Engine::Shutdown()` runs, or
 its `Unload*` call fires into an already-closed GL/audio context. `fontHandle_`/`soundHandle_`
 don't have this problem because `Engine` holds and releases them itself, in the right order,
-inside `Shutdown()`; nothing plays that role for a handle gameplay code holds. Once real ECS
-components hold one of these handles (§3 — no real components exist yet), whatever clears the
-`entt::registry` needs to run before `Shutdown()`, not after.
+inside `Shutdown()`; nothing plays that role for a handle gameplay code holds. A real component
+now exists (§3, §9) but doesn't hold one of these resource-cache handles (`LocalTransform`/
+`WorldTransform` are plain data, not `Model`/`Texture2D`/`Shader` handles) — once one does,
+whatever clears the `entt::registry` needs to run before `Shutdown()`, not after.
 
 Not cached: raylib's standalone `LoadMaterials(fileName, &count)` (an out-param array + count,
 not a single `T` — doesn't fit `ResourceCache<T>`'s shape). `Model`'s own bundled materials
@@ -288,11 +291,12 @@ scene); worth revisiting only if profiling ever shows the recursion itself is ho
 **Current state**: `Relationship` (`src/app/hierarchy.h`) and `LocalTransform`/`WorldTransform`
 (`src/app/transform.h`) exist, both header-only. `PropagateTransforms` is ticked once per frame from
 `Engine::Run`'s `TickAndUpdateDraw` (`src/app/engine.cpp`), after `ProcessManager::Update` and
-before `updateAndDraw()` — the same per-frame-tick spot §§1-2's systems use. No real gameplay
-entity uses any of this yet (no real components exist — §3); `src/tests/hierarchy_test.cpp`
-exercises `SetParent`/`RemoveParent`/`PropagateTransforms` directly against bare `entt::registry`
-entities, including a three-level hierarchy attached in scrambled (non-parent-before-child)
-creation order, specifically to prove correctness doesn't depend on EnTT's storage order.
+before `updateAndDraw()` — the same per-frame-tick spot §§1-2's systems use. One real gameplay
+entity uses this now (§9's `"Position"` component loader emplaces `LocalTransform`+`WorldTransform`,
+no `Relationship` — a standalone root); `src/tests/hierarchy_test.cpp` exercises
+`SetParent`/`RemoveParent`/`PropagateTransforms` directly against bare `entt::registry` entities,
+including a three-level hierarchy attached in scrambled (non-parent-before-child) creation order,
+specifically to prove correctness doesn't depend on EnTT's storage order.
 
 ### 6. Data-driven entity/component loading (Ch. 6-7) — `EntityFactory` over a format-agnostic tree, via ADR-0008
 
@@ -350,7 +354,9 @@ See ADR-0008's Implementation status note.
 (`src/app/entity_file_parser_yaml.h`/`.cpp`), and `EntityFactory` (`src/app/entity_factory.h`) all
 exist and are unit-tested against fake components (`src/tests/entity_def_test.cpp`,
 `entity_file_parser_yaml_test.cpp`, `entity_factory_test.cpp`) — composed into a real
-`LevelLoader` now (§7), though nothing constructs one for real gameplay yet either.
+`LevelLoader` (§7), which a real gameplay screen now constructs and calls (§9's
+`gameplay_bridge.cpp`), with one real (non-test-fake) component loader registered:
+`"Position"` (§3).
 
 ### 7. Level loading (Ch. 6-7, "book's `VLoadGame`") — `LevelLoader`, without a `BaseGameLogic` yet, via ADR-0009
 
@@ -384,9 +390,9 @@ discipline).
 **Current state**: `MergeOverrides` (`src/app/entity_def.h`), `LevelLoader`
 (`src/app/level_loader.h`/`.cpp`), and `EvtData_EntitySpawned` (`src/app/level_loader.h`) all exist,
 tested against in-memory fake files (`src/tests/level_loader_test.cpp`) via `LevelLoader`'s
-injectable `FileReader`. Not wired into any real gameplay screen yet — `LevelLoader` has nothing to
-draw what it spawns (no render component, no `HumanView`); that's [ADR-0010](../../../docs/adr/0010-base-game-logic-and-igameview.md)'s
-(Logic/View split, Proposed) job.
+injectable `FileReader`. Now wired into a real gameplay screen — see §9
+([ADR-0010](../../../docs/adr/0010-base-game-logic-and-igameview.md), Accepted): `gameplay_bridge.cpp`
+constructs one and calls `VLoadLevel` on the first real level file (`assets/levels/level_01.yaml`).
 
 ### 8. Engine/game config (Ch. 5) — two-tier, writable, via ADR-0011
 
@@ -419,6 +425,67 @@ ints); `Engine::Run()` uses `config.targetFps` for `SetTargetFPS`/`emscripten_se
 argument and the frame-budget-SLO warning threshold. `raylib_game.cpp`'s `main()` calls
 `engine.Init(LoadOrCreateEngineConfig(), title)`. `fullscreen`/`masterVolume` are loaded/saved but
 not yet applied to real window/audio state. `GameConfig` has no caller anywhere yet, as decided.
+
+### 9. Logic/View split (Ch. 9-10) — `BaseGameLogic` + `IGameView`, via ADR-0010
+
+[ADR-0010](../../../docs/adr/0010-base-game-logic-and-igameview.md) (Accepted) activates the split
+ADR-0001 Decision 2 deferred and ADR-0009 (§7) reaffirmed "not yet," ahead of either of that ADR's
+own named triggers actually being hit — a deliberate exception, same category as §7's
+`EvtData_EntitySpawned` call, made because `HumanView`/`RemoteView`/`AIView` are explicitly the
+next-planned work and retrofitting the seam after any get built independently costs more than
+building it once now:
+
+```cpp
+// Sketch — matches src/app/game_view.h, base_game_logic.h/.cpp, human_view.h/.cpp; adjust here if
+// those files' shape changes.
+enum class GameViewType { Human, Remote, AI, Other };
+using GameViewId = std::uint32_t;
+
+class IGameView {
+public:
+    virtual void VOnAttach(GameViewId id, std::optional<entt::entity> actorId) = 0;
+    virtual void VOnUpdate(float dt) = 0;   // input + view-local state, never rendering
+    virtual void VOnRender(float dt) = 0;   // rendering only
+    virtual GameViewType VGetType() const = 0;
+};
+
+class BaseGameLogic {
+public:
+    BaseGameLogic(entt::registry& registry, EventManager& events, ProcessManager& processes,
+                  LevelLoader& levelLoader);   // takes what it needs, owns none of it (§§1-2, §7)
+    GameViewId AttachView(std::unique_ptr<IGameView> view,
+                          std::optional<entt::entity> actorId = std::nullopt);
+    virtual void VLoadLevel(const std::string& levelPath);   // Loading -> Running via §7's LevelLoader
+    void VOnUpdate(float dt);   // ticks every attached view's VOnUpdate -- never VOnRender
+};
+```
+
+Dropped from the book's `IGameView`/`GameCodeApp`, with no raylib/OpenGL/Win32 analogue at this
+project's scope: `VOnRestore()` (DirectX device-loss recovery), `VOnMsgProc(AppMsg)` (raylib
+already hands out polled input directly — `HumanView::VOnUpdate` calls `IsKeyDown`/etc. itself, no
+message-queue translation layer), and the book's fuller `MainMenu`/`WaitingForPlayers`/... state
+machine (`screens.h`'s `GameScreen` enum already answers "what screen"; `BaseGameLogic`'s own
+state only needs to cover the `GAMEPLAY` screen's inner simulation: `Loading`/`Running`/`Paused`).
+
+**Who drives it**: not `Engine` (stays Ch. 5-only, ADR-0001 Decision 2 unchanged) — a small
+`extern "C"` bridge (`src/app/gameplay_bridge.h`/`.cpp`) that `screen_gameplay.c` calls into,
+holding `BaseGameLogic`/`HumanView` as file-local statics across separate
+`Init`/`Update`/`Draw`/`Unload` calls, the same pattern `raylib_game.cpp` already uses for
+screen-transition state. `Engine::Current()` (new, `src/app/engine.h`/`.cpp` — not anticipated by
+the ADR's own sketch) is how the bridge reaches `Engine`'s `registry_`/`eventManager_`/
+`processManager_` to construct one: a static accessor backed by the same de facto singleton the
+`Run()` emscripten trampoline already relied on internally.
+
+**Current state**: `IGameView`, `BaseGameLogic`, `HumanView` all exist and are wired into
+`screen_gameplay.c` via `gameplay_bridge.cpp`. `BaseGameLogic` gained `Pause()`/`Resume()` beyond
+the ADR's own sketch (freezes attached views' `VOnUpdate` only; `ProcessManager` keeps running
+regardless). `HumanView` renders every entity with a `WorldTransform` as a placeholder wireframe
+box (no render-component design exists yet — an explicit Open Question) and drives whichever
+entity it's attached to via hardcoded arrow-key movement (no input/action-mapping layer exists
+either — also an explicit Open Question). `RemoteView`/`AIView` are named in `GameViewType` but
+not implemented, exactly as decided. Verified end-to-end under `xvfb-run`: `Engine::Init` →
+`GameplayBridge_Init` (loads `assets/levels/level_01.yaml`, spawns one entity) → several
+`Update`/`Draw` cycles → `GameplayBridge_Unload` → `Engine::Shutdown`, no crash.
 
 ## Decisions Made
 

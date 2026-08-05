@@ -44,6 +44,16 @@ public:
     // Unwinds exactly what Init() set up, in reverse.
     void Shutdown();
 
+    // The one running Engine, or nullptr before Init()/after Shutdown(). ADR-0010 left "how does
+    // the screen_gameplay.c bridge reach Engine's registry/events/processes" as sketched
+    // informally, not fully specified; this is that answer -- backed by the same de facto
+    // singleton (engine.cpp's g_runningEngine) Run()'s emscripten trampoline already relies on,
+    // just exposed as a proper accessor instead of staying file-local. Only ever one Engine at a
+    // time (Init() is called once, from main()), so this doesn't reopen ADR-0003's "not a
+    // singleton, just a de facto one" framing -- it's the same fact, made reachable from outside
+    // engine.cpp.
+    static Engine *Current();
+
     const EngineConfig &Config() const { return config_; }
 
     entt::registry &Registry() { return registry_; }

@@ -1,0 +1,11 @@
+# First real level file wired into the product (docs/adr/0010, via LevelLoader per docs/adr/0009).
+# "resource" paths are relative to the working directory the binary runs from, matching the same
+# convention Engine::Init() already uses for font/sound ("resources/characters/mecha.png") --
+# assets/ is staged into resources/ at build time (src/Makefile's `resources` target), not read
+# directly from assets/ at runtime.
+actors:
+  - resource: resources/entities/player.yaml
+    position:
+      x: 0
+      y: 0
+      z: 0

@@ -1,0 +1,8 @@
+# First real entity definition file wired into the product (docs/adr/0010). Block style only --
+# this project's mini-yaml checkout doesn't parse flow-style maps/sequences (see
+# entity_file_parser_yaml.cpp's header comment, docs/adr/0008's Implementation status note).
+components:
+  Position:
+    x: 0
+    y: 0
+    z: 0
