@@ -52,6 +52,15 @@ its `IScreenElement` seam:
   body" `app/` has any other consumer for. That's `ADR-0012`'s (still-`Proposed`) job to design
   once a second game actually needs its own movement scheme too, not something to guess ahead of
   from one data point.
+- **`app/scene_renderer.h`** (new): `DrawBoxRenderables(entt::registry&)` — a generic, header-only
+  free function that draws every `BoxRenderable` entity at its already-computed `WorldTransform`
+  (ADR-0002's scene graph). Pulled out of `FpsScene::VOnRender`'s own hand-rolled loop specifically
+  so the scene-graph-driven part of rendering isn't duplicated per view — any `HumanView`-family
+  view can call it from inside its own `BeginMode3D`/`EndMode3D` block (which `Camera3D` is active,
+  and how a view stores one, stays the caller's problem — `game/sandbox` keeps a plain member,
+  `game/camera_fps` keeps one on `FirstPersonCameraRig`, and this function doesn't need to care).
+  `game/sandbox`'s `GameplayScene` doesn't call it yet (its player entity has no `BoxRenderable`),
+  but nothing would stop it from adopting the exact same call once it does.
 - The floor tiles and the sun stay procedural, drawn directly in `FpsScene::VOnRender` — scene
   dressing, not placed objects, the same category `game/sandbox`'s own `DrawGrid()` call already
   sits in outside the ECS.
@@ -93,9 +102,9 @@ second-data-point signal ADR-0015 said to wait for, so:
   emplace, which is simulation state the game logic owns). `UpdateBody`/`UpdateCameraFPS` became
   free functions taking components by reference instead of view methods — they no longer need
   `this` for anything. Three `IScreenElement`s pushed in the constructor: `FpsScene` (the 3D pass —
-  floor/sun procedural, every `BoxRenderable` entity drawn from its `WorldTransform`, camera
+  floor/sun procedural, towers drawn via `app/scene_renderer.h`'s `DrawBoxRenderables`, camera
   re-fetched from `FirstPersonCameraRig` every call — see below), `FpsHud` (the "Camera controls:"
-  info box + live velocity readout, reading `PlayerBody.velocity`), and `DebugOverlayElement`
+  info box + live velocity readout, reading `PlayerBody.velocity`), and `DebugOverlayScreenElement`
   (next bullet).
 
   **Nothing may cache a pointer into an ECS component across frames** — entt can relocate a
@@ -104,15 +113,18 @@ second-data-point signal ADR-0015 said to wait for, so:
   stable view member); now that it's component data, `FpsScene`/`CameraFpsView` re-fetch
   `FirstPersonCameraRig` via `registry.try_get<...>(actor)` inside every call instead. Verified via
   the same headless smoke test (several hundred frames, no crash), not just asserted in a comment.
-- **`DebugOverlay` (F3 HUD) as a fourth `IScreenElement`, `camera_fps`-only.** [ADR-0016](0016-screen-element-stack.md)
-  deliberately keeps `DebugOverlay` *outside* any `HumanView`'s stack, because `game/sandbox`'s
-  overlay must survive `LOGO`/`TITLE`/`OPTIONS`/`ENDING` — screens where no `HumanView` exists yet
-  — so folding it into one view's stack there would regress it. That reasoning doesn't transfer to
-  `camera_fps`: there's exactly one view, alive for the game's entire run, so there's no screen
-  where folding it in would lose coverage. `game/camera_fps/main.cpp`'s `UpdateDrawFrame` no longer
-  calls `UpdateDebugOverlay`/`DrawDebugOverlay` at all — `game/sandbox/main.cpp` still does, and
-  ADR-0016's reasoning for that stays correct and unchanged there. Not a reversal of that ADR, a
-  narrower case it didn't need to cover.
+- **`app/debug_overlay_screen_element.h`** (new): `DebugOverlayScreenElement`, a header-only
+  `IScreenElement` wrapping `DebugOverlay` (F3 HUD) — promoted to `app/` rather than left as a
+  `camera_fps`-local class, since wrapping an already-generic system is itself generic; any future
+  single-view game can reuse it as-is. [ADR-0016](0016-screen-element-stack.md) still deliberately
+  keeps `DebugOverlay` *outside* `game/sandbox`'s own `HumanView` stack, because sandbox's overlay
+  must survive `LOGO`/`TITLE`/`OPTIONS`/`ENDING` — screens where no `HumanView` exists yet — so
+  folding it in there would regress it. That reasoning doesn't transfer to `camera_fps`: there's
+  exactly one view, alive for the game's entire run, so there's no screen where folding it in would
+  lose coverage. `game/camera_fps/main.cpp`'s `UpdateDrawFrame` doesn't reference `DebugOverlay` at
+  all anymore — `game/sandbox/main.cpp` still calls `UpdateDebugOverlay`/`DrawDebugOverlay`
+  directly, and ADR-0016's reasoning for that stays correct and unchanged there. Not a reversal of
+  that ADR, a narrower case (and now a reusable header) it didn't need to cover.
 - **`game/camera_fps/main.cpp`**: no `screens.h`-style multi-screen state machine — the original
   example has none either, and sandbox's Logo/Title/Options/Ending machinery is sandbox content,
   not part of the pattern being reused. `Engine::Init`/`DisableCursor`, then the same
@@ -184,13 +196,14 @@ the shipped product (`sandbox`), not every module in-tree.
 
 ## What actually shipped, alongside this ADR
 
-Implemented in the same change: `app/human_view_base.h`/`.cpp`, `app/render_components.h` (new);
-`app/base_game_logic.h`/`.cpp`'s `VLoadLevel` return-type change plus a new test case; `game/sandbox/
-human_view.h`/`.cpp` (refactored onto `HumanViewBase`) and `screen_gameplay.cpp` (updated to
-`VLoadLevel`'s returned entity list) — both pure refactors, no behavior change; `game/camera_fps/
-human_view.h`/`.cpp`, `main.cpp`, `components.h` (new, including `FirstPersonCameraRig` and the
-`DebugOverlayElement`); `assets/levels/camera_fps.yaml`, `assets/entities/tower.yaml` (new); the
-`GAME` Makefile variable and `build.sh` passthrough; the `ci_sanity.yml` second build step.
+Implemented in the same change: `app/human_view_base.h`/`.cpp`, `app/render_components.h`,
+`app/scene_renderer.h`, `app/debug_overlay_screen_element.h` (all new); `app/base_game_logic.h`/
+`.cpp`'s `VLoadLevel` return-type change plus a new test case; `game/sandbox/human_view.h`/`.cpp`
+(refactored onto `HumanViewBase`) and `screen_gameplay.cpp` (updated to `VLoadLevel`'s returned
+entity list) — both pure refactors, no behavior change; `game/camera_fps/human_view.h`/`.cpp`,
+`main.cpp`, `components.h` (new, including `FirstPersonCameraRig`); `assets/levels/camera_fps.yaml`,
+`assets/entities/tower.yaml` (new); the `GAME` Makefile variable and `build.sh` passthrough; the
+`ci_sanity.yml` second build step.
 Verified via: `make ... GAME=sandbox` and `make ... GAME=camera_fps` both building clean under
 `-Werror`; the full unit test suite (84/84, including the new `VLoadLevel` coverage) passing; and a
 headless (`xvfb-run`) smoke test of both binaries running several hundred frames each with no crash

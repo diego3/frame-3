@@ -580,13 +580,21 @@ functions taking components by reference. Important gotcha this surfaced: entt c
 component pool's storage on any create/destroy of that same component type, so `FpsScene` (which
 used to hold a `const Camera3D&` safely, back when it was a stable view member) now re-fetches
 `FirstPersonCameraRig` via `registry.try_get<...>(actor)` inside every `VOnRender` call instead of
-caching a pointer across frames. `camera_fps` also folds `DebugOverlay` (F3 HUD) into its own
-element stack as a fourth `IScreenElement` (`DebugOverlayElement`) -- safe there because it has
-exactly one view alive for the whole run, unlike `game/sandbox`, where ADR-0016's reasoning for
+caching a pointer across frames.
+
+Two more pieces got pulled out of `game/camera_fps/human_view.cpp` into `app/`, both because
+wrapping an already-generic thing is itself generic, not because a second game needed them (unlike
+`HumanViewBase` above): `app/scene_renderer.h`'s `DrawBoxRenderables(registry)` -- a free function
+that draws every `BoxRenderable` entity at its already-computed `WorldTransform` (the scene graph's
+own output, ADR-0002), so `FpsScene::VOnRender` doesn't hand-roll that loop itself; any view can
+call it from inside its own `BeginMode3D`/`EndMode3D` (it doesn't touch the camera, which differs
+per game). And `app/debug_overlay_screen_element.h`'s `DebugOverlayScreenElement`, an `IScreenElement`
+wrapping `DebugOverlay` (F3 HUD) -- `camera_fps` folds it into its own stack (safe there because it
+has exactly one view alive for the whole run) unlike `game/sandbox`, where ADR-0016's reasoning for
 keeping `DebugOverlay` *outside* any view's stack (it must survive `LOGO`/`TITLE`/`OPTIONS`/
 `ENDING`, screens with no `HumanView` at all) still applies unchanged -- `game/sandbox/main.cpp`
-still calls `UpdateDebugOverlay`/`DrawDebugOverlay` directly. Still no `GameConfig` for
-`camera_fps` -- this module has no assets to configure.
+still calls `UpdateDebugOverlay`/`DrawDebugOverlay` directly, not through this. Still no
+`GameConfig` for `camera_fps` -- this module has no assets to configure.
 
 Landing a level with more than one entity for the first time also surfaced a real gap:
 `BaseGameLogic::VLoadLevel` used to return `void`, so both games guessed "the player" from

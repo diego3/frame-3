@@ -9,8 +9,8 @@
 #include <raylib.h>
 #include <raymath.h>
 
-#include "app/debug_overlay.h"
-#include "app/render_components.h"
+#include "app/debug_overlay_screen_element.h"
+#include "app/scene_renderer.h"
 #include "app/transform.h"
 #include "components.h"
 
@@ -146,9 +146,9 @@ namespace {
     // First IScreenElement (mirrors game/sandbox/human_view.cpp's GameplayScene): the 3D pass.
     // Holds registry_ + a reference to CameraFpsView's possessedActor_ (stable for the view's
     // whole lifetime, same reasoning FpsHud already used) and re-fetches FirstPersonCameraRig
-    // every VOnRender call -- never caches a pointer into it (see components.h). Draws every
-    // BoxRenderable entity (the 4 towers, per assets/levels/camera_fps.yaml) the same way
-    // GameplayScene draws every WorldTransform entity.
+    // every VOnRender call -- never caches a pointer into it (see components.h). The towers
+    // themselves are drawn by app/scene_renderer.h's DrawBoxRenderables -- a generic, scene-graph-
+    // driven step shared with any other view that wants it, not hand-rolled here.
     class FpsScene : public IScreenElement {
     public:
         FpsScene(entt::registry &registry, const std::optional<entt::entity> &possessedActor)
@@ -163,17 +163,8 @@ namespace {
             if (rig == nullptr) return;
 
             BeginMode3D(rig->camera);
-
             DrawGroundAndSky();
-
-            auto view = registry_.view<WorldTransform, BoxRenderable>();
-            for (auto entity : view) {
-                auto [transform, box] = view.get<WorldTransform, BoxRenderable>(entity);
-                Vector3 position = Vector3Transform(Vector3Zero(), transform.matrix);
-                DrawCubeV(position, box.size, box.color);
-                DrawCubeWiresV(position, box.size, DARKBLUE);
-            }
-
+            DrawBoxRenderables(registry_);
             EndMode3D();
         }
 
@@ -231,33 +222,15 @@ namespace {
         bool visible_ = true;
     };
 
-    // DebugOverlay (F3 HUD) as an IScreenElement here -- unlike game/sandbox, where ADR-0016
-    // deliberately keeps it *outside* HumanView's stack (sandbox's DebugOverlay must survive
-    // LOGO/TITLE/OPTIONS/ENDING, screens where no HumanView exists yet), camera_fps has exactly
-    // one view alive for the game's entire run, so folding it in has no regression to worry about
-    // -- main.cpp no longer needs any DebugOverlay-specific code at all. zOrder_ above FpsHud's so
-    // it draws last/on top, matching the order game/sandbox/main.cpp's own UpdateDrawFrame already
-    // drew it in (HUD, then debug overlay).
-    class DebugOverlayElement : public IScreenElement {
-    public:
-        void VOnUpdate(float dt) override { UpdateDebugOverlay(dt); }
-        void VOnRender(float dt) override { (void)dt; DrawDebugOverlay(); }
-
-        int VGetZOrder() const override { return zOrder_; }
-        void VSetZOrder(int zOrder) override { zOrder_ = zOrder; }
-        bool VIsVisible() const override { return visible_; }
-        void VSetVisible(bool visible) override { visible_ = visible; }
-
-    private:
-        int zOrder_ = 200;
-        bool visible_ = true;
-    };
 }
 
+// DebugOverlayScreenElement's zOrder_ (200, app/debug_overlay_screen_element.h) sits above
+// FpsHud's (100), preserving the draw-last-on-top order game/sandbox/main.cpp's own
+// UpdateDrawFrame already used (HUD, then debug overlay).
 CameraFpsView::CameraFpsView(entt::registry &registry) : registry_(registry) {
     PushElement(std::make_unique<FpsScene>(registry_, possessedActor_));
     PushElement(std::make_unique<FpsHud>(registry_, possessedActor_));
-    PushElement(std::make_unique<DebugOverlayElement>());
+    PushElement(std::make_unique<DebugOverlayScreenElement>());
 }
 
 // Seeds FirstPersonCameraRig onto the newly-possessed actor -- view/presentation setup, so it
