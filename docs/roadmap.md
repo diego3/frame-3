@@ -61,6 +61,15 @@ any code, same as everything above did.
   *events*, not a snapshot of world state); not designed.
 - [ ] **UI/HUD as a system** (the book's `IScreenElement` stack) — what exists today is just the
   raylib template's logo/title/gameplay/ending/options screen state machine, not a real UI system.
+  This is also where a generic `HumanView` base belongs, if one ever gets promoted to `app/`: the
+  book's own `GCC4::HumanView` (`UserInterface/HumanView.h`) is a base class holding exactly this
+  screen-element stack, plus a `VLoadGameDelegate` hook whose default impl pushes the base scene
+  onto it — `TeapotWarsHumanView` (in `TeapotWars/`, not the engine) overrides that hook for its own
+  content. Our `HumanView` ([ADR-0010](adr/0010-base-game-logic-and-igameview.md), living in
+  `game/sandbox/` per [ADR-0014](adr/0014-game-module-boundary-and-template-migration.md)) has no
+  screen-element stack to push onto, so it has nothing generic to leave behind in `app/` yet — it's
+  playing `TeapotWarsHumanView`'s role, not `GCC4::HumanView`'s. Promoting a generic base (with a
+  `VLoadGameDelegate`-style hook) only makes sense once this item actually builds that stack.
 - [ ] **Custom memory manager** — the book has a dedicated chapter; not even discussed here, likely
   correctly deferred (standard allocators are fine until profiling says otherwise) but never
   formally decided.
