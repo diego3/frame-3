@@ -22,16 +22,47 @@ question.
 
 ## Decision
 
-### The example doesn't need `BaseGameLogic`, `EntityFactory`/`LevelLoader`, or `GameConfig`
+### The player and its 4 towers are real actors, loaded like `game/sandbox`'s own level
 
-Its "level" (floor tiles, 4 towers, a red sun) is entirely procedural/hardcoded geometry in one
-`DrawLevel()` function — not entity data. It has no ECS actor at all: the "player" is
-camera-attached state, never itself drawn or possessed via a `LocalTransform`. And it uses no
-textures or sounds. Every one of those `app/` pieces stays exactly as game-agnostic as it already
-was; this module simply doesn't call into three of them, the same way `game/sandbox/` doesn't call
-into `IGamePhysics` (unbuilt) or a network transport (unbuilt). Forcing a YAML level file for 4
-fixed towers, or a `GameConfig` for zero assets, would have added ceremony without reusing
-anything real.
+First pass at this module kept the example's own shape almost entirely intact: the "player" stayed
+camera-attached view state (no ECS actor), and the 4 towers stayed hardcoded draw calls inside one
+`DrawLevel()` function, on the reasoning that none of it was genuinely data. On review, that
+reasoning didn't hold up: the towers are placed objects with a position/size/color exactly like any
+other entity this project spawns, and the player not being a real actor meant `possessedActor_`
+(`HumanViewBase`'s whole reason to exist) went unused by the one view that had just motivated
+promoting it. Revised to actually exercise the engine's data-driven path a second time, not just
+its `IScreenElement` seam:
+
+- **`assets/levels/camera_fps.yaml`** (new): the player (reusing `assets/entities/player.yaml`
+  as-is — schema-identical to what it already was) plus 4 `assets/entities/tower.yaml` actors, each
+  overriding `position` to one of the example's original 4 corners. Loaded through
+  `BaseGameLogic`/`EntityFactory`/`LevelLoader`, the same wiring `game/sandbox/screen_gameplay.cpp`
+  already uses — `game/camera_fps/main.cpp` registers `"Position"` (identical to sandbox's own
+  loader) and a new `"BoxRenderable"` loader.
+- **`app/render_components.h`** (new): `BoxRenderable { Vector3 size; Color color; }` — the first
+  real "how does an entity look" component (ADR-0010's own Open Questions flagged this as
+  undecided). Game-agnostic by nature, so it lives in `app/`, not under `game/camera_fps/` — but
+  not applied to `game/sandbox`'s own `GameplayScene` (still hardcodes 1×1×1 MAROON wireframes for
+  every entity) in this change; revisit that only if sandbox itself needs entity-driven appearance.
+- **`game/camera_fps/components.h`** (new): `PlayerBody { Vector3 velocity, dir; bool isGrounded; }`
+  — the example's file-local `Body` struct, minus `position` (that's the entity's own
+  `LocalTransform`/`WorldTransform`, not duplicated). Kept game-local, not promoted to `app/` like
+  `BoxRenderable` — its fields and the algorithm driving them (gravity, friction, air drag, the
+  acceleration curve) are tuned specifically to this FPS movement scheme, not a generic "physics
+  body" `app/` has any other consumer for. That's `ADR-0012`'s (still-`Proposed`) job to design
+  once a second game actually needs its own movement scheme too, not something to guess ahead of
+  from one data point.
+- The floor tiles and the sun stay procedural, drawn directly in `FpsScene::VOnRender` — scene
+  dressing, not placed objects, the same category `game/sandbox`'s own `DrawGrid()` call already
+  sits in outside the ECS.
+- **`BaseGameLogic::VLoadLevel`'s return type** changed from `void` to `std::vector<entt::entity>`
+  (forwarding `LevelLoader::Load`'s own return value, previously discarded). Needed here because
+  `game/camera_fps.yaml` is the first level in this project with more than one entity, so "the
+  first entity in registry iteration order is the player" (what `game/sandbox` used until now)
+  stops being a safe assumption — the level file's own `actors[]` order is unambiguous regardless
+  of registry/storage iteration order, so callers now take `spawned[0]` directly.
+  `game/sandbox/screen_gameplay.cpp` was updated to the same pattern for consistency (its own
+  comment already flagged this as "revisit once a level has more than one entity" — this is that).
 
 ### What *does* generalize: `HumanViewBase`, promoted out of `game/sandbox/human_view.*` into `app/`
 
@@ -39,33 +70,38 @@ anything real.
 plumbing (`PushElement`/`RemoveElement`, the sorted `VOnRender` dispatch, `VOnAttach` storing
 `id_`/`possessedActor_`) and sandbox-specific control logic (arrow-key box movement reading a
 `LocalTransform`). `game/camera_fps/human_view.h`'s `CameraFpsView` needs exactly the first half —
-same stack mechanics — and a totally different second half (no ECS actor, no
-`ProcessManager`/`ResourceCache<Sound>` dependency, mouse+WASD FPS movement instead of arrow-key
-box nudging). That's precisely the second-data-point signal ADR-0015 said to wait for, so:
+same stack mechanics — and a totally different second half (mouse+WASD FPS movement instead of
+arrow-key box nudging, driving a different set of components). That's precisely the
+second-data-point signal ADR-0015 said to wait for, so:
 
 - **New**: `app/human_view_base.h`/`.cpp` — abstract `HumanViewBase : public IGameView`. Implements
   `VOnAttach`, `VOnRender` (stable-sort by z-order, dispatch to visible elements — unchanged from
   the body `HumanView::VOnRender` had before), `VGetType()`, `PushElement`/`RemoveElement`, and a
   protected `UpdateElements(dt)` helper a subclass's own `VOnUpdate` calls explicitly (so it
   controls ordering against its own input handling — matches what `HumanView::VOnUpdate` already
-  did). Leaves `VOnUpdate` itself pure virtual. `possessedActor_` is a protected member — sandbox's
-  subclass uses it, camera_fps's subclass never sets it.
+  did). Leaves `VOnUpdate` itself pure virtual. `possessedActor_` is a protected member both
+  subclasses now actually use.
 - **`game/sandbox/human_view.h`/`.cpp`**: `HumanView` now `: public HumanViewBase`, keeping only
   `VOnUpdate` and its own `registry_`/`processes_`/`sounds_`/`camera_` members. Pure refactor, no
   behavior change — same `GameplayScene`/`GameplayHud` elements, same movement math, verified via
   the full test suite and a headless smoke test.
-- **`game/camera_fps/human_view.h`/`.cpp`**: `CameraFpsView : public HumanViewBase`, with the
-  example's `Body` struct (as a free `CameraFpsBody`, so the `FpsHud` element can read it),
-  movement constants, and `UpdateBody`/`UpdateCameraFPS` math ported field-for-field into
-  `VOnUpdate`/private helpers. Two `IScreenElement`s pushed in the constructor, mirroring sandbox's
-  split: `FpsScene` (the 3D pass — `BeginMode3D`/`DrawLevel()`/`EndMode3D`) and `FpsHud` (the
-  "Camera controls:" info box + live velocity readout).
+- **`game/camera_fps/human_view.h`/`.cpp`**: `CameraFpsView : public HumanViewBase`, holding only
+  view-local presentation state (`Camera3D`, look-rotation/head-bob easing — the movement math's
+  actual data now lives on the possessed actor's `PlayerBody`/`LocalTransform` components, read/
+  written each frame via `registry_.try_get<...>(*possessedActor_)`, the same pattern sandbox's
+  `HumanView::VOnUpdate` already used for its own possessed actor). `UpdateBody`/`UpdateCameraFPS`
+  math ported field-for-field into private helpers. Two `IScreenElement`s pushed in the
+  constructor, mirroring sandbox's split: `FpsScene` (the 3D pass — floor/sun procedural, every
+  `BoxRenderable` entity drawn from its `WorldTransform`) and `FpsHud` (the "Camera controls:" info
+  box + live velocity readout, now reading the possessed actor's `PlayerBody.velocity`).
 - **`game/camera_fps/main.cpp`**: no `screens.h`-style multi-screen state machine — the original
   example has none either, and sandbox's Logo/Title/Options/Ending machinery is sandbox content,
-  not part of the pattern being reused. `Engine::Init`/`DisableCursor`/construct the view/call
-  `VOnAttach(1, std::nullopt)` directly (no `BaseGameLogic` to do it)/`engine.Run(...)` over a
-  small `UpdateDrawFrame`. Same `UpdateDebugOverlay`/`DrawDebugOverlay` (F3 HUD) wiring sandbox's
-  `main.cpp` has — that's app-global per ADR-0016, not sandbox-specific.
+  not part of the pattern being reused. `Engine::Init`/`DisableCursor`, then the same
+  `EntityFactory`/`LevelLoader`/`BaseGameLogic` wiring `screen_gameplay.cpp` uses to load
+  `camera_fps.yaml` and resolve the player actor, construct the view, `AttachView`, and
+  `engine.Run(...)` over a small `UpdateDrawFrame` that ticks `BaseGameLogic::VOnUpdate` (which
+  ticks the view) and renders. Same `UpdateDebugOverlay`/`DrawDebugOverlay` (F3 HUD) wiring
+  sandbox's `main.cpp` has — that's app-global per ADR-0016, not sandbox-specific.
 
 This is deliberately **not** the rest of what ADR-0015 described (a versioned public API,
 compatibility guarantees, packaging/distribution, external-consumer docs). Nothing here requires
@@ -93,9 +129,19 @@ the shipped product (`sandbox`), not every module in-tree.
 ## Tradeoffs
 
 - **`FpsScene`/`FpsHud` duplicate the shape of `GameplayScene`/`GameplayHud`, not their code.**
-  Both pairs are small (a handful of lines each) and render completely different content — no
-  further extraction was warranted from two data points; revisit only if a third game's element
-  looks the same again.
+  Both pairs are small and render different content — no further extraction was warranted from two
+  data points; revisit only if a third game's element looks the same again.
+- **The floor tiles and sun are still hardcoded**, not entities — deliberately (see Decision): they
+  aren't placed objects, they're a backdrop, same category as `game/sandbox`'s `DrawGrid()`. Worth
+  re-examining only if a future game needs a non-trivial *procedural* floor to also be data-driven,
+  which neither game does today.
+- **`PlayerBody`'s movement algorithm still lives in the view**, not a `BaseGameLogic`-owned system
+  — `CameraFpsView::UpdateBody` reads and writes `PlayerBody`/`LocalTransform` directly each frame.
+  This mirrors the accepted pattern `game/sandbox/human_view.cpp`'s `HumanView::VOnUpdate` already
+  used (a view directly mutating its possessed actor's components), not a regression against
+  anything decided so far — but it's real duplication-of-responsibility with wherever ADR-0012's
+  eventual `IGamePhysics` ends up owning simulation. Left as-is rather than inventing a
+  system/ticking mechanism ahead of that ADR actually being designed.
 - **`camera_fps` has no way to quit back to a menu or exit gracefully** (same as the original
   raylib example — window-close/Esc only). Not a regression against anything this module promised;
   just worth noting it doesn't demonstrate `screens.h`-style transitions, since it deliberately
@@ -112,18 +158,26 @@ the shipped product (`sandbox`), not every module in-tree.
 - [`docs/roadmap.md`](../roadmap.md)'s ADR-0016 entry is updated: the "still deferred, gated on a
   second game/consumer" clause is now resolved, linking here.
 - `.claude/skills/engine-architecture/SKILL.md` §10 updated to mention `HumanViewBase` (`app/`) and
-  `game/camera_fps` as the second concrete `IGameView` consumer.
+  `game/camera_fps` as the second concrete `IGameView` consumer, and its own components/level.
+- `BaseGameLogic::VLoadLevel`'s new return type is a small, backward-compatible signature change
+  (existing callers ignoring the return value still compile) that also fixed a real latent
+  ambiguity in `game/sandbox/screen_gameplay.cpp` once this ADR's level file exposed it — see
+  Decision above.
 
 ## What actually shipped, alongside this ADR
 
-Implemented in the same change: `app/human_view_base.h`/`.cpp` (new), `game/sandbox/human_view.h`/
-`.cpp` (refactored to subclass it, no behavior change), `game/camera_fps/human_view.h`/`.cpp` and
-`game/camera_fps/main.cpp` (new), the `GAME` Makefile variable and `build.sh` passthrough, and the
+Implemented in the same change: `app/human_view_base.h`/`.cpp`, `app/render_components.h` (new);
+`app/base_game_logic.h`/`.cpp`'s `VLoadLevel` return-type change plus a new test case; `game/sandbox/
+human_view.h`/`.cpp` (refactored onto `HumanViewBase`) and `screen_gameplay.cpp` (updated to
+`VLoadLevel`'s returned entity list) — both pure refactors, no behavior change; `game/camera_fps/
+human_view.h`/`.cpp`, `main.cpp`, `components.h` (new); `assets/levels/camera_fps.yaml`,
+`assets/entities/tower.yaml` (new); the `GAME` Makefile variable and `build.sh` passthrough; the
 `ci_sanity.yml` second build step. Verified via: `make ... GAME=sandbox` and `make ...
-GAME=camera_fps` both building clean under `-Werror`; the full unit test suite (83/83) passing
-unmodified; and a headless (`xvfb-run`) smoke test of both binaries running several hundred frames
-each with no crash (sandbox's GAMEPLAY screen reached via a temporary, fully-reverted `main.cpp`
-patch, since no `xdotool` is available in this environment to drive screen transitions).
+GAME=camera_fps` both building clean under `-Werror`; the full unit test suite (84/84, including
+the new `VLoadLevel` coverage) passing; and a headless (`xvfb-run`) smoke test of both binaries
+running several hundred frames each with no crash (sandbox's GAMEPLAY screen reached via a
+temporary, fully-reverted `main.cpp` patch, since no `xdotool` is available in this environment to
+drive screen transitions).
 
 ## References
 

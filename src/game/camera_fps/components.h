@@ -1,0 +1,25 @@
+// FPS body/movement state for the possessed player actor -- ported from the raylib example's
+// file-local `Body` struct (docs/adr/0017) into a real ECS component instead of view-local state,
+// so the player is an actual actor (spawned via LevelLoader, like game/sandbox's) and
+// HumanViewBase's possessedActor_ means something here too. Position itself is NOT duplicated
+// here -- it lives in the entity's own LocalTransform/WorldTransform (app/transform.h), the same
+// spatial component every other entity in this project uses.
+//
+// Kept as a game/camera_fps/-local component, not promoted to app/, unlike BoxRenderable
+// (app/render_components.h): the fields and the algorithm that drives them (gravity, friction,
+// air drag, acceleration curve -- see human_view.cpp) are tuned specifically to this FPS movement
+// scheme, not a generic "physics body" app/ has any other consumer for yet. That's ADR-0012's
+// (still-Proposed) job to design, once a second game actually needs its own movement scheme too --
+// not to guess ahead of it from one data point.
+#ifndef CAMERA_FPS_COMPONENTS_H
+#define CAMERA_FPS_COMPONENTS_H
+
+#include <raylib.h>
+
+struct PlayerBody {
+    Vector3 velocity{0.0f, 0.0f, 0.0f};
+    Vector3 dir{0.0f, 0.0f, 0.0f};
+    bool isGrounded = false;
+};
+
+#endif // CAMERA_FPS_COMPONENTS_H

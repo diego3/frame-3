@@ -16,9 +16,10 @@ void BaseGameLogic::DetachView(GameViewId id) {
     std::erase_if(views_, [id](const std::unique_ptr<IGameView> &view) { return view->GetId() == id; });
 }
 
-void BaseGameLogic::VLoadLevel(const std::string &levelPath) {
-    levelLoader_.Load(registry_, events_, levelPath);
+std::vector<entt::entity> BaseGameLogic::VLoadLevel(const std::string &levelPath) {
+    std::vector<entt::entity> spawned = levelLoader_.Load(registry_, events_, levelPath);
     state_ = GameLogicState::Running;
+    return spawned;
 }
 
 void BaseGameLogic::VOnUpdate(float dt) {

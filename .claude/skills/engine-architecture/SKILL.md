@@ -1,6 +1,6 @@
 ---
 name: engine-architecture
-description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`), and a `ResourceCache<T>` (`src/app/resource_cache.h`, per ADR-0004, backing `Engine::Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader()`); one real component (`LocalTransform`/`WorldTransform`, via a `"Position"` `EntityFactory` loader) and a `BaseGameLogic`/`HumanView` Logic/View split (§9, ADR-0010) exist and are wired into the gameplay screen, and `HumanView` composes an `IScreenElement` stack (§10, ADR-0016) instead of rendering directly; a second concrete game module, `game/camera_fps`, and the `HumanViewBase` (`app/`) it shares with `game/sandbox` landed via ADR-0017, but nothing subscribes to the event manager or attaches a process yet.
+description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`), and a `ResourceCache<T>` (`src/app/resource_cache.h`, per ADR-0004, backing `Engine::Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader()`); a few real components (`LocalTransform`/`WorldTransform` via a `"Position"` `EntityFactory` loader, `BoxRenderable` via `"BoxRenderable"`) and a `BaseGameLogic`/`HumanView` Logic/View split (§9, ADR-0010) exist and are wired into the gameplay screen, and `HumanView` composes an `IScreenElement` stack (§10, ADR-0016) instead of rendering directly; a second concrete game module, `game/camera_fps`, and the `HumanViewBase` (`app/`) it shares with `game/sandbox` landed via ADR-0017, but nothing subscribes to the event manager or attaches a process yet.
 ---
 
 # Engine Architecture (Game Coding Complete Ch. 4, 6-8 — modernized)
@@ -177,12 +177,13 @@ utilities prematurely; a plain data table is enough until it visibly isn't.
 **Current state**: EnTT compiles/links/runs as part of the build, and `Engine::Registry()`
 (`src/app/engine.h`) owns the one `entt::registry` instance. `SpawnEnemy`-style hardcoded factory
 functions still don't exist — but the "small data table read by one generic factory" extension
-mentioned above is now real (§6), and one real component pairing has actually landed through it:
-`"Position"` → `LocalTransform`/`WorldTransform` (§9's `game/sandbox/screen_gameplay.cpp`), the first
-non-test-fake `EntityFactory::RegisterComponentLoader` call in the codebase. `Health`/`EnemyTag`
-and any other component beyond that still don't exist — write one per real need, same discipline
-as always. (The earlier `ecs_smoke_test.cpp` proof-of-build file has been deleted now that
-`Engine` gives EnTT a real, permanent home in the codebase.)
+mentioned above is now real (§6), and a few real component pairings have landed through it:
+`"Position"` → `LocalTransform`/`WorldTransform` (§9's `game/sandbox/screen_gameplay.cpp` and
+`game/camera_fps/main.cpp` both register this loader, identically), and `"BoxRenderable"` →
+`app/render_components.h`'s `BoxRenderable` (§10/ADR-0017, `game/camera_fps` only so far).
+`Health`/`EnemyTag` and any other component beyond that still don't exist — write one per real
+need, same discipline as always. (The earlier `ecs_smoke_test.cpp` proof-of-build file has been
+deleted now that `Engine` gives EnTT a real, permanent home in the codebase.)
 
 ### 4. Resource cache (Ch. 8) — a thin layer over raylib, not a new loader
 
@@ -554,18 +555,36 @@ dropped) -- see ADR-0016's own Tradeoffs.
 
 **`HumanViewBase` and the second game module (ADR-0017)**: `game/camera_fps/` (raylib's own "3d
 camera fps" example) is frame-3's second concrete game module, and its `CameraFpsView` is the
-second `IGameView` to need this stack -- with no ECS actor, no `ProcessManager`/`ResourceCache`
-dependency, and a completely different `VOnUpdate` (WASD+mouse FPS body movement vs. sandbox's
-arrow-key box nudging). That confirmed exactly what ADR-0015 said to wait for a second data point
-before generalizing: `HumanViewBase : public IGameView` now holds the stack plumbing and a
-protected `UpdateElements(dt)` helper a subclass's own `VOnUpdate` calls explicitly; `VOnUpdate`
-itself stays pure virtual. `game/sandbox/human_view.h`'s `HumanView` and
+second `IGameView` to need this stack -- with a completely different `VOnUpdate` (WASD+mouse FPS
+body movement vs. sandbox's arrow-key box nudging). That confirmed exactly what ADR-0015 said to
+wait for a second data point before generalizing: `HumanViewBase : public IGameView` now holds the
+stack plumbing and a protected `UpdateElements(dt)` helper a subclass's own `VOnUpdate` calls
+explicitly; `VOnUpdate` itself stays pure virtual. `game/sandbox/human_view.h`'s `HumanView` and
 `game/camera_fps/human_view.h`'s `CameraFpsView` both subclass it now, keeping only what's actually
-game-specific. `camera_fps` also confirmed `BaseGameLogic`/`EntityFactory`/`LevelLoader`/
-`GameConfig` are genuinely optional per-game, not implicitly required by the `Engine`/`IGameView`
-boundary -- that module's level is hardcoded procedural geometry, not data, and it has no assets to
-configure. The `src/Makefile` gained a `GAME ?= sandbox` build selector (first time two game
-modules needed choosing between) to make this buildable.
+game-specific.
+
+`camera_fps` also uses the same data-driven wiring §6-7 already describe, not a special case: its
+player and 4 towers are real actors, spawned via `BaseGameLogic`/`EntityFactory`/`LevelLoader` off
+`assets/levels/camera_fps.yaml` (reusing `assets/entities/player.yaml`, plus a new
+`assets/entities/tower.yaml`). Two new components came out of this: `PlayerBody` (velocity/dir/
+isGrounded -- `game/camera_fps/components.h`, kept game-local since its tuning is specific to this
+movement scheme, not a generic physics body ADR-0012 hasn't designed yet) and `BoxRenderable`
+(size/color -- `app/render_components.h`, the first real render component, ADR-0010's own Open
+Questions flagged this as undecided; game-agnostic by nature but not yet applied to `game/sandbox`'s
+own hardcoded-cube `GameplayScene`). `CameraFpsView` itself only holds view-local presentation state
+(`Camera3D`, look/head-bob easing) -- the movement math reads/writes the possessed actor's
+`PlayerBody`/`LocalTransform` each frame, the same "view directly mutates its possessed actor's
+components" pattern `game/sandbox/human_view.cpp`'s `HumanView::VOnUpdate` already used. Still no
+`GameConfig` -- this module has no assets to configure.
+
+Landing a level with more than one entity for the first time also surfaced a real gap:
+`BaseGameLogic::VLoadLevel` used to return `void`, so both games guessed "the player" from
+registry-iteration order -- safe only because `game/sandbox`'s level had exactly one entity.
+`VLoadLevel` now returns `std::vector<entt::entity>` (forwarding `LevelLoader::Load`'s own return
+value), so a caller takes `spawned[0]` per the level file's own `actors[]` order instead --
+`game/sandbox/screen_gameplay.cpp` was updated to match. The `src/Makefile` gained a
+`GAME ?= sandbox` build selector (first time two game modules needed choosing between) to make all
+of this buildable.
 
 ## Decisions Made
 

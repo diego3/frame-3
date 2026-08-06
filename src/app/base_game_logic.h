@@ -39,8 +39,12 @@ public:
 
     // Loads levelPath via levelLoader_ (ADR-0009); transitions Loading -> Running once it
     // returns. Virtual so a future game-specific BaseGameLogic subclass can add its own
-    // post-load setup without this class needing to know about it.
-    virtual void VLoadLevel(const std::string &levelPath);
+    // post-load setup without this class needing to know about it. Returns every entity spawned,
+    // in file order (forwarded from LevelLoader::Load) -- lets a caller identify "the player" as
+    // spawned[0] (by the level file's own actors[] ordering) instead of guessing from registry
+    // iteration order once a level has more than one entity (docs/adr/0017, game/camera_fps's
+    // player + towers is the first level that actually needed this).
+    virtual std::vector<entt::entity> VLoadLevel(const std::string &levelPath);
 
     // Ticks every attached view's VOnUpdate, unless Paused (the one piece of "what pausing
     // freezes" this class resolves for itself -- ADR-0010's own Open Questions left the rest,
