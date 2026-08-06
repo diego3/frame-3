@@ -21,7 +21,7 @@
 #
 #**************************************************************************************************
 
-.PHONY: all clean tests test-run
+.PHONY: all clean tests test-run resources check_game
 
 # Define required environment variables
 #------------------------------------------------------------------------------------------------
@@ -442,15 +442,35 @@ endif
 all:
 	$(MAKE) $(MAKEFILE_TARGET)
 
+# Marker tracking which GAME the current $(PROJECT_NAME) binary was actually built for. Without
+# this, switching GAME (e.g. sandbox -> flare_reactor) can silently relink nothing: each GAME's own
+# game/<GAME>/*.o may already be individually up to date (left over from an earlier build of that
+# same GAME), so if $(PROJECT_NAME) itself happens to be newer than every file in the *new* GAME's
+# $(OBJS) list too (e.g. because some *other* GAME was linked more recently), `make` considers
+# $(PROJECT_NAME) already up to date and does nothing -- leaving the *previous* GAME's binary in
+# place with no error or warning. Reproduced for real switching sandbox -> flare_reactor mid-
+# session. check_game (always phony, so its recipe always runs) only rewrites this file -- and
+# therefore only bumps its mtime -- when GAME actually differs from the last build, forcing exactly
+# one extra relink per GAME switch and no relink otherwise.
+GAME_MARKER = $(PROJECT_BUILD_PATH)/.built_game
+check_game:
+	@if [ ! -f $(GAME_MARKER) ] || [ "$$(cat $(GAME_MARKER) 2>/dev/null)" != "$(GAME)" ]; then \
+		echo "$(GAME)" > $(GAME_MARKER); \
+	fi
+
 # Project target defined by PROJECT_NAME
 # NOTE: Linked with $(CXX), not $(CC) -- OBJS includes C++ object files (see
 # PROJECT_SOURCE_FILES_CPP), and linking those requires the C++ standard library, which the C
 # compiler driver doesn't pull in automatically.
-$(PROJECT_NAME): $(OBJS) resources
+$(PROJECT_NAME): $(OBJS) resources $(GAME_MARKER)
 	$(CXX) -o $(PROJECT_BUILD_PATH)/$(PROJECT_NAME)$(EXT) $(OBJS) $(CFLAGS) $(INCLUDE_PATHS) $(LDFLAGS) $(LDLIBS) -D$(PLATFORM)
 
-# Stage game content next to the built executable
-# NOTE: Content now lives at PROJECT_RESOURCES_PATH (../assets by default), outside src/
+$(GAME_MARKER): check_game
+
+# Stage game content next to the built executable (docs/adr's own asset staging note). Always
+# phony -- assets/ can gain/change files (e.g. a new game module's entities/levels) between builds,
+# and cp -r is cheap enough at this project's asset-set size that unconditionally re-syncing every
+# build is simpler than tracking individual asset file staleness.
 resources:
 	@mkdir -p $(PROJECT_BUILD_PATH)/resources
 	@cp -r $(PROJECT_RESOURCES_PATH)/. $(PROJECT_BUILD_PATH)/resources

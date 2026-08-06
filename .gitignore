@@ -78,6 +78,10 @@ compile_commands.json
 # Desktop binary built by the raw Makefile (no file extension on Linux, so *.exe etc. miss it)
 /src/raylib_game
 
+# Marker tracking which GAME the current /src/raylib_game was built for (see src/Makefile's
+# check_game/GAME_MARKER) -- forces a relink when GAME changes between builds.
+/src/.built_game
+
 # Unit test binary built by `make tests` / test.sh (see docs/adr/0006-doctest-for-unit-tests.md)
 /src/tests_runner
 
