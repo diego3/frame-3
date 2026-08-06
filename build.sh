@@ -35,4 +35,9 @@ if [ ! -d "$MINI_YAML_PATH" ]; then
     git -C "$MINI_YAML_PATH" checkout "$MINI_YAML_COMMIT"
 fi
 
-make -C "$SCRIPT_DIR/src" PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE RAYLIB_PATH="$RAYLIB_PATH" ENTT_PATH="$ENTT_PATH" MINI_YAML_PATH="$MINI_YAML_PATH"
+# GAME selects which src/game/<GAME>/ module gets built (docs/adr/0017) -- defaults to sandbox,
+# same as the Makefile's own default; export GAME=camera_fps before calling this script to build
+# the other one instead.
+GAME="${GAME:-sandbox}"
+
+make -C "$SCRIPT_DIR/src" PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE GAME="$GAME" RAYLIB_PATH="$RAYLIB_PATH" ENTT_PATH="$ENTT_PATH" MINI_YAML_PATH="$MINI_YAML_PATH"

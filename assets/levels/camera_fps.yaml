@@ -1,0 +1,34 @@
+# game/camera_fps's level (docs/adr/0017 follow-up): the player actor (reuses the same
+# resources/entities/player.yaml game/sandbox's level_01.yaml already spawns -- schema-identical,
+# just a Position) plus the 4 corner towers, ported from the raylib example's hardcoded
+# towerPos = {16, 16, 16} and its 3 axis-flips. Listed first so VLoadLevel's returned entity list
+# (BaseGameLogic::VLoadLevel) has the player at index 0, unambiguously -- see
+# game/camera_fps/main.cpp. The floor tiles and the sun are scene dressing, not actors -- still
+# drawn procedurally in human_view.cpp's DrawLevel(), same as game/sandbox's own DrawGrid() call
+# staying outside the ECS.
+actors:
+  - resource: resources/entities/player.yaml
+    position:
+      x: 0
+      y: 0
+      z: 0
+  - resource: resources/entities/tower.yaml
+    position:
+      x: 16
+      y: 16
+      z: 16
+  - resource: resources/entities/tower.yaml
+    position:
+      x: -16
+      y: 16
+      z: 16
+  - resource: resources/entities/tower.yaml
+    position:
+      x: -16
+      y: 16
+      z: -16
+  - resource: resources/entities/tower.yaml
+    position:
+      x: 16
+      y: 16
+      z: -16

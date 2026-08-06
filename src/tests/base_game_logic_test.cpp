@@ -56,10 +56,24 @@ namespace {
         "actors:\n"
         "  - resource: entity.yaml\n";
 
+    const std::string kTwoActorLevelYaml =
+        "actors:\n"
+        "  - resource: entity.yaml\n"
+        "    position:\n"
+        "      x: 10\n"
+        "      y: 0\n"
+        "      z: 0\n"
+        "  - resource: entity.yaml\n"
+        "    position:\n"
+        "      x: 20\n"
+        "      y: 0\n"
+        "      z: 0\n";
+
     LevelLoader::FileReader FakeFiles() {
         auto files = std::make_shared<std::unordered_map<std::string, std::string>>(
             std::unordered_map<std::string, std::string>{
                 {"level.yaml", kLevelYaml},
+                {"two-actor-level.yaml", kTwoActorLevelYaml},
                 {"entity.yaml", kEntityYaml},
             });
         return [files](const std::string &path) { return files->at(path); };
@@ -95,6 +109,15 @@ TEST_CASE("VLoadLevel transitions Loading to Running and spawns the level's enti
     auto view = f.registry.view<FakePosition>();
     REQUIRE(view.size() == 1);
     CHECK(view.get<FakePosition>(*view.begin()).x == doctest::Approx(1.0f));
+}
+
+TEST_CASE("VLoadLevel returns spawned entities in the level file's own actors[] order") {
+    Fixture f;
+    std::vector<entt::entity> spawned = f.logic.VLoadLevel("two-actor-level.yaml");
+
+    REQUIRE(spawned.size() == 2);
+    CHECK(f.registry.get<FakePosition>(spawned[0]).x == doctest::Approx(10.0f));
+    CHECK(f.registry.get<FakePosition>(spawned[1]).x == doctest::Approx(20.0f));
 }
 
 TEST_CASE("AttachView calls VOnAttach with an id and the given actorId, then id is reachable via GetId") {

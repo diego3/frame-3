@@ -33,6 +33,13 @@ PROJECT_NAME          ?= raylib_game
 PROJECT_VERSION       ?= 1.0
 PROJECT_BUILD_PATH    ?= .
 
+# Which concrete game module (src/game/<GAME>/) to build -- first needed once a second one
+# (game/camera_fps) existed alongside game/sandbox (docs/adr/0017). Deliberately does NOT change
+# PROJECT_NAME/the output binary name below -- switching GAME just changes what src/raylib_game
+# contains, same as switching branches already did before this existed, so run.sh/.gitignore/
+# README.md's existing assumptions about that path stay valid either way.
+GAME                  ?= sandbox
+
 # Web build artifacts (.html/.js/.wasm/.data) land in build/web/ instead of src/, so
 # `make clean` and .gitignore only have to deal with one build output location
 ifeq ($(PLATFORM),PLATFORM_WEB)
@@ -44,18 +51,18 @@ endif
 # not deleted, as the seam a future genuinely-C game module could still use.
 PROJECT_SOURCE_FILES  ?=
 
-# C++ sources: the game-agnostic app/ engine plus the one concrete game module currently built,
-# game/sandbox/ (docs/adr/0014 -- src/app/ must never name a specific game; src/game/<game-id>/
-# owns its own composition root, screens, and concrete IGameView). entity_file_parser_yaml.cpp
-# (docs/adr/0008) and engine_config.cpp (docs/adr/0011) are here because Engine::Init() now
-# actually calls LoadOrCreateEngineConfig() -> YamlEntityFileParser -> mini-yaml. level_loader.cpp
-# and base_game_logic.cpp (docs/adr/0010) join them for the same reason: game/sandbox/
-# screen_gameplay.cpp's InitGameplayScreen() is the first real caller of BaseGameLogic/
-# LevelLoader/EntityFactory, not just their own unit tests. game/sandbox/human_view.cpp and the
-# rest of game/sandbox/ are the concrete game module itself, not engine code. game/sandbox/
-# game_config.cpp is GameConfig's first real caller (docs/adr/0011) -- main.cpp reads its
-# characterTexturePath/coinSoundPath instead of hardcoding them, the same YamlEntityFileParser/
-# mini-yaml round trip engine_config.cpp already does.
+# C++ sources: the game-agnostic app/ engine (always built, regardless of GAME) plus whichever
+# concrete game module GAME selects (docs/adr/0014 -- src/app/ must never name a specific game;
+# src/game/<game-id>/ owns its own composition root, screens, and concrete IGameView).
+# entity_file_parser_yaml.cpp (docs/adr/0008) and engine_config.cpp (docs/adr/0011) are here
+# because Engine::Init() now actually calls LoadOrCreateEngineConfig() -> YamlEntityFileParser ->
+# mini-yaml. level_loader.cpp and base_game_logic.cpp (docs/adr/0010) join them for the same
+# reason: game/sandbox/screen_gameplay.cpp's InitGameplayScreen() is the first real caller of
+# BaseGameLogic/LevelLoader/EntityFactory, not just their own unit tests -- game/camera_fps
+# doesn't call into either, but they're cheap enough to always link in rather than making them
+# conditional too. app/human_view_base.cpp (docs/adr/0016, promoted out of game/sandbox/human_view
+# in docs/adr/0017) is the generic half of every concrete "human" IGameView -- both game modules
+# below subclass it.
 PROJECT_SOURCE_FILES_CPP ?= \
     app/engine.cpp \
     app/process_manager.cpp \
@@ -64,6 +71,15 @@ PROJECT_SOURCE_FILES_CPP ?= \
     app/engine_config.cpp \
     app/level_loader.cpp \
     app/base_game_logic.cpp \
+    app/human_view_base.cpp
+
+# game/sandbox (docs/adr/0014): the migrated raylib template, with a Logo/Title/Options/Gameplay/
+# Ending screen state machine and data-driven (YAML) level content. game_config.cpp is
+# GameConfig's first real caller (docs/adr/0011) -- main.cpp reads its characterTexturePath/
+# coinSoundPath instead of hardcoding them, the same YamlEntityFileParser/mini-yaml round trip
+# engine_config.cpp already does.
+ifeq ($(GAME),sandbox)
+PROJECT_SOURCE_FILES_CPP += \
     game/sandbox/main.cpp \
     game/sandbox/screen_logo.cpp \
     game/sandbox/screen_title.cpp \
@@ -72,6 +88,19 @@ PROJECT_SOURCE_FILES_CPP ?= \
     game/sandbox/screen_ending.cpp \
     game/sandbox/human_view.cpp \
     game/sandbox/game_config.cpp
+endif
+
+# game/camera_fps (docs/adr/0017): raylib's own examples/core/core_3d_camera_fps.c ported in as
+# the second concrete game module -- a single Engine-driven scene, no screens.h state machine, no
+# GameConfig (no assets to point at). Its level/entities (player + 4 towers) ARE data-driven
+# (assets/levels/camera_fps.yaml). game_logic.cpp's CameraFpsLogic (a real BaseGameLogic subclass)
+# owns the FPS movement simulation; human_view.cpp's CameraFpsView only reads input and renders.
+ifeq ($(GAME),camera_fps)
+PROJECT_SOURCE_FILES_CPP += \
+    game/camera_fps/main.cpp \
+    game/camera_fps/game_logic.cpp \
+    game/camera_fps/human_view.cpp
+endif
 
 # Source location of game content, staged into ./resources before linking (see 'resources' target)
 PROJECT_RESOURCES_PATH ?= ../assets

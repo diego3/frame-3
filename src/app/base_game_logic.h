@@ -39,15 +39,23 @@ public:
 
     // Loads levelPath via levelLoader_ (ADR-0009); transitions Loading -> Running once it
     // returns. Virtual so a future game-specific BaseGameLogic subclass can add its own
-    // post-load setup without this class needing to know about it.
-    virtual void VLoadLevel(const std::string &levelPath);
+    // post-load setup without this class needing to know about it. Returns every entity spawned,
+    // in file order (forwarded from LevelLoader::Load) -- lets a caller identify "the player" as
+    // spawned[0] (by the level file's own actors[] ordering) instead of guessing from registry
+    // iteration order once a level has more than one entity (docs/adr/0017, game/camera_fps's
+    // player + towers is the first level that actually needed this).
+    virtual std::vector<entt::entity> VLoadLevel(const std::string &levelPath);
 
     // Ticks every attached view's VOnUpdate, unless Paused (the one piece of "what pausing
     // freezes" this class resolves for itself -- ADR-0010's own Open Questions left the rest,
     // e.g. whether ProcessManager should also freeze, undecided; Engine ticks ProcessManager
     // independently of BaseGameLogic and this doesn't touch that). Does NOT call VOnRender -- see
     // ADR-0010 Sec 3 for why rendering is deliberately not reachable through BaseGameLogic at all.
-    void VOnUpdate(float dt);
+    // Virtual (docs/adr/0017 follow-up) so a game-specific subclass can run its own simulation step
+    // around this one -- game/camera_fps/game_logic.h's CameraFpsLogic is the first: it advances
+    // physics *then* calls this (via BaseGameLogic::VOnUpdate) to tick views, so a view renders
+    // this frame's already-integrated world state.
+    virtual void VOnUpdate(float dt);
 
     GameLogicState State() const { return state_; }
 

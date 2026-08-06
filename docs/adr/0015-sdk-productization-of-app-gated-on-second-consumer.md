@@ -75,6 +75,14 @@ guessing ahead of time from a single data point.
   ADR would build on, not a reason to build it.
 - When the trigger is met, write the real ADR for versioning/packaging/docs, and link back here for
   the original reasoning.
+- **Trigger met, narrowly** (2026-08-05): [ADR-0017](0017-camera-fps-second-game-module.md) added
+  `game/camera_fps`, a second real consumer of `app/`. What it concretely needed generalized turned
+  out to be small and mechanical — the `IScreenElement` stack plumbing, promoted into a new
+  `app/human_view_base.h`/`.cpp` both game modules now subclass — not evidence that the broader
+  productization this ADR describes (versioned API, packaging, external-consumer docs) is
+  warranted yet. Status stays `Proposed`: this ADR's actual decision (defer that broader work)
+  hasn't changed, only the narrow open question it flagged about a generic `HumanView` base has
+  been answered.
 
 ## References
 
