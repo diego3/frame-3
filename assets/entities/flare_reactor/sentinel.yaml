@@ -1,0 +1,17 @@
+# flare_reactor sentinel (patrolling NPC) entity (docs/rfc/0001-flare-reactor-pipeline-experiment.md).
+# Phase 1: just a wireframe sphere at a fixed spot -- Patrol/SentinelAI (waypoints, FSM, steering,
+# perception of EvtData_BeaconTriggered) land in Phase 5, per the RFC's "Fases propostas".
+components:
+  Position:
+    x: 5
+    y: 0
+    z: 5
+  SentinelTag: true
+  Renderable:
+    shape: sphere
+    color: darkgray
+    wireframe: true
+    size:
+      x: 0.6
+      y: 0.6
+      z: 0.6

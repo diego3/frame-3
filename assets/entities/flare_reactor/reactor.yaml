@@ -1,0 +1,17 @@
+# flare_reactor reactor entity (docs/rfc/0001-flare-reactor-pipeline-experiment.md). Phase 1: just
+# a gray solid box -- the Reactor component (cooldown/active state) and its color-flip-to-red-on-
+# trigger behavior land in a later phase, per the RFC's "Fases propostas".
+components:
+  Position:
+    x: 0
+    y: 0
+    z: 0
+  ReactorTag: true
+  Renderable:
+    shape: box
+    color: gray
+    wireframe: false
+    size:
+      x: 1.5
+      y: 1.5
+      z: 1.5
