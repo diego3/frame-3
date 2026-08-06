@@ -39,10 +39,6 @@ extern Font font;
 extern Music music;
 extern Sound fxCoin;
 
-#ifdef __cplusplus
-extern "C" {            // Prevents name mangling of functions
-#endif
-
 //----------------------------------------------------------------------------------
 // Logo Screen Functions Declaration
 //----------------------------------------------------------------------------------
@@ -87,9 +83,5 @@ void UpdateEndingScreen(void);
 void DrawEndingScreen(void);
 void UnloadEndingScreen(void);
 int FinishEndingScreen(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif // SCREENS_H

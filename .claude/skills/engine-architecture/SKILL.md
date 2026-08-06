@@ -7,8 +7,11 @@ description: Design guidance for frame-3's core systems (event manager, process 
 
 frame-3 is still close to the stock
 [raylib-game-template](https://github.com/raysan5/raylib-game-template), reorganized into
-`src/app/`, `src/game/`, `src/platform/`, with a simple logo/title/gameplay/ending/options screen
-state machine (`src/game/screens.h`, still plain C) driven by `src/app/raylib_game.cpp`. The
+`src/app/` (game-agnostic engine) and `src/game/<game-id>/` (a concrete game; `src/platform/` holds
+shared packaging), per [ADR-0014](../../../docs/adr/0014-game-module-boundary-and-template-migration.md)
+(Accepted). The one game module built so far, `src/game/sandbox/`, is the migrated raylib template
+itself -- now C++, not C -- with a simple logo/title/gameplay/ending/options screen state machine
+(`src/game/sandbox/screens.h`) driven by `src/game/sandbox/main.cpp`. The
 `src/app/` layer: **`Engine`** (`src/app/engine.h`/`.cpp`, Ch. 5 Application layer) owns
 window/audio lifecycle, drives the main loop via a function-pointer callback, owns an
 `entt::registry`, and now also owns and drives §§1-2's systems (`EventManager`, `ProcessManager`)
@@ -173,7 +176,7 @@ utilities prematurely; a plain data table is enough until it visibly isn't.
 (`src/app/engine.h`) owns the one `entt::registry` instance. `SpawnEnemy`-style hardcoded factory
 functions still don't exist — but the "small data table read by one generic factory" extension
 mentioned above is now real (§6), and one real component pairing has actually landed through it:
-`"Position"` → `LocalTransform`/`WorldTransform` (§9's `gameplay_bridge.cpp`), the first
+`"Position"` → `LocalTransform`/`WorldTransform` (§9's `game/sandbox/screen_gameplay.cpp`), the first
 non-test-fake `EntityFactory::RegisterComponentLoader` call in the codebase. `Health`/`EnemyTag`
 and any other component beyond that still don't exist — write one per real need, same discipline
 as always. (The earlier `ecs_smoke_test.cpp` proof-of-build file has been deleted now that
@@ -228,21 +231,26 @@ learning project's early demos; see ADR-0004 for the full comparison and reasoni
 `Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader(vsPath, fsPath)`. `LoadShader` takes two
 file paths, not one, so the `Shader` cache is keyed via `ResourceCacheKeys::Combine()`/`Split()`
 (`resource_cache.h`) rather than a bare path — generic, reusable by any future multi-argument
-loader, not raylib- or `Shader`-specific. `Engine::Init()` loads the shared font and coin sound
-through their caches (`fontHandle_`/`soundHandle_`, kept alive as `Engine` members since
-`screens.h`'s plain-C screen code reads `font`/`fxCoin` as `extern` globals, not through a
-`shared_ptr`); nothing loads a `Model`/`Texture2D`/`Shader` at `Init()` time — those three exist
-for gameplay code to call once it needs to.
+loader, not raylib- or `Shader`-specific. `Engine::Init()` itself loads no asset at all
+([ADR-0014](../../../docs/adr/0014-game-module-boundary-and-template-migration.md) moved that out
+of `Engine` -- which specific font/sound to load is a game concern, not an engine one);
+`game/sandbox/main.cpp` loads the shared font and coin sound through `engine.Fonts()`/
+`engine.Sounds()` itself, right after `engine.Init()` returns, keeping the handles alive as
+`main()` locals for as long as the app runs (`sandbox/screens.h`'s screen code still reads
+`font`/`fxCoin` as plain `extern` globals, not through a `shared_ptr`); nothing loads a
+`Model`/`Texture2D`/`Shader` at `Init()` time — those three exist for gameplay code to call once it
+needs to.
 
 **Handle lifetime is a real hazard, not a theoretical one** — reproduced as an actual `SIGSEGV`
-while implementing this (see ADR-0004's "A real crash this surfaced"): any handle from
-`Models()`/`Textures()`/`GetShader()` **must** be released before `Engine::Shutdown()` runs, or
-its `Unload*` call fires into an already-closed GL/audio context. `fontHandle_`/`soundHandle_`
-don't have this problem because `Engine` holds and releases them itself, in the right order,
-inside `Shutdown()`; nothing plays that role for a handle gameplay code holds. A real component
-now exists (§3, §9) but doesn't hold one of these resource-cache handles (`LocalTransform`/
-`WorldTransform` are plain data, not `Model`/`Texture2D`/`Shader` handles) — once one does,
-whatever clears the `entt::registry` needs to run before `Shutdown()`, not after.
+while implementing this (see ADR-0004's "A real crash this surfaced"): any handle from any of the
+five caches (`Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader()`) **must** be released
+before `Engine::Shutdown()` runs, or its `Unload*` call fires into an already-closed GL/audio
+context. `Engine` itself holds none of these handles (ADR-0014 moved the one former exception,
+font/sound, out to `main()`) — every handle is whichever caller's responsibility to release, on the
+same terms. A real component now exists (§3, §9) but doesn't hold one of these resource-cache
+handles (`LocalTransform`/`WorldTransform` are plain data, not `Model`/`Texture2D`/`Shader`
+handles) — once one does, whatever clears the `entt::registry` needs to run before `Shutdown()`,
+not after.
 
 Not cached: raylib's standalone `LoadMaterials(fileName, &count)` (an out-param array + count,
 not a single `T` — doesn't fit `ResourceCache<T>`'s shape). `Model`'s own bundled materials
@@ -355,7 +363,7 @@ See ADR-0008's Implementation status note.
 exist and are unit-tested against fake components (`src/tests/entity_def_test.cpp`,
 `entity_file_parser_yaml_test.cpp`, `entity_factory_test.cpp`) — composed into a real
 `LevelLoader` (§7), which a real gameplay screen now constructs and calls (§9's
-`gameplay_bridge.cpp`), with one real (non-test-fake) component loader registered:
+`game/sandbox/screen_gameplay.cpp`), with one real (non-test-fake) component loader registered:
 `"Position"` (§3).
 
 ### 7. Level loading (Ch. 6-7, "book's `VLoadGame`") — `LevelLoader`, without a `BaseGameLogic` yet, via ADR-0009
@@ -391,8 +399,9 @@ discipline).
 (`src/app/level_loader.h`/`.cpp`), and `EvtData_EntitySpawned` (`src/app/level_loader.h`) all exist,
 tested against in-memory fake files (`src/tests/level_loader_test.cpp`) via `LevelLoader`'s
 injectable `FileReader`. Now wired into a real gameplay screen — see §9
-([ADR-0010](../../../docs/adr/0010-base-game-logic-and-igameview.md), Accepted): `gameplay_bridge.cpp`
-constructs one and calls `VLoadLevel` on the first real level file (`assets/levels/level_01.yaml`).
+([ADR-0010](../../../docs/adr/0010-base-game-logic-and-igameview.md), Accepted):
+`game/sandbox/screen_gameplay.cpp` constructs one and calls `VLoadLevel` on the first real level
+file (`assets/levels/level_01.yaml`).
 
 ### 8. Engine/game config (Ch. 5) — two-tier, writable, via ADR-0011
 
@@ -401,7 +410,7 @@ same boundary ADR-0001 Decision 2 already drew: `Engine` owns exactly the parame
 takes/uses, a specific game owns whatever it needs beyond that:
 
 ```cpp
-// Sketch — matches src/app/engine_config.h/.cpp, src/game/game_config.h.
+// Sketch — matches src/app/engine_config.h/.cpp, src/game/sandbox/game_config.h.
 struct EngineConfig {
     int screenWidth = 800, screenHeight = 450;
     bool fullscreen = false;
@@ -410,7 +419,7 @@ struct EngineConfig {
 };
 EngineConfig LoadOrCreateEngineConfig(const std::string& path = "config/engine.yaml");
 
-struct GameConfig { /* nothing yet -- add fields as a specific game needs them */ };
+struct GameConfig { std::string characterTexturePath, coinSoundPath; /* add more as needed */ };
 GameConfig LoadOrCreateGameConfig(const std::string& path = "config/game.yaml");
 ```
 
@@ -422,9 +431,12 @@ its packaged resource bundle (§4's read-only, version-controlled content root).
 
 **Current state**: `Engine::Init()` takes an `EngineConfig` (not raw `screenWidth`/`screenHeight`
 ints); `Engine::Run()` uses `config.targetFps` for `SetTargetFPS`/`emscripten_set_main_loop`'s rate
-argument and the frame-budget-SLO warning threshold. `raylib_game.cpp`'s `main()` calls
+argument and the frame-budget-SLO warning threshold. `game/sandbox/main.cpp`'s `main()` calls
 `engine.Init(LoadOrCreateEngineConfig(), title)`. `fullscreen`/`masterVolume` are loaded/saved but
-not yet applied to real window/audio state. `GameConfig` has no caller anywhere yet, as decided.
+not yet applied to real window/audio state. `GameConfig` got its first real fields and caller
+(docs/adr/0014): `characterTexturePath`/`coinSoundPath`, read by `game/sandbox/main.cpp` right
+after `engine.Init()` returns and passed to `engine.Fonts()`/`engine.Sounds()` instead of
+hardcoding the paths there.
 
 ### 9. Logic/View split (Ch. 9-10) — `BaseGameLogic` + `IGameView`, via ADR-0010
 
@@ -436,8 +448,9 @@ next-planned work and retrofitting the seam after any get built independently co
 building it once now:
 
 ```cpp
-// Sketch — matches src/app/game_view.h, base_game_logic.h/.cpp, human_view.h/.cpp; adjust here if
-// those files' shape changes.
+// Sketch — matches src/app/game_view.h, base_game_logic.h/.cpp (game-agnostic, per ADR-0014);
+// src/game/sandbox/human_view.h/.cpp (concrete, game-layer). Adjust here if those files' shape
+// changes.
 enum class GameViewType { Human, Remote, AI, Other };
 using GameViewId = std::uint32_t;
 
@@ -467,25 +480,33 @@ message-queue translation layer), and the book's fuller `MainMenu`/`WaitingForPl
 machine (`screens.h`'s `GameScreen` enum already answers "what screen"; `BaseGameLogic`'s own
 state only needs to cover the `GAMEPLAY` screen's inner simulation: `Loading`/`Running`/`Paused`).
 
-**Who drives it**: not `Engine` (stays Ch. 5-only, ADR-0001 Decision 2 unchanged) — a small
-`extern "C"` bridge (`src/app/gameplay_bridge.h`/`.cpp`) that `screen_gameplay.c` calls into,
-holding `BaseGameLogic`/`HumanView` as file-local statics across separate
-`Init`/`Update`/`Draw`/`Unload` calls, the same pattern `raylib_game.cpp` already uses for
-screen-transition state. `Engine::Current()` (new, `src/app/engine.h`/`.cpp` — not anticipated by
-the ADR's own sketch) is how the bridge reaches `Engine`'s `registry_`/`eventManager_`/
-`processManager_` to construct one: a static accessor backed by the same de facto singleton the
-`Run()` emscripten trampoline already relied on internally.
+**Who drives it**: not `Engine` (stays Ch. 5-only, ADR-0001 Decision 2 unchanged) —
+`game/sandbox/screen_gameplay.cpp` itself, holding `BaseGameLogic`/`HumanView` as file-local
+statics across separate `Init`/`Update`/`Draw`/`Unload` calls, the same pattern `main.cpp` already
+uses for screen-transition state. This used to go through a small `extern "C"` bridge
+(`gameplay_bridge.h`/`.cpp`) while the screen was still plain C; [ADR-0014](../../../docs/adr/0014-game-module-boundary-and-template-migration.md)
+removed that indirection once the screen itself became a real C++ translation unit —
+`BaseGameLogic`/`HumanView` are reachable directly, no bridge needed. `Engine::Current()`
+(`src/app/engine.h`/`.cpp` — not anticipated by ADR-0010's own sketch) is how the screen reaches
+`Engine`'s `registry_`/`eventManager_`/`processManager_` to construct one: a static accessor backed
+by the same de facto singleton the `Run()` emscripten trampoline already relied on internally.
 
-**Current state**: `IGameView`, `BaseGameLogic`, `HumanView` all exist and are wired into
-`screen_gameplay.c` via `gameplay_bridge.cpp`. `BaseGameLogic` gained `Pause()`/`Resume()` beyond
-the ADR's own sketch (freezes attached views' `VOnUpdate` only; `ProcessManager` keeps running
-regardless). `HumanView` renders every entity with a `WorldTransform` as a placeholder wireframe
-box (no render-component design exists yet — an explicit Open Question) and drives whichever
-entity it's attached to via hardcoded arrow-key movement (no input/action-mapping layer exists
-either — also an explicit Open Question). `RemoteView`/`AIView` are named in `GameViewType` but
-not implemented, exactly as decided. Verified end-to-end under `xvfb-run`: `Engine::Init` →
-`GameplayBridge_Init` (loads `assets/levels/level_01.yaml`, spawns one entity) → several
-`Update`/`Draw` cycles → `GameplayBridge_Unload` → `Engine::Shutdown`, no crash.
+**Current state**: `IGameView`, `BaseGameLogic` (`src/app/`), `HumanView` (`src/game/sandbox/`) all
+exist and are wired directly into `game/sandbox/screen_gameplay.cpp` (no separate bridge file,
+per ADR-0014). `BaseGameLogic` gained `Pause()`/`Resume()` beyond the ADR's own sketch (freezes
+attached views' `VOnUpdate` only; `ProcessManager` keeps running regardless). `HumanView` renders
+every entity with a `WorldTransform` as a placeholder wireframe box (no render-component design
+exists yet — an explicit Open Question) and drives whichever entity it's attached to via hardcoded
+arrow-key movement (no input/action-mapping layer exists either — also an explicit Open Question).
+`HumanView` also now takes a `ProcessManager&`/`ResourceCache<Sound>&` in its constructor -- the
+"human" half of `GCC4::HumanView`'s own dependencies (`UserInterface/HumanView.h`:
+`m_pProcessManager`, `InitAudio()`) -- held, same as `BaseGameLogic::processes_` already is, not
+yet called into; no view-level process or sound-on-event exists to attach/play yet (roadmap's
+"UI/HUD as a system" item covers the screen-element stack that pattern actually needs). `RemoteView`/
+`AIView` are named in `GameViewType` but not implemented, exactly as decided. Verified
+end-to-end under `xvfb-run`: `Engine::Init` → `InitGameplayScreen` (loads
+`assets/levels/level_01.yaml`, spawns one entity) → several `Update`/`Draw` cycles →
+`UnloadGameplayScreen` → `Engine::Shutdown`, no crash.
 
 ## Decisions Made
 

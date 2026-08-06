@@ -22,10 +22,11 @@ public:
     // below (fontCache_ etc.) can't express, so it's built in the constructor body instead.
     Engine();
 
-    // Opens the window (sized per config.screenWidth/screenHeight, ADR-0011), initializes the
-    // audio device, and loads the resources shared across all screens (font, fxCoin -- see
-    // screens.h) through fontCache_/soundCache_ (Ch. 8, ADR-0004). Returns false if window
-    // creation failed. config.fullscreen/masterVolume are stored (Config()) but not yet applied
+    // Opens the window (sized per config.screenWidth/screenHeight, ADR-0011) and initializes the
+    // audio device. Returns false if window creation failed. Deliberately does NOT load any game
+    // asset (font, sound, ...) itself -- that's a game concern, not an engine one (ADR-0014); the
+    // caller loads whatever it needs afterward, through Fonts()/Sounds()/Models()/Textures()/
+    // GetShader() below. config.fullscreen/masterVolume are stored (Config()) but not yet applied
     // to real window/audio state -- ADR-0011 only decided the config file's read/write round
     // trip, not wiring every field into behavior; revisit once a concrete need shows up.
     bool Init(const EngineConfig &config, const char *title);
@@ -45,11 +46,11 @@ public:
     void Shutdown();
 
     // The one running Engine, or nullptr before Init()/after Shutdown(). ADR-0010 left "how does
-    // the screen_gameplay.c bridge reach Engine's registry/events/processes" as sketched
-    // informally, not fully specified; this is that answer -- backed by the same de facto
-    // singleton (engine.cpp's g_runningEngine) Run()'s emscripten trampoline already relies on,
-    // just exposed as a proper accessor instead of staying file-local. Only ever one Engine at a
-    // time (Init() is called once, from main()), so this doesn't reopen ADR-0003's "not a
+    // a game's gameplay screen reach Engine's registry/events/processes" as sketched informally,
+    // not fully specified; this is that answer -- backed by the same de facto singleton
+    // (engine.cpp's g_runningEngine) Run()'s emscripten trampoline already relies on, just exposed
+    // as a proper accessor instead of staying file-local. Only ever one Engine at a time (Init() is
+    // called once, from the game module's own main()), so this doesn't reopen ADR-0003's "not a
     // singleton, just a de facto one" framing -- it's the same fact, made reachable from outside
     // engine.cpp.
     static Engine *Current();
@@ -62,16 +63,17 @@ public:
     ResourceCache<Font> &Fonts() { return fontCache_; }
     ResourceCache<Sound> &Sounds() { return soundCache_; }
 
-    // WARNING: every handle GetHandle() on these two returns (directly, or via GetShader() below)
-    // MUST be released -- reset(), go out of scope, or have its owning entity/component destroyed
-    // -- before Shutdown() runs. Shutdown() closes the GL/audio context these resources' Unload*
-    // calls need; a handle that outlives Shutdown() calls UnloadModel/UnloadTexture/UnloadShader
-    // into an already-closed context when it's finally released, which is UB (reproduced as a
-    // real SIGSEGV in rlUnloadShaderProgram while implementing this -- see ADR-0004's "What
-    // actually shipped" section). fontHandle_/soundHandle_ below don't have this problem because
-    // Engine holds and releases them itself, in the right order, inside Shutdown(); nothing plays
-    // that role for whatever holds a Models()/Textures()/GetShader() handle, because that's
-    // whichever gameplay code calls them, not Engine.
+    // WARNING: every handle GetHandle() on any of the five caches below (Fonts()/Sounds() here,
+    // Models()/Textures() below, or via GetShader()) MUST be released -- reset(), go out of scope,
+    // or have its owning entity/component destroyed -- before Shutdown() runs. Shutdown() closes
+    // the GL/audio context these resources' Unload* calls need; a handle that outlives Shutdown()
+    // calls UnloadFont/UnloadSound/UnloadModel/UnloadTexture/UnloadShader into an already-closed
+    // context when it's finally released, which is UB (reproduced as a real SIGSEGV in
+    // rlUnloadShaderProgram while implementing this -- see ADR-0004's "What actually shipped"
+    // section). Engine holds none of these itself (ADR-0014 moved the one exception -- font/sound
+    // handles kept alive for the app's whole lifetime -- out to the game's own main(), which is
+    // this project's only caller that actually needs that "whole lifetime" shape); every handle is
+    // whichever caller's responsibility to release, on the same terms.
     ResourceCache<Model> &Models() { return modelCache_; }
     ResourceCache<Texture2D> &Textures() { return textureCache_; }
 
@@ -98,14 +100,6 @@ private:
     ResourceCache<Texture2D> textureCache_{LoadTexture, UnloadTexture};
     // Built in Engine's constructor (engine.cpp) -- see the Engine() comment above.
     ResourceCache<Shader> shaderCache_;
-
-    // Keep Init()'s handles into fontCache_/soundCache_ alive for as long as Engine itself is
-    // (font/fxCoin -- see screens.h -- are used everywhere, for the app's whole lifetime). Reset
-    // in Shutdown(), *before* CloseAudioDevice()/CloseWindow() run, so UnloadFont/UnloadSound
-    // (called by these handles' own deleters, per ResourceCache) never fire after the GL/audio
-    // context they need is already gone -- see Shutdown()'s comment for why the order matters.
-    std::shared_ptr<Font> fontHandle_;
-    std::shared_ptr<Sound> soundHandle_;
 };
 
 #endif // ENGINE_H
