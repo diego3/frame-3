@@ -14,10 +14,18 @@
 #include <raylib.h>
 
 #include "app/game_view.h"
+#include "app/process_manager.h"
+#include "app/resource_cache.h"
 
 class HumanView : public IGameView {
 public:
-    explicit HumanView(entt::registry &registry);
+    // processes/sounds: the "human" half of GCC4::HumanView's own dependencies (UserInterface/
+    // HumanView.h -- m_pProcessManager "strictly for things like button animations, etc.",
+    // InitAudio()) -- held the same way BaseGameLogic already holds a ProcessManager& it doesn't
+    // call into yet (base_game_logic.h/.cpp): the seam a human-facing view needs (camera easing,
+    // UI-timed effects, sound playback tied to view-level events) once one of those becomes a
+    // concrete need, not before.
+    HumanView(entt::registry &registry, ProcessManager &processes, ResourceCache<Sound> &sounds);
 
     void VOnAttach(GameViewId id, std::optional<entt::entity> actorId) override;
     void VOnUpdate(float dt) override;
@@ -26,6 +34,8 @@ public:
 
 private:
     entt::registry &registry_;
+    ProcessManager &processes_;
+    ResourceCache<Sound> &sounds_;
     std::optional<entt::entity> possessedActor_;
     Camera3D camera_;
 };

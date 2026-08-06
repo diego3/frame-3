@@ -419,7 +419,7 @@ struct EngineConfig {
 };
 EngineConfig LoadOrCreateEngineConfig(const std::string& path = "config/engine.yaml");
 
-struct GameConfig { /* nothing yet -- add fields as a specific game needs them */ };
+struct GameConfig { std::string characterTexturePath, coinSoundPath; /* add more as needed */ };
 GameConfig LoadOrCreateGameConfig(const std::string& path = "config/game.yaml");
 ```
 
@@ -433,7 +433,10 @@ its packaged resource bundle (§4's read-only, version-controlled content root).
 ints); `Engine::Run()` uses `config.targetFps` for `SetTargetFPS`/`emscripten_set_main_loop`'s rate
 argument and the frame-budget-SLO warning threshold. `game/sandbox/main.cpp`'s `main()` calls
 `engine.Init(LoadOrCreateEngineConfig(), title)`. `fullscreen`/`masterVolume` are loaded/saved but
-not yet applied to real window/audio state. `GameConfig` has no caller anywhere yet, as decided.
+not yet applied to real window/audio state. `GameConfig` got its first real fields and caller
+(docs/adr/0014): `characterTexturePath`/`coinSoundPath`, read by `game/sandbox/main.cpp` right
+after `engine.Init()` returns and passed to `engine.Fonts()`/`engine.Sounds()` instead of
+hardcoding the paths there.
 
 ### 9. Logic/View split (Ch. 9-10) — `BaseGameLogic` + `IGameView`, via ADR-0010
 
@@ -495,7 +498,12 @@ attached views' `VOnUpdate` only; `ProcessManager` keeps running regardless). `H
 every entity with a `WorldTransform` as a placeholder wireframe box (no render-component design
 exists yet — an explicit Open Question) and drives whichever entity it's attached to via hardcoded
 arrow-key movement (no input/action-mapping layer exists either — also an explicit Open Question).
-`RemoteView`/`AIView` are named in `GameViewType` but not implemented, exactly as decided. Verified
+`HumanView` also now takes a `ProcessManager&`/`ResourceCache<Sound>&` in its constructor -- the
+"human" half of `GCC4::HumanView`'s own dependencies (`UserInterface/HumanView.h`:
+`m_pProcessManager`, `InitAudio()`) -- held, same as `BaseGameLogic::processes_` already is, not
+yet called into; no view-level process or sound-on-event exists to attach/play yet (roadmap's
+"UI/HUD as a system" item covers the screen-element stack that pattern actually needs). `RemoteView`/
+`AIView` are named in `GameViewType` but not implemented, exactly as decided. Verified
 end-to-end under `xvfb-run`: `Engine::Init` → `InitGameplayScreen` (loads
 `assets/levels/level_01.yaml`, spawns one entity) → several `Update`/`Draw` cycles →
 `UnloadGameplayScreen` → `Engine::Shutdown`, no crash.

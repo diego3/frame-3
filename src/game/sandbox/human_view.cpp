@@ -11,7 +11,8 @@ namespace {
     constexpr float kMoveUnitsPerSecond = 4.0f;
 }
 
-HumanView::HumanView(entt::registry &registry) : registry_(registry) {
+HumanView::HumanView(entt::registry &registry, ProcessManager &processes, ResourceCache<Sound> &sounds)
+    : registry_(registry), processes_(processes), sounds_(sounds) {
     camera_.position = Vector3{0.0f, 10.0f, 10.0f};
     camera_.target = Vector3{0.0f, 0.0f, 0.0f};
     camera_.up = Vector3{0.0f, 1.0f, 0.0f};

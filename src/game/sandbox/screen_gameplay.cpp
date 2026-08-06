@@ -98,7 +98,7 @@ void InitGameplayScreen(void)
     // having run first), so this is a safe reordering, not a workaround for a real constraint.
     g_logic->VLoadLevel("resources/levels/level_01.yaml");
 
-    auto humanView = std::make_unique<HumanView>(engine->Registry());
+    auto humanView = std::make_unique<HumanView>(engine->Registry(), engine->Processes(), engine->Sounds());
     g_humanView = humanView.get();
 
     // First entity in the registry stands in for "the player" until a real PlayerTag/possession

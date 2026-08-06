@@ -12,6 +12,7 @@
 
 #include "raylib.h"
 #include "screens.h"    // NOTE: Declares global (extern) variables and screens functions
+#include "game_config.h"
 #include "app/debug_overlay.h"
 #include "app/engine.h"
 #include "app/engine_config.h"
@@ -75,17 +76,21 @@ int main(void)
     if (!engine.Init(LoadOrCreateEngineConfig(), "raylib game template")) return 1;
 
     // Load resources shared across all screens (font, fxCoin -- see screens.h) through Engine's
-    // caches (Ch. 8, ADR-0004). This game's own screen_*.cpp files still read font/fxCoin as plain
-    // extern globals (ADR-0001 Decision 2), not through a shared_ptr -- so the cache handle is kept
-    // alive here (as long as main()'s own stack frame is, i.e. the whole app's run) and the plain
-    // globals get a copy of the raylib value type, which is how raylib itself expects Font/Sound to
-    // be passed around (a lightweight handle to GPU/audio-resident data, not the data itself).
-    // Ownership moved here from Engine::Init() (ADR-0014) -- which specific assets to load is a
-    // game concern, not an engine one.
-    std::shared_ptr<Font> fontHandle = engine.Fonts().GetHandle("resources/characters/mecha.png");
+    // caches (Ch. 8, ADR-0004). Which specific asset to load is a game choice, not an engine one
+    // (docs/adr/0014) -- read from GameConfig (docs/adr/0011) rather than hardcoded here, so a
+    // different sandbox build could point at different assets without a recompile; GameConfig's
+    // first real fields and caller. This game's own screen_*.cpp files still read font/fxCoin as
+    // plain extern globals (ADR-0001 Decision 2), not through a shared_ptr -- so the cache handle
+    // is kept alive here (as long as main()'s own stack frame is, i.e. the whole app's run) and the
+    // plain globals get a copy of the raylib value type, which is how raylib itself expects
+    // Font/Sound to be passed around (a lightweight handle to GPU/audio-resident data, not the data
+    // itself).
+    GameConfig gameConfig = LoadOrCreateGameConfig();
+
+    std::shared_ptr<Font> fontHandle = engine.Fonts().GetHandle(gameConfig.characterTexturePath);
     font = *fontHandle;
     //music = LoadMusicStream("resources/audio/music/ambient.ogg"); // TODO: Load music
-    std::shared_ptr<Sound> soundHandle = engine.Sounds().GetHandle("resources/audio/fx/coin.wav");
+    std::shared_ptr<Sound> soundHandle = engine.Sounds().GetHandle(gameConfig.coinSoundPath);
     fxCoin = *soundHandle;
 
     SetMusicVolume(music, 1.0f);

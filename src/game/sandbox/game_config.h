@@ -1,29 +1,24 @@
 // Game-layer config (docs/adr/0011) -- owned by whatever specific game runs on frame-3, NOT by
 // Engine, mirroring exactly why Engine doesn't own the screen state machine either (ADR-0001
-// Decision 2). Deliberately near-empty: this raylib-template game has no game-specific settings
-// yet (no difficulty, no gameplay toggles) -- this establishes the seam, not a schema nobody
-// asked for. Header-only: with zero fields there's nothing to parse, so this doesn't need
-// ADR-0008's YAML machinery the way EngineConfig (engine_config.h/.cpp) does.
+// Decision 2). First real fields: the resource paths main.cpp used to hardcode directly in its
+// Engine::Fonts()/Sounds() calls (docs/adr/0014) -- which specific font/sound to load is a game
+// choice, so it belongs in the game's own config, the same way EngineConfig's fields are exactly
+// what Engine::Init()/Run() already take/use.
 #ifndef GAME_CONFIG_H
 #define GAME_CONFIG_H
 
 #include <string>
 
-#include "app/file_io.h"
-
 struct GameConfig {
-    // (nothing yet -- add fields here as a specific game needs them)
+    std::string characterTexturePath = "resources/characters/mecha.png";
+    std::string coinSoundPath = "resources/audio/fx/coin.wav";
 };
 
-// Writes an (empty, for now) file on first run so it exists and is discoverable for whoever adds
-// the first real field later -- same "first run creates the file" pattern as
-// LoadOrCreateEngineConfig, just with nothing to actually read back yet.
-inline GameConfig LoadOrCreateGameConfig(const std::string &path = "config/game.yaml") {
-    std::string contents;
-    if (!TryReadWholeFile(path, contents)) {
-        WriteWholeFile(path, "# GameConfig has no fields yet -- see docs/adr/0011-engine-and-game-config.md\n");
-    }
-    return GameConfig{};
-}
+// Reads path; if it doesn't exist yet (first run), returns GameConfig{} (the defaults above) and
+// writes them out to that path -- same "first run creates the file" pattern as
+// LoadOrCreateEngineConfig. A field missing from an existing file (e.g. one written by an older
+// build) keeps its struct default rather than failing the whole load -- same forward/backward-
+// compatible philosophy EntityFactory::Create uses for an unrecognized component name.
+GameConfig LoadOrCreateGameConfig(const std::string &path = "config/game.yaml");
 
 #endif // GAME_CONFIG_H
