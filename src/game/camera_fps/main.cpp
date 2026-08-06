@@ -57,6 +57,8 @@ namespace {
     }
 
     void UpdateDrawFrame() {
+        // TODO: I strong believe this stuff should use the IScreenElement interface implementations, also, the the scene graph to hide those 
+        // draw calls.
         UpdateDebugOverlay(GetFrameTime());   // F3 toggles a /proc/self stats HUD (Linux desktop only)
 
         if (g_logic) g_logic->VOnUpdate(GetFrameTime());

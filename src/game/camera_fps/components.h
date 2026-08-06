@@ -22,4 +22,24 @@ struct PlayerBody {
     bool isGrounded = false;
 };
 
+// First-person camera rig: the Camera3D itself plus the look/head-bob easing state that drives it
+// each frame -- ported from the example's other file-local globals (lookRotation, headTimer,
+// walkLerp, headLerp, lean), moved here (was CameraFpsView's own member state) once the actor
+// already owned PlayerBody -- no reason the camera rig should be the one piece of "how this player
+// currently behaves" left outside the ECS. Owned by CameraFpsView::VOnAttach (not main.cpp, unlike
+// PlayerBody): it's view/presentation setup, not simulation the game logic needs to know about.
+//
+// IMPORTANT: entt may relocate a component pool's backing storage on any create/destroy of that
+// same component type, so nothing may hold a pointer/reference into a FirstPersonCameraRig across
+// frames -- human_view.cpp's CameraFpsView/FpsScene re-fetch it via
+// registry.try_get<FirstPersonCameraRig>(actor) every call instead of caching it.
+struct FirstPersonCameraRig {
+    Camera3D camera{};
+    Vector2 lookRotation{0.0f, 0.0f};
+    float headTimer = 0.0f;
+    float walkLerp = 0.0f;
+    float headLerp = 1.0f;   // STAND_HEIGHT
+    Vector2 lean{0.0f, 0.0f};
+};
+
 #endif // CAMERA_FPS_COMPONENTS_H
