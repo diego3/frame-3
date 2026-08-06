@@ -85,23 +85,41 @@ second-data-point signal ADR-0015 said to wait for, so:
   `VOnUpdate` and its own `registry_`/`processes_`/`sounds_`/`camera_` members. Pure refactor, no
   behavior change — same `GameplayScene`/`GameplayHud` elements, same movement math, verified via
   the full test suite and a headless smoke test.
-- **`game/camera_fps/human_view.h`/`.cpp`**: `CameraFpsView : public HumanViewBase`, holding only
-  view-local presentation state (`Camera3D`, look-rotation/head-bob easing — the movement math's
-  actual data now lives on the possessed actor's `PlayerBody`/`LocalTransform` components, read/
-  written each frame via `registry_.try_get<...>(*possessedActor_)`, the same pattern sandbox's
-  `HumanView::VOnUpdate` already used for its own possessed actor). `UpdateBody`/`UpdateCameraFPS`
-  math ported field-for-field into private helpers. Two `IScreenElement`s pushed in the
-  constructor, mirroring sandbox's split: `FpsScene` (the 3D pass — floor/sun procedural, every
-  `BoxRenderable` entity drawn from its `WorldTransform`) and `FpsHud` (the "Camera controls:" info
-  box + live velocity readout, now reading the possessed actor's `PlayerBody.velocity`).
+- **`game/camera_fps/human_view.h`/`.cpp`**: `CameraFpsView : public HumanViewBase` holds *no*
+  per-frame state of its own — not even the `Camera3D`. Everything (`Camera3D`, look-rotation,
+  head-bob easing) lives on the possessed actor as a new `FirstPersonCameraRig` component
+  (`game/camera_fps/components.h`), seeded by a `VOnAttach` override the moment a view actually
+  possesses an actor (view/presentation setup — kept separate from `main.cpp`'s `PlayerBody`
+  emplace, which is simulation state the game logic owns). `UpdateBody`/`UpdateCameraFPS` became
+  free functions taking components by reference instead of view methods — they no longer need
+  `this` for anything. Three `IScreenElement`s pushed in the constructor: `FpsScene` (the 3D pass —
+  floor/sun procedural, every `BoxRenderable` entity drawn from its `WorldTransform`, camera
+  re-fetched from `FirstPersonCameraRig` every call — see below), `FpsHud` (the "Camera controls:"
+  info box + live velocity readout, reading `PlayerBody.velocity`), and `DebugOverlayElement`
+  (next bullet).
+
+  **Nothing may cache a pointer into an ECS component across frames** — entt can relocate a
+  component pool's backing storage on any create/destroy of that same component type. `FpsScene`
+  used to hold a `const Camera3D&` captured once at construction (safe, back when `Camera3D` was a
+  stable view member); now that it's component data, `FpsScene`/`CameraFpsView` re-fetch
+  `FirstPersonCameraRig` via `registry.try_get<...>(actor)` inside every call instead. Verified via
+  the same headless smoke test (several hundred frames, no crash), not just asserted in a comment.
+- **`DebugOverlay` (F3 HUD) as a fourth `IScreenElement`, `camera_fps`-only.** [ADR-0016](0016-screen-element-stack.md)
+  deliberately keeps `DebugOverlay` *outside* any `HumanView`'s stack, because `game/sandbox`'s
+  overlay must survive `LOGO`/`TITLE`/`OPTIONS`/`ENDING` — screens where no `HumanView` exists yet
+  — so folding it into one view's stack there would regress it. That reasoning doesn't transfer to
+  `camera_fps`: there's exactly one view, alive for the game's entire run, so there's no screen
+  where folding it in would lose coverage. `game/camera_fps/main.cpp`'s `UpdateDrawFrame` no longer
+  calls `UpdateDebugOverlay`/`DrawDebugOverlay` at all — `game/sandbox/main.cpp` still does, and
+  ADR-0016's reasoning for that stays correct and unchanged there. Not a reversal of that ADR, a
+  narrower case it didn't need to cover.
 - **`game/camera_fps/main.cpp`**: no `screens.h`-style multi-screen state machine — the original
   example has none either, and sandbox's Logo/Title/Options/Ending machinery is sandbox content,
   not part of the pattern being reused. `Engine::Init`/`DisableCursor`, then the same
   `EntityFactory`/`LevelLoader`/`BaseGameLogic` wiring `screen_gameplay.cpp` uses to load
   `camera_fps.yaml` and resolve the player actor, construct the view, `AttachView`, and
-  `engine.Run(...)` over a small `UpdateDrawFrame` that ticks `BaseGameLogic::VOnUpdate` (which
-  ticks the view) and renders. Same `UpdateDebugOverlay`/`DrawDebugOverlay` (F3 HUD) wiring
-  sandbox's `main.cpp` has — that's app-global per ADR-0016, not sandbox-specific.
+  `engine.Run(...)` over a small `UpdateDrawFrame` that just ticks `BaseGameLogic::VOnUpdate`
+  (which ticks the view) and renders — no other per-system code left in it at all.
 
 This is deliberately **not** the rest of what ADR-0015 described (a versioned public API,
 compatibility guarantees, packaging/distribution, external-consumer docs). Nothing here requires
@@ -170,14 +188,16 @@ Implemented in the same change: `app/human_view_base.h`/`.cpp`, `app/render_comp
 `app/base_game_logic.h`/`.cpp`'s `VLoadLevel` return-type change plus a new test case; `game/sandbox/
 human_view.h`/`.cpp` (refactored onto `HumanViewBase`) and `screen_gameplay.cpp` (updated to
 `VLoadLevel`'s returned entity list) — both pure refactors, no behavior change; `game/camera_fps/
-human_view.h`/`.cpp`, `main.cpp`, `components.h` (new); `assets/levels/camera_fps.yaml`,
-`assets/entities/tower.yaml` (new); the `GAME` Makefile variable and `build.sh` passthrough; the
-`ci_sanity.yml` second build step. Verified via: `make ... GAME=sandbox` and `make ...
-GAME=camera_fps` both building clean under `-Werror`; the full unit test suite (84/84, including
-the new `VLoadLevel` coverage) passing; and a headless (`xvfb-run`) smoke test of both binaries
-running several hundred frames each with no crash (sandbox's GAMEPLAY screen reached via a
-temporary, fully-reverted `main.cpp` patch, since no `xdotool` is available in this environment to
-drive screen transitions).
+human_view.h`/`.cpp`, `main.cpp`, `components.h` (new, including `FirstPersonCameraRig` and the
+`DebugOverlayElement`); `assets/levels/camera_fps.yaml`, `assets/entities/tower.yaml` (new); the
+`GAME` Makefile variable and `build.sh` passthrough; the `ci_sanity.yml` second build step.
+Verified via: `make ... GAME=sandbox` and `make ... GAME=camera_fps` both building clean under
+`-Werror`; the full unit test suite (84/84, including the new `VLoadLevel` coverage) passing; and a
+headless (`xvfb-run`) smoke test of both binaries running several hundred frames each with no crash
+(sandbox's GAMEPLAY screen reached via a temporary, fully-reverted `main.cpp` patch, since no
+`xdotool` is available in this environment to drive screen transitions) — the `camera_fps` run in
+particular exercises the "never cache a pointer into a component" rule above under real per-frame
+churn, not just in theory.
 
 ## References
 

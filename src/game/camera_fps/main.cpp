@@ -15,7 +15,6 @@
 #include <vector>
 
 #include "app/base_game_logic.h"
-#include "app/debug_overlay.h"
 #include "app/engine.h"
 #include "app/engine_config.h"
 #include "app/entity_factory.h"
@@ -56,17 +55,19 @@ namespace {
         });
     }
 
+    // DebugOverlay (F3 HUD) isn't called from here at all anymore -- it's CameraFpsView's own
+    // DebugOverlayElement now (human_view.cpp), ticked/rendered through the same IScreenElement
+    // stack as everything else this view owns. Unlike game/sandbox/main.cpp, which still calls
+    // UpdateDebugOverlay/DrawDebugOverlay directly (ADR-0016 keeps it outside any one HumanView's
+    // stack there, since sandbox's DebugOverlay must survive screens with no HumanView attached at
+    // all -- LOGO/TITLE/OPTIONS/ENDING); camera_fps has exactly one view alive for the whole run,
+    // so folding it in has no such gap to worry about.
     void UpdateDrawFrame() {
-        // TODO: I strong believe this stuff should use the IScreenElement interface implementations, also, the the scene graph to hide those 
-        // draw calls.
-        UpdateDebugOverlay(GetFrameTime());   // F3 toggles a /proc/self stats HUD (Linux desktop only)
-
         if (g_logic) g_logic->VOnUpdate(GetFrameTime());
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
             if (g_view) g_view->VOnRender(GetFrameTime());
-            DrawDebugOverlay();
         EndDrawing();
     }
 }

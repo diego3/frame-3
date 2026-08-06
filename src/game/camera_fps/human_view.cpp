@@ -9,6 +9,7 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#include "app/debug_overlay.h"
 #include "app/render_components.h"
 #include "app/transform.h"
 #include "components.h"
@@ -229,11 +230,34 @@ namespace {
         int zOrder_ = 100;
         bool visible_ = true;
     };
+
+    // DebugOverlay (F3 HUD) as an IScreenElement here -- unlike game/sandbox, where ADR-0016
+    // deliberately keeps it *outside* HumanView's stack (sandbox's DebugOverlay must survive
+    // LOGO/TITLE/OPTIONS/ENDING, screens where no HumanView exists yet), camera_fps has exactly
+    // one view alive for the game's entire run, so folding it in has no regression to worry about
+    // -- main.cpp no longer needs any DebugOverlay-specific code at all. zOrder_ above FpsHud's so
+    // it draws last/on top, matching the order game/sandbox/main.cpp's own UpdateDrawFrame already
+    // drew it in (HUD, then debug overlay).
+    class DebugOverlayElement : public IScreenElement {
+    public:
+        void VOnUpdate(float dt) override { UpdateDebugOverlay(dt); }
+        void VOnRender(float dt) override { (void)dt; DrawDebugOverlay(); }
+
+        int VGetZOrder() const override { return zOrder_; }
+        void VSetZOrder(int zOrder) override { zOrder_ = zOrder; }
+        bool VIsVisible() const override { return visible_; }
+        void VSetVisible(bool visible) override { visible_ = visible; }
+
+    private:
+        int zOrder_ = 200;
+        bool visible_ = true;
+    };
 }
 
 CameraFpsView::CameraFpsView(entt::registry &registry) : registry_(registry) {
     PushElement(std::make_unique<FpsScene>(registry_, possessedActor_));
     PushElement(std::make_unique<FpsHud>(registry_, possessedActor_));
+    PushElement(std::make_unique<DebugOverlayElement>());
 }
 
 // Seeds FirstPersonCameraRig onto the newly-possessed actor -- view/presentation setup, so it

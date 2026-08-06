@@ -566,16 +566,27 @@ game-specific.
 `camera_fps` also uses the same data-driven wiring §6-7 already describe, not a special case: its
 player and 4 towers are real actors, spawned via `BaseGameLogic`/`EntityFactory`/`LevelLoader` off
 `assets/levels/camera_fps.yaml` (reusing `assets/entities/player.yaml`, plus a new
-`assets/entities/tower.yaml`). Two new components came out of this: `PlayerBody` (velocity/dir/
-isGrounded -- `game/camera_fps/components.h`, kept game-local since its tuning is specific to this
-movement scheme, not a generic physics body ADR-0012 hasn't designed yet) and `BoxRenderable`
-(size/color -- `app/render_components.h`, the first real render component, ADR-0010's own Open
-Questions flagged this as undecided; game-agnostic by nature but not yet applied to `game/sandbox`'s
-own hardcoded-cube `GameplayScene`). `CameraFpsView` itself only holds view-local presentation state
-(`Camera3D`, look/head-bob easing) -- the movement math reads/writes the possessed actor's
-`PlayerBody`/`LocalTransform` each frame, the same "view directly mutates its possessed actor's
-components" pattern `game/sandbox/human_view.cpp`'s `HumanView::VOnUpdate` already used. Still no
-`GameConfig` -- this module has no assets to configure.
+`assets/entities/tower.yaml`). Three new components came out of this, all in
+`game/camera_fps/components.h` except where noted: `PlayerBody` (velocity/dir/isGrounded -- kept
+game-local since its tuning is specific to this movement scheme, not a generic physics body
+ADR-0012 hasn't designed yet), `FirstPersonCameraRig` (the `Camera3D` itself plus its look/head-bob
+easing state -- seeded onto the actor by a `CameraFpsView::VOnAttach` override, since it's
+view/presentation setup, unlike `PlayerBody` which `main.cpp` emplaces as Logic-owned simulation
+state), and `BoxRenderable` (size/color -- `app/render_components.h`, the first real render
+component, ADR-0010's own Open Questions flagged this as undecided; game-agnostic by nature but not
+yet applied to `game/sandbox`'s own hardcoded-cube `GameplayScene`). `CameraFpsView` itself holds
+**no** per-frame state at all now, not even the camera -- `UpdateBody`/`UpdateCameraFPS` became free
+functions taking components by reference. Important gotcha this surfaced: entt can relocate a
+component pool's storage on any create/destroy of that same component type, so `FpsScene` (which
+used to hold a `const Camera3D&` safely, back when it was a stable view member) now re-fetches
+`FirstPersonCameraRig` via `registry.try_get<...>(actor)` inside every `VOnRender` call instead of
+caching a pointer across frames. `camera_fps` also folds `DebugOverlay` (F3 HUD) into its own
+element stack as a fourth `IScreenElement` (`DebugOverlayElement`) -- safe there because it has
+exactly one view alive for the whole run, unlike `game/sandbox`, where ADR-0016's reasoning for
+keeping `DebugOverlay` *outside* any view's stack (it must survive `LOGO`/`TITLE`/`OPTIONS`/
+`ENDING`, screens with no `HumanView` at all) still applies unchanged -- `game/sandbox/main.cpp`
+still calls `UpdateDebugOverlay`/`DrawDebugOverlay` directly. Still no `GameConfig` for
+`camera_fps` -- this module has no assets to configure.
 
 Landing a level with more than one entity for the first time also surfaced a real gap:
 `BaseGameLogic::VLoadLevel` used to return `void`, so both games guessed "the player" from
