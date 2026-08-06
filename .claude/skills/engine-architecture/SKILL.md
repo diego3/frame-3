@@ -1,6 +1,6 @@
 ---
 name: engine-architecture
-description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`), and a `ResourceCache<T>` (`src/app/resource_cache.h`, per ADR-0004, backing `Engine::Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader()`); one real component (`LocalTransform`/`WorldTransform`, via a `"Position"` `EntityFactory` loader) and a `BaseGameLogic`/`HumanView` Logic/View split (§9, ADR-0010) exist and are wired into the gameplay screen, and `HumanView` composes an `IScreenElement` stack (§10, ADR-0016) instead of rendering directly, but nothing subscribes to the event manager or attaches a process yet.
+description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`), and a `ResourceCache<T>` (`src/app/resource_cache.h`, per ADR-0004, backing `Engine::Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader()`); one real component (`LocalTransform`/`WorldTransform`, via a `"Position"` `EntityFactory` loader) and a `BaseGameLogic`/`HumanView` Logic/View split (§9, ADR-0010) exist and are wired into the gameplay screen, and `HumanView` composes an `IScreenElement` stack (§10, ADR-0016) instead of rendering directly; a second concrete game module, `game/camera_fps`, and the `HumanViewBase` (`app/`) it shares with `game/sandbox` landed via ADR-0017, but nothing subscribes to the event manager or attaches a process yet.
 ---
 
 # Engine Architecture (Game Coding Complete Ch. 4, 6-8 — modernized)
@@ -9,9 +9,11 @@ frame-3 is still close to the stock
 [raylib-game-template](https://github.com/raysan5/raylib-game-template), reorganized into
 `src/app/` (game-agnostic engine) and `src/game/<game-id>/` (a concrete game; `src/platform/` holds
 shared packaging), per [ADR-0014](../../../docs/adr/0014-game-module-boundary-and-template-migration.md)
-(Accepted). The one game module built so far, `src/game/sandbox/`, is the migrated raylib template
-itself -- now C++, not C -- with a simple logo/title/gameplay/ending/options screen state machine
-(`src/game/sandbox/screens.h`) driven by `src/game/sandbox/main.cpp`. The
+(Accepted). Two game modules exist, selected via the Makefile's `GAME` variable (ADR-0017):
+`src/game/sandbox/`, the migrated raylib template itself -- now C++, not C -- with a simple
+logo/title/gameplay/ending/options screen state machine (`src/game/sandbox/screens.h`) driven by
+`src/game/sandbox/main.cpp`; and `src/game/camera_fps/`, raylib's own "3d camera fps" example
+ported in as a single-scene module with no screen state machine (see §10). The
 `src/app/` layer: **`Engine`** (`src/app/engine.h`/`.cpp`, Ch. 5 Application layer) owns
 window/audio lifecycle, drives the main loop via a function-pointer callback, owns an
 `entt::registry`, and now also owns and drives §§1-2's systems (`EventManager`, `ProcessManager`)
@@ -515,7 +517,7 @@ state" pointed at: `HumanView` used to render directly in one `VOnRender` body, 
 outside `HumanView`. Neither could be reordered, hidden, or composed with anything else.
 
 ```cpp
-// Matches src/app/screen_element.h, game/sandbox/human_view.h/.cpp's PushElement/RemoveElement.
+// Matches src/app/screen_element.h; PushElement/RemoveElement live in app/human_view_base.h/.cpp.
 class IScreenElement {
 public:
     virtual void VOnUpdate(float dt) = 0;
@@ -535,21 +537,35 @@ state). The book's own `operator<` on the interface is replaced by whoever owns 
 on `VGetZOrder()` itself.
 
 **Current state**: `IScreenElement`/`ScreenElementId` live in `app/` (game-agnostic, same reasoning
-as `IGameView` -- ADR-0014). `HumanView::PushElement`/`RemoveElement` own a
-`vector<pair<ScreenElementId, unique_ptr<IScreenElement>>>` -- paired with an id rather than the
-book's `list<shared_ptr<...>>`, because `IScreenElement` (unlike `IGameView`) has no attach step to
-hang a self-known id on, and nothing here needs shared ownership (mirrors
-`BaseGameLogic::views_`'s own single-owner, id-based shape instead). `VOnRender` `stable_sort`s by
-`VGetZOrder()` before dispatching, mirroring the book's own `m_ScreenElements.sort()` pass. Two real
-elements exist, both file-local to `human_view.cpp` (nothing outside it names them, so no header of
-their own): `GameplayScene` (the 3D camera/entity render pass that used to be `VOnRender`'s direct
-body) and `GameplayHud` (the "PRESS ENTER..." prompt, promoted out of `screen_gameplay.cpp`,
-z-ordered above `GameplayScene` so it visually layers on top -- mirrors
+as `IGameView` -- ADR-0014). The stack plumbing itself -- `PushElement`/`RemoveElement`, owning a
+`vector<pair<ScreenElementId, unique_ptr<IScreenElement>>>` (paired with an id rather than the
+book's `list<shared_ptr<...>>`, because `IScreenElement` unlike `IGameView` has no attach step to
+hang a self-known id on, and nothing here needs shared ownership), `VOnRender`'s `stable_sort`-by-
+`VGetZOrder()`-then-dispatch (mirroring the book's own `m_ScreenElements.sort()` pass), and
+`VOnAttach` -- now lives in `app/human_view_base.h`/`.cpp`'s `HumanViewBase` (**not** `HumanView`
+itself), promoted there once a second concrete `IGameView` needed the exact same plumbing (see
+below and [ADR-0017](../../../docs/adr/0017-camera-fps-second-game-module.md)). Two real elements
+exist in `game/sandbox/human_view.cpp`: `GameplayScene` (the 3D camera/entity render pass that used
+to be `VOnRender`'s direct body) and `GameplayHud` (the "PRESS ENTER..." prompt, promoted out of
+`screen_gameplay.cpp`, z-ordered above `GameplayScene` so it visually layers on top -- mirrors
 `TeapotWarsHumanView` pushing `StandardHUD` alongside the base scene). No `BaseUI`-equivalent
 convenience base, no console, no modal input priority (`VOnMsgProc`'s reverse-order dispatch was
-dropped) -- see the ADR's own Tradeoffs. A generic `HumanView` base promoted to `app/` (with a
-`VLoadGameDelegate`-style hook) is still explicitly deferred, gated on a second game/consumer per
-ADR-0015 -- this section's stack is the prerequisite for that, not the promotion itself.
+dropped) -- see ADR-0016's own Tradeoffs.
+
+**`HumanViewBase` and the second game module (ADR-0017)**: `game/camera_fps/` (raylib's own "3d
+camera fps" example) is frame-3's second concrete game module, and its `CameraFpsView` is the
+second `IGameView` to need this stack -- with no ECS actor, no `ProcessManager`/`ResourceCache`
+dependency, and a completely different `VOnUpdate` (WASD+mouse FPS body movement vs. sandbox's
+arrow-key box nudging). That confirmed exactly what ADR-0015 said to wait for a second data point
+before generalizing: `HumanViewBase : public IGameView` now holds the stack plumbing and a
+protected `UpdateElements(dt)` helper a subclass's own `VOnUpdate` calls explicitly; `VOnUpdate`
+itself stays pure virtual. `game/sandbox/human_view.h`'s `HumanView` and
+`game/camera_fps/human_view.h`'s `CameraFpsView` both subclass it now, keeping only what's actually
+game-specific. `camera_fps` also confirmed `BaseGameLogic`/`EntityFactory`/`LevelLoader`/
+`GameConfig` are genuinely optional per-game, not implicitly required by the `Engine`/`IGameView`
+boundary -- that module's level is hardcoded procedural geometry, not data, and it has no assets to
+configure. The `src/Makefile` gained a `GAME ?= sandbox` build selector (first time two game
+modules needed choosing between) to make this buildable.
 
 ## Decisions Made
 
