@@ -9,7 +9,7 @@
 
 #include <string>
 
-#include "../app/file_io.h"
+#include "app/file_io.h"
 
 struct GameConfig {
     // (nothing yet -- add fields here as a specific game needs them)

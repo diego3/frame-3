@@ -39,23 +39,21 @@ ifeq ($(PLATFORM),PLATFORM_WEB)
     PROJECT_BUILD_PATH := ../build/web
 endif
 
-PROJECT_SOURCE_FILES  ?= \
-    game/screen_logo.c \
-    game/screen_title.c \
-    game/screen_options.c \
-    game/screen_gameplay.c \
-    game/screen_ending.c
+# No plain-C sources remain (docs/adr/0014): the raylib template's screen_*.c files converted to
+# .cpp as part of moving into src/game/sandbox/ -- see PROJECT_SOURCE_FILES_CPP below. Left empty,
+# not deleted, as the seam a future genuinely-C game module could still use.
+PROJECT_SOURCE_FILES  ?=
 
-# C++ sources (EnTT-using code, etc.), compiled/linked separately from the plain-C sources above
-# since they need a C++ standard and the EnTT include path (see ENTT_INCLUDE_PATH below).
-# entity_file_parser_yaml.cpp (docs/adr/0008) and engine_config.cpp (docs/adr/0011) are here
-# because Engine::Init() now actually calls LoadOrCreateEngineConfig() -> YamlEntityFileParser ->
-# mini-yaml. level_loader.cpp, base_game_logic.cpp, human_view.cpp, and gameplay_bridge.cpp
-# (docs/adr/0010) join them here for the same reason: GameplayBridge_Init() (called from
-# screen_gameplay.c's InitGameplayScreen(), via gameplay_bridge.h's extern "C" seam) is the first
-# real caller of BaseGameLogic/HumanView/LevelLoader/EntityFactory, not just their own unit tests.
+# C++ sources: the game-agnostic app/ engine plus the one concrete game module currently built,
+# game/sandbox/ (docs/adr/0014 -- src/app/ must never name a specific game; src/game/<game-id>/
+# owns its own composition root, screens, and concrete IGameView). entity_file_parser_yaml.cpp
+# (docs/adr/0008) and engine_config.cpp (docs/adr/0011) are here because Engine::Init() now
+# actually calls LoadOrCreateEngineConfig() -> YamlEntityFileParser -> mini-yaml. level_loader.cpp
+# and base_game_logic.cpp (docs/adr/0010) join them for the same reason: game/sandbox/
+# screen_gameplay.cpp's InitGameplayScreen() is the first real caller of BaseGameLogic/
+# LevelLoader/EntityFactory, not just their own unit tests. game/sandbox/human_view.cpp and the
+# rest of game/sandbox/ are the concrete game module itself, not engine code.
 PROJECT_SOURCE_FILES_CPP ?= \
-    app/raylib_game.cpp \
     app/engine.cpp \
     app/process_manager.cpp \
     app/debug_overlay.cpp \
@@ -63,8 +61,13 @@ PROJECT_SOURCE_FILES_CPP ?= \
     app/engine_config.cpp \
     app/level_loader.cpp \
     app/base_game_logic.cpp \
-    app/human_view.cpp \
-    app/gameplay_bridge.cpp
+    game/sandbox/main.cpp \
+    game/sandbox/screen_logo.cpp \
+    game/sandbox/screen_title.cpp \
+    game/sandbox/screen_options.cpp \
+    game/sandbox/screen_gameplay.cpp \
+    game/sandbox/screen_ending.cpp \
+    game/sandbox/human_view.cpp
 
 # Source location of game content, staged into ./resources before linking (see 'resources' target)
 PROJECT_RESOURCES_PATH ?= ../assets
@@ -486,11 +489,12 @@ TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH) -I$(RAYLIB_INCLUDE_PAT
 # with different flags. entity_file_parser_yaml.cpp/engine_config.cpp/level_loader.cpp/
 # base_game_logic.cpp (all now also in PROJECT_SOURCE_FILES_CPP, docs/adr/0008/0009/0010/0011) get
 # the same tests/-local treatment, so the test build's flags (TEST_CXXFLAGS) never collide with the
-# main product's (CXXFLAGS). human_view.cpp/gameplay_bridge.cpp (docs/adr/0010) deliberately do NOT
-# get a tests/-local object -- both call real raylib runtime functions (IsKeyDown, DrawCubeWires,
-# BeginMode3D, ...), and the test build never links -lraylib (see TEST_CXXFLAGS above: raylib's
-# *headers* are on the include path for types like Camera3D, but nothing links its library), so
-# either would fail at link time. base_game_logic.cpp has no such dependency (only entt::registry,
+# main product's (CXXFLAGS). game/sandbox/human_view.cpp and game/sandbox/screen_gameplay.cpp
+# (docs/adr/0010, docs/adr/0014) deliberately do NOT get a tests/-local object -- both call real
+# raylib runtime functions (IsKeyDown, DrawCubeWires, BeginMode3D, ...), and the test build never
+# links -lraylib (see TEST_CXXFLAGS above: raylib's *headers* are on the include path for types
+# like Camera3D, but nothing links its library), so either would fail at link time.
+# base_game_logic.cpp has no such dependency (only entt::registry,
 # EventManager, ProcessManager, LevelLoader -- none of them touch raylib), so it's tested the same
 # way level_loader.cpp already is, with a FakeView standing in for HumanView. mini-yaml isn't
 # header-only either, so its own yaml/Yaml.cpp needs compiling into the test binary too

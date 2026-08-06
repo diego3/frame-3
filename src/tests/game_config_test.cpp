@@ -2,7 +2,7 @@
 
 #include <filesystem>
 
-#include "game/game_config.h"
+#include "game/sandbox/game_config.h"
 
 namespace {
     const std::string kScratchDir = "test_scratch/game_config_test";

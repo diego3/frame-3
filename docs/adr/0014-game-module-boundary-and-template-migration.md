@@ -1,6 +1,6 @@
-# 13. Game modules own game code; `app/` remains a game-agnostic engine
+# 14. Game modules own game code; `app/` remains a game-agnostic engine
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-08-05
 
 ## Context

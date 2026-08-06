@@ -25,6 +25,7 @@ the chapter reference and full reasoning.
 - [x] Level loading (`LevelLoader`, `MergeOverrides`, `EvtData_EntitySpawned`) — [ADR-0009](adr/0009-level-loading-actor-placement.md) — now wired into a real gameplay screen via ADR-0010's `gameplay_bridge`
 - [x] Game options/config file (`EngineConfig`/`GameConfig`, two-tier, writable `src/config/`) — [ADR-0011](adr/0011-engine-and-game-config.md) — `EngineConfig` is wired into the real `Engine::Init()`/`Run()`; `GameConfig` has no caller yet, as decided
 - [x] `BaseGameLogic`/`IGameView` split (`HumanView` built and wired into `screen_gameplay.c`; `RemoteView`/`AIView` named, not built) — [ADR-0010](adr/0010-base-game-logic-and-igameview.md) — the first real, non-test-fake `EntityFactory` component loader (`"Position"` → `LocalTransform`/`WorldTransform`) and the first real level/entity content (`assets/levels/level_01.yaml`, `assets/entities/player.yaml`) landed alongside it
+- [x] Game-module boundary and raylib-template C→C++ migration — [ADR-0014](adr/0014-game-module-boundary-and-template-migration.md) — `src/app/` no longer references game code (`Engine` no longer loads template assets or includes `screens.h`); the raylib template converted from C to C++ and moved into `src/game/sandbox/` (game-id chosen: `sandbox`), including `HumanView` and the entry point (now `main.cpp`); the `extern "C"` bridge (`gameplay_bridge.cpp`) was removed, absorbed directly into `game/sandbox/screen_gameplay.cpp` now that it's C++ too
 
 ## Decided (ADR merged), not yet built
 
@@ -32,10 +33,6 @@ _(nothing currently — the last item here, scene graph/hierarchy, shipped above
 
 ## Proposed (ADR merged into `main`, `Status: Proposed` — design not yet built)
 
-- [ ] Game-module boundary and raylib-template C→C++ migration —
-  [ADR-0014](adr/0014-game-module-boundary-and-template-migration.md), establishes the
-  game-agnostic `app/` → concrete `game/<game-id>/` dependency direction; implement before or
-  alongside ADR-0010
 - [ ] Event journal for save/replay (`EventJournal`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §4 — the serialization contract it would sit on (§§1-3) already shipped above; no concrete on-disk format decided yet
 - [ ] Physics / collision (`IGamePhysics`, raylib-collision-backed, owned by `BaseGameLogic`) — [ADR-0012](adr/0012-physics-thin-raylib-collision-layer.md) — its dependency (`BaseGameLogic`, ADR-0010) just shipped above, unblocked now
 - [ ] Input / key-binding system (`InputAction`/`InputBindings`, data-driven action↔key mapping consumed by `HumanView`; gamepad and a rebinding UI explicitly deferred) — [ADR-0013](adr/0013-input-key-binding-system.md) — depends on `HumanView`/ADR-0010, which as of this ADR only exists on PR #26 (`claude/base-game-logic-impl`), not yet merged to `main`

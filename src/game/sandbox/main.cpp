@@ -11,11 +11,12 @@
 ********************************************************************************************/
 
 #include "raylib.h"
-#include "../game/screens.h"    // NOTE: Declares global (extern) variables and screens functions
-#include "debug_overlay.h"
-#include "engine.h"
-#include "engine_config.h"
+#include "screens.h"    // NOTE: Declares global (extern) variables and screens functions
+#include "app/debug_overlay.h"
+#include "app/engine.h"
+#include "app/engine_config.h"
 
+#include <memory>                           // Required for: std::shared_ptr (font/sound handles)
 #include <stdio.h>                          // Required for: printf()
 #include <stdlib.h>                         // Required for:
 #include <string.h>                         // Required for:
@@ -57,8 +58,6 @@ static GameScreen transToScreen = UNKNOWN;
 //----------------------------------------------------------------------------------
 // Module Functions Declaration
 //----------------------------------------------------------------------------------
-static void ChangeToScreen(GameScreen screen);     // Change to screen, no transition effect
-
 static void TransitionToScreen(GameScreen screen); // Request transition to next screen
 static void UpdateTransition(void);         // Update transition effect
 static void DrawTransition(void);           // Draw transition effect (full-screen rectangle)
@@ -74,6 +73,23 @@ int main(void)
     //---------------------------------------------------------
     Engine engine;
     if (!engine.Init(LoadOrCreateEngineConfig(), "raylib game template")) return 1;
+
+    // Load resources shared across all screens (font, fxCoin -- see screens.h) through Engine's
+    // caches (Ch. 8, ADR-0004). This game's own screen_*.cpp files still read font/fxCoin as plain
+    // extern globals (ADR-0001 Decision 2), not through a shared_ptr -- so the cache handle is kept
+    // alive here (as long as main()'s own stack frame is, i.e. the whole app's run) and the plain
+    // globals get a copy of the raylib value type, which is how raylib itself expects Font/Sound to
+    // be passed around (a lightweight handle to GPU/audio-resident data, not the data itself).
+    // Ownership moved here from Engine::Init() (ADR-0014) -- which specific assets to load is a
+    // game concern, not an engine one.
+    std::shared_ptr<Font> fontHandle = engine.Fonts().GetHandle("resources/characters/mecha.png");
+    font = *fontHandle;
+    //music = LoadMusicStream("resources/audio/music/ambient.ogg"); // TODO: Load music
+    std::shared_ptr<Sound> soundHandle = engine.Sounds().GetHandle("resources/audio/fx/coin.wav");
+    fxCoin = *soundHandle;
+
+    SetMusicVolume(music, 1.0f);
+    PlayMusicStream(music);
 
     // Setup and init first screen
     currentScreen = LOGO;
@@ -94,6 +110,14 @@ int main(void)
         default: break;
     }
 
+    // Release the cache handles (running UnloadFont/UnloadSound, via ResourceCache's own deleter)
+    // and stop the (never-actually-loaded, see TODO above) music stream before engine.Shutdown()
+    // below closes the GL/audio context those Unload* calls need -- same ordering requirement
+    // Engine::Shutdown() documents for every other resource-cache handle a caller holds.
+    fontHandle.reset();
+    soundHandle.reset();
+    UnloadMusicStream(music);
+
     engine.Shutdown();
     //--------------------------------------------------------------------------------------
 
@@ -103,34 +127,6 @@ int main(void)
 //----------------------------------------------------------------------------------
 // Module Functions Definition
 //----------------------------------------------------------------------------------
-// Change to next screen, no transition
-static void ChangeToScreen(GameScreen screen)
-{
-    // Unload current screen
-    switch (currentScreen)
-    {
-        case LOGO: UnloadLogoScreen(); break;
-        case TITLE: UnloadTitleScreen(); break;
-        case OPTIONS: UnloadOptionsScreen(); break;
-        case GAMEPLAY: UnloadGameplayScreen(); break;
-        case ENDING: UnloadEndingScreen(); break;
-        default: break;
-    }
-
-    // Init next screen
-    switch (screen)
-    {
-        case LOGO: InitLogoScreen(); break;
-        case TITLE: InitTitleScreen(); break;
-        case OPTIONS: InitOptionsScreen(); break;
-        case GAMEPLAY: InitGameplayScreen(); break;
-        case ENDING: InitEndingScreen(); break;
-        default: break;
-    }
-
-    currentScreen = screen;
-}
-
 // Request transition to next screen
 static void TransitionToScreen(GameScreen screen)
 {

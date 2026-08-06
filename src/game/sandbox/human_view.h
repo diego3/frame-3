@@ -13,7 +13,7 @@
 #include <entt/entt.hpp>
 #include <raylib.h>
 
-#include "game_view.h"
+#include "app/game_view.h"
 
 class HumanView : public IGameView {
 public:
