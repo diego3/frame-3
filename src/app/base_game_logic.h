@@ -51,7 +51,11 @@ public:
     // e.g. whether ProcessManager should also freeze, undecided; Engine ticks ProcessManager
     // independently of BaseGameLogic and this doesn't touch that). Does NOT call VOnRender -- see
     // ADR-0010 Sec 3 for why rendering is deliberately not reachable through BaseGameLogic at all.
-    void VOnUpdate(float dt);
+    // Virtual (docs/adr/0017 follow-up) so a game-specific subclass can run its own simulation step
+    // around this one -- game/camera_fps/game_logic.h's CameraFpsLogic is the first: it advances
+    // physics *then* calls this (via BaseGameLogic::VOnUpdate) to tick views, so a view renders
+    // this frame's already-integrated world state.
+    virtual void VOnUpdate(float dt);
 
     GameLogicState State() const { return state_; }
 

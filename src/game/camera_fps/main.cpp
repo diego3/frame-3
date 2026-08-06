@@ -7,6 +7,8 @@
 // wiring game/sandbox/screen_gameplay.cpp uses (BaseGameLogic + EntityFactory + LevelLoader +
 // assets/levels/camera_fps.yaml) -- the player and its 4 towers are real actors, not hardcoded
 // draw calls (see human_view.cpp for what's still legitimately just scene dressing: floor + sun).
+// game_logic.h's CameraFpsLogic (a real BaseGameLogic subclass, docs/adr/0017 follow-up) owns the
+// actual movement simulation -- this file just wires it up, same as before.
 
 #include <raylib.h>
 
@@ -14,7 +16,6 @@
 #include <optional>
 #include <vector>
 
-#include "app/base_game_logic.h"
 #include "app/engine.h"
 #include "app/engine_config.h"
 #include "app/entity_factory.h"
@@ -23,10 +24,11 @@
 #include "app/render_components.h"
 #include "app/transform.h"
 #include "components.h"
+#include "game_logic.h"
 #include "human_view.h"
 
 namespace {
-    BaseGameLogic *g_logic = nullptr;
+    CameraFpsLogic *g_logic = nullptr;
     CameraFpsView *g_view = nullptr;
 
     // "Position" mirrors game/sandbox/screen_gameplay.cpp's own loader exactly (both spawn an
@@ -55,9 +57,10 @@ namespace {
         });
     }
 
-    // DebugOverlay (F3 HUD) isn't called from here at all anymore -- it's CameraFpsView's own
-    // DebugOverlayElement now (human_view.cpp), ticked/rendered through the same IScreenElement
-    // stack as everything else this view owns. Unlike game/sandbox/main.cpp, which still calls
+    // DebugOverlay (F3 HUD) isn't called from here at all anymore -- CameraFpsView pushes
+    // app/debug_overlay_screen_element.h's DebugOverlayScreenElement instead, ticked/rendered
+    // through the same IScreenElement stack as everything else this view owns. Unlike
+    // game/sandbox/main.cpp, which still calls
     // UpdateDebugOverlay/DrawDebugOverlay directly (ADR-0016 keeps it outside any one HumanView's
     // stack there, since sandbox's DebugOverlay must survive screens with no HumanView attached at
     // all -- LOGO/TITLE/OPTIONS/ENDING); camera_fps has exactly one view alive for the whole run,
@@ -85,7 +88,7 @@ int main() {
     RegisterComponentLoaders(entityFactory);
 
     LevelLoader levelLoader(entityFactory, parser);
-    BaseGameLogic logic(engine.Registry(), engine.Events(), engine.Processes(), levelLoader);
+    CameraFpsLogic logic(engine.Registry(), engine.Events(), engine.Processes(), levelLoader);
     g_logic = &logic;
 
     // assets/levels/camera_fps.yaml lists the player first specifically so spawned[0] below is

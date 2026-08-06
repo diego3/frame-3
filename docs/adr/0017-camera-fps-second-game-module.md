@@ -139,6 +139,40 @@ any of that — the actual shared surface two real consumers needed was small an
 (`HumanViewBase`), not a hint that the whole `app/` boundary needs freezing. See ADR-0015's own
 follow-up note.
 
+### `CameraFpsLogic`: the movement simulation moves into a real `BaseGameLogic` subclass
+
+Earlier revisions of this module still ran `UpdateBody` (the FPS movement/physics integration)
+directly from `CameraFpsView::VOnUpdate`, reading raw input and writing `PlayerBody`/
+`LocalTransform` in the same method. That's exactly the coupling
+[ADR-0010](0010-base-game-logic-and-igameview.md)'s Logic/View split exists to prevent — its own
+`VLoadLevel` doc comment already left "a future game-specific `BaseGameLogic` subclass" as an
+explicit seam, unused until now because `game/sandbox` never needed anything beyond loading a
+level. `game/camera_fps` does:
+
+- **New**: `game/camera_fps/game_logic.h`/`.cpp` — `CameraFpsLogic : public BaseGameLogic`,
+  overriding the now-`virtual` `BaseGameLogic::VOnUpdate` (was non-virtual; this is the first
+  subclass to need overriding it, the same reason `VLoadLevel` was already `virtual`). Each tick:
+  advances every actor with a `PlayerInput`/`PlayerBody`/`LocalTransform` one physics step (the
+  `UpdateBody` math, moved here verbatim from `human_view.cpp`, along with its physics-only
+  constants — gravity, friction, air drag, the acceleration curve), *then* calls
+  `BaseGameLogic::VOnUpdate` to tick attached views.
+- **New component**: `PlayerInput` (`game/camera_fps/components.h`) — `lookYaw`/`side`/`forward`/
+  `jumpPressed`/`crouchHold`. The seam that crosses the Logic/View boundary now that physics moved
+  out of the view: `CameraFpsView::VOnUpdate` still reads raw mouse/keyboard every frame (that's
+  legitimately View's job — turning hardware input into meaning), but now just writes the result
+  as `PlayerInput` instead of computing physics from it directly. `lookYaw` is a deliberate copy of
+  `FirstPersonCameraRig.lookRotation.x` rather than `CameraFpsLogic` reading that (presentation-
+  only) component itself — movement direction needs to know facing, but Logic shouldn't need to
+  know facing came from a mouse, and not e.g. a gamepad or a future `AIView`'s decision.
+- **Ordering, and the tradeoff it accepts**: `CameraFpsLogic::VOnUpdate` runs the physics step
+  *before* ticking views, so `CameraFpsView`'s camera-position update reads this frame's
+  already-integrated `LocalTransform` (no lag there). The cost: the physics step consumes
+  `PlayerInput` as it stood after the *previous* frame's view tick, since this frame's view tick
+  (which would overwrite it) hasn't run yet — a one-frame input-to-physics lag. Standard for any
+  engine with this split, imperceptible at real frame rates. Self-healing on boot, too: frame 0's
+  physics step finds no actor with a `PlayerInput` yet (no view has ticked) and simply skips it,
+  not a special case to handle.
+
 ### `src/Makefile`: a `GAME` build selector
 
 First time two game modules coexist in-tree, so first time the Makefile needs to choose one:
@@ -165,13 +199,11 @@ the shipped product (`sandbox`), not every module in-tree.
   aren't placed objects, they're a backdrop, same category as `game/sandbox`'s `DrawGrid()`. Worth
   re-examining only if a future game needs a non-trivial *procedural* floor to also be data-driven,
   which neither game does today.
-- **`PlayerBody`'s movement algorithm still lives in the view**, not a `BaseGameLogic`-owned system
-  — `CameraFpsView::UpdateBody` reads and writes `PlayerBody`/`LocalTransform` directly each frame.
-  This mirrors the accepted pattern `game/sandbox/human_view.cpp`'s `HumanView::VOnUpdate` already
-  used (a view directly mutating its possessed actor's components), not a regression against
-  anything decided so far — but it's real duplication-of-responsibility with wherever ADR-0012's
-  eventual `IGamePhysics` ends up owning simulation. Left as-is rather than inventing a
-  system/ticking mechanism ahead of that ADR actually being designed.
+- **`CameraFpsLogic`'s physics step is still the same hand-written `UpdateBody` function**, not
+  anything resembling `IGamePhysics` — it lives in the right *layer* now (Logic, not View), but
+  it's still one game's bespoke movement math, not a reusable simulation system. That's still
+  ADR-0012's (`Proposed`) job; this ADR only fixes *where* camera_fps's own physics lives, not what
+  a real physics abstraction would look like.
 - **`camera_fps` has no way to quit back to a menu or exit gracefully** (same as the original
   raylib example — window-close/Esc only). Not a regression against anything this module promised;
   just worth noting it doesn't demonstrate `screens.h`-style transitions, since it deliberately
@@ -198,12 +230,13 @@ the shipped product (`sandbox`), not every module in-tree.
 
 Implemented in the same change: `app/human_view_base.h`/`.cpp`, `app/render_components.h`,
 `app/scene_renderer.h`, `app/debug_overlay_screen_element.h` (all new); `app/base_game_logic.h`/
-`.cpp`'s `VLoadLevel` return-type change plus a new test case; `game/sandbox/human_view.h`/`.cpp`
-(refactored onto `HumanViewBase`) and `screen_gameplay.cpp` (updated to `VLoadLevel`'s returned
-entity list) — both pure refactors, no behavior change; `game/camera_fps/human_view.h`/`.cpp`,
-`main.cpp`, `components.h` (new, including `FirstPersonCameraRig`); `assets/levels/camera_fps.yaml`,
-`assets/entities/tower.yaml` (new); the `GAME` Makefile variable and `build.sh` passthrough; the
-`ci_sanity.yml` second build step.
+`.cpp`'s `VLoadLevel` return-type change and `VOnUpdate` becoming `virtual`, plus new test
+coverage; `game/sandbox/human_view.h`/`.cpp` (refactored onto `HumanViewBase`) and
+`screen_gameplay.cpp` (updated to `VLoadLevel`'s returned entity list) — both pure refactors, no
+behavior change; `game/camera_fps/human_view.h`/`.cpp`, `main.cpp`, `components.h` (`PlayerBody`,
+`FirstPersonCameraRig`, `PlayerInput`), `game_logic.h`/`.cpp` (`CameraFpsLogic`, new);
+`assets/levels/camera_fps.yaml`, `assets/entities/tower.yaml` (new); the `GAME` Makefile variable
+and `build.sh` passthrough; the `ci_sanity.yml` second build step.
 Verified via: `make ... GAME=sandbox` and `make ... GAME=camera_fps` both building clean under
 `-Werror`; the full unit test suite (84/84, including the new `VLoadLevel` coverage) passing; and a
 headless (`xvfb-run`) smoke test of both binaries running several hundred frames each with no crash

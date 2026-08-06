@@ -42,4 +42,24 @@ struct FirstPersonCameraRig {
     Vector2 lean{0.0f, 0.0f};
 };
 
+// The player actor's captured movement intent for the *next* physics step -- how
+// CameraFpsView::VOnUpdate (raw input -> meaning) hands off to CameraFpsLogic::VOnUpdate
+// (meaning -> simulation), game_logic.h's whole reason to exist (docs/adr/0017 follow-up: the
+// physics used to run inside the view directly, which is exactly the coupling ADR-0010's
+// Logic/View split exists to avoid). lookYaw duplicates FirstPersonCameraRig.lookRotation.x
+// deliberately, rather than CameraFpsLogic reaching into a presentation-only component to read
+// it -- movement direction genuinely depends on facing, but Logic doesn't need to know *how* that
+// facing was produced (mouse+keyboard here; could be a gamepad, a network snapshot, or an AI
+// decision for a future RemoteView/AIView, none of which should need a FirstPersonCameraRig to
+// exist at all). Not the same thing as ADR-0013's (still-Proposed) InputAction/InputBindings --
+// that's raw-key-to-action *mapping*; this is one specific game's already-resolved movement
+// intent for one frame.
+struct PlayerInput {
+    float lookYaw = 0.0f;   // radians, matches FirstPersonCameraRig.lookRotation.x
+    char side = 0;          // -1/0/1, A/D
+    char forward = 0;       // -1/0/1, S/W
+    bool jumpPressed = false;
+    bool crouchHold = false;
+};
+
 #endif // CAMERA_FPS_COMPONENTS_H

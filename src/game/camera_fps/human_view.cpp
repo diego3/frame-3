@@ -15,74 +15,15 @@
 #include "components.h"
 
 namespace {
-    // Movement/camera constants, ported verbatim from
-    // /home/diego/Documents/raylib/examples/core/core_3d_camera_fps.c's #defines.
+    // View-local camera/presentation constants only now -- the movement-physics constants
+    // (gravity, friction, air drag, acceleration curve) moved to game_logic.cpp alongside the
+    // simulation they tune (docs/adr/0017 follow-up: CameraFpsLogic, a real BaseGameLogic
+    // subclass, owns the physics step now -- this view only reads input and presents a camera).
     constexpr float kSensitivityX = 0.001f;
     constexpr float kSensitivityY = 0.001f;
-    constexpr float kGravity = 32.0f;
-    constexpr float kMaxSpeed = 20.0f;
-    constexpr float kCrouchSpeed = 5.0f;
-    constexpr float kJumpForce = 12.0f;
-    constexpr float kMaxAccel = 150.0f;
-    constexpr float kFriction = 0.86f;      // Grounded drag
-    constexpr float kAirDrag = 0.98f;       // Increasing air drag increases strafing speed
-    constexpr float kControl = 15.0f;       // Responsiveness turning movement dir to looked dir
     constexpr float kCrouchHeight = 0.0f;
     constexpr float kStandHeight = 1.0f;
     constexpr float kBottomHeight = 0.5f;
-
-    // Ported from the example's UpdateBody(), with GetFrameTime() replaced by the dt this project
-    // already threads through every VOnUpdate (docs/adr/0010), and the file-local `Body player`
-    // replaced by the possessed actor's own PlayerBody + LocalTransform components (docs/adr/0017)
-    // -- passed in by reference rather than looked up here, since the caller already has them and
-    // a component pointer must never be cached, only used within one call (see components.h).
-    void UpdateBody(float rot, float dt, char side, char forward, bool jumpPressed, bool crouchHold,
-                     PlayerBody &body, LocalTransform &transform) {
-        Vector2 input = Vector2{static_cast<float>(side), static_cast<float>(-forward)};
-        // NORMALIZE_INPUT left disabled, matching the example's own default.
-
-        if (!body.isGrounded) body.velocity.y -= kGravity * dt;
-
-        if (body.isGrounded && jumpPressed) {
-            body.velocity.y = kJumpForce;
-            body.isGrounded = false;
-        }
-
-        Vector3 front = Vector3{sinf(rot), 0.0f, cosf(rot)};
-        Vector3 right = Vector3{cosf(-rot), 0.0f, sinf(-rot)};
-
-        Vector3 desiredDir = Vector3{input.x * right.x + input.y * front.x, 0.0f,
-                                      input.x * right.z + input.y * front.z};
-        body.dir = Vector3Lerp(body.dir, desiredDir, kControl * dt);
-
-        float decel = (body.isGrounded ? kFriction : kAirDrag);
-        Vector3 hvel = Vector3{body.velocity.x * decel, 0.0f, body.velocity.z * decel};
-
-        float hvelLength = Vector3Length(hvel);
-        if (hvelLength < (kMaxSpeed * 0.01f)) hvel = Vector3{0.0f, 0.0f, 0.0f};
-
-        // This is what creates strafing.
-        float speed = Vector3DotProduct(hvel, body.dir);
-
-        float maxSpeed = (crouchHold ? kCrouchSpeed : kMaxSpeed);
-        float accel = Clamp(maxSpeed - speed, 0.0f, kMaxAccel * dt);
-        hvel.x += body.dir.x * accel;
-        hvel.z += body.dir.z * accel;
-
-        body.velocity.x = hvel.x;
-        body.velocity.z = hvel.z;
-
-        transform.position.x += body.velocity.x * dt;
-        transform.position.y += body.velocity.y * dt;
-        transform.position.z += body.velocity.z * dt;
-
-        // Fancy collision system against the floor.
-        if (transform.position.y <= 0.0f) {
-            transform.position.y = 0.0f;
-            body.velocity.y = 0.0f;
-            body.isGrounded = true;
-        }
-    }
 
     // Ported verbatim from the example's UpdateCameraFPS(), operating on a FirstPersonCameraRig
     // (docs/adr/0017) instead of file-local globals + an out-parameter Camera*.
@@ -270,7 +211,12 @@ void CameraFpsView::VOnUpdate(float dt) {
     char sideway = static_cast<char>(IsKeyDown(KEY_D) - IsKeyDown(KEY_A));
     char forward = static_cast<char>(IsKeyDown(KEY_W) - IsKeyDown(KEY_S));
     bool crouching = IsKeyDown(KEY_LEFT_CONTROL);
-    UpdateBody(rig->lookRotation.x, dt, sideway, forward, IsKeyPressed(KEY_SPACE), crouching, *body, *transform);
+
+    // Publishes this frame's input as intent for CameraFpsLogic::VOnUpdate to simulate on its
+    // *next* tick (components.h explains the one-frame lag this implies, and why lookYaw is
+    // copied here rather than CameraFpsLogic reading FirstPersonCameraRig directly).
+    registry_.get_or_emplace<PlayerInput>(*possessedActor_) =
+        PlayerInput{rig->lookRotation.x, sideway, forward, IsKeyPressed(KEY_SPACE), crouching};
 
     rig->headLerp = Lerp(rig->headLerp, (crouching ? kCrouchHeight : kStandHeight), 20.0f * dt);
     rig->camera.position = Vector3{transform->position.x, transform->position.y + (kBottomHeight + rig->headLerp),

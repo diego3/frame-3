@@ -92,11 +92,13 @@ endif
 
 # game/camera_fps (docs/adr/0017): raylib's own examples/core/core_3d_camera_fps.c ported in as
 # the second concrete game module -- a single Engine-driven scene, no screens.h state machine, no
-# data-driven level (its geometry is hardcoded, see human_view.cpp's DrawLevel()), no GameConfig
-# (no assets to point at).
+# GameConfig (no assets to point at). Its level/entities (player + 4 towers) ARE data-driven
+# (assets/levels/camera_fps.yaml). game_logic.cpp's CameraFpsLogic (a real BaseGameLogic subclass)
+# owns the FPS movement simulation; human_view.cpp's CameraFpsView only reads input and renders.
 ifeq ($(GAME),camera_fps)
 PROJECT_SOURCE_FILES_CPP += \
     game/camera_fps/main.cpp \
+    game/camera_fps/game_logic.cpp \
     game/camera_fps/human_view.cpp
 endif
 

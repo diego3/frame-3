@@ -605,6 +605,20 @@ value), so a caller takes `spawned[0]` per the level file's own `actors[]` order
 `GAME ?= sandbox` build selector (first time two game modules needed choosing between) to make all
 of this buildable.
 
+**`CameraFpsLogic` -- the first real `BaseGameLogic` subclass.** The FPS movement/physics
+integration (`UpdateBody`) initially ran straight out of `CameraFpsView::VOnUpdate`, which read
+raw input *and* wrote `PlayerBody`/`LocalTransform` in the same method -- exactly the coupling this
+section's own Logic/View split exists to prevent, and `BaseGameLogic::VLoadLevel`'s own doc comment
+had already left "a future game-specific `BaseGameLogic` subclass" as an explicit, unused seam.
+`game/camera_fps/game_logic.h`/`.cpp` is that subclass now: `CameraFpsLogic::VOnUpdate` (overriding
+`BaseGameLogic::VOnUpdate`, made `virtual` for this) advances every actor with a `PlayerInput`/
+`PlayerBody`/`LocalTransform` one physics step, *then* calls the base class to tick views -- so a
+view renders this frame's already-integrated position. `CameraFpsView::VOnUpdate` still reads raw
+input every frame (that's legitimately View's job), but now just publishes it as a new
+`PlayerInput` component (`lookYaw`/`side`/`forward`/`jumpPressed`/`crouchHold`) instead of
+computing physics from it directly -- the seam that crosses the boundary, consumed on the *next*
+tick (a one-frame input-to-physics lag, same tradeoff any Logic/View-separated engine accepts).
+
 ## Decisions Made
 
 - **Actor (OOP class hierarchy) vs. ECS: ECS, via [EnTT](https://github.com/skypjack/entt)**
