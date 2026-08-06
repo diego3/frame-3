@@ -128,9 +128,9 @@ void UpdateGameplayScreen(void)
 // Gameplay Screen Draw logic
 void DrawGameplayScreen(void)
 {
+    // The "PRESS ENTER..." prompt used to be drawn directly here; it's now HumanView's own
+    // GameplayHud screen element (docs/adr/0016), rendered as part of VOnRender below.
     if (g_humanView) g_humanView->VOnRender(GetFrameTime());
-
-    DrawText("PRESS ENTER or TAP to JUMP to ENDING SCREEN", 130, 20, 20, MAROON);
 }
 
 // Gameplay Screen Unload logic

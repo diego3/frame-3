@@ -26,6 +26,7 @@ the chapter reference and full reasoning.
 - [x] Game options/config file (`EngineConfig`/`GameConfig`, two-tier, writable `src/config/`) — [ADR-0011](adr/0011-engine-and-game-config.md) — `EngineConfig` is wired into the real `Engine::Init()`/`Run()`; `GameConfig` got its first real fields and caller (`characterTexturePath`/`coinSoundPath`, read by `game/sandbox/main.cpp` instead of hardcoding them) alongside [ADR-0014](adr/0014-game-module-boundary-and-template-migration.md)'s migration
 - [x] `BaseGameLogic`/`IGameView` split (`HumanView` built and wired into `screen_gameplay.c`; `RemoteView`/`AIView` named, not built) — [ADR-0010](adr/0010-base-game-logic-and-igameview.md) — the first real, non-test-fake `EntityFactory` component loader (`"Position"` → `LocalTransform`/`WorldTransform`) and the first real level/entity content (`assets/levels/level_01.yaml`, `assets/entities/player.yaml`) landed alongside it
 - [x] Game-module boundary and raylib-template C→C++ migration — [ADR-0014](adr/0014-game-module-boundary-and-template-migration.md) — `src/app/` no longer references game code (`Engine` no longer loads template assets or includes `screens.h`); the raylib template converted from C to C++ and moved into `src/game/sandbox/` (game-id chosen: `sandbox`), including `HumanView` and the entry point (now `main.cpp`); the `extern "C"` bridge (`gameplay_bridge.cpp`) was removed, absorbed directly into `game/sandbox/screen_gameplay.cpp` now that it's C++ too
+- [x] `IScreenElement` stack / UI as a system (`IScreenElement`, `ScreenElementId` in `app/`; `HumanView::PushElement`/`RemoveElement`; two real elements, `GameplayScene`/`GameplayHud`) — [ADR-0016](adr/0016-screen-element-stack.md) — replaces `HumanView`'s old direct-draw `VOnRender` body and `screen_gameplay.cpp`'s standalone `DrawText` call; still no `BaseUI`-equivalent convenience base, console, or modal input priority (see that ADR's Tradeoffs); this is also the prerequisite the roadmap previously noted for ever promoting a generic `HumanView` base into `app/` — still deferred, gated on a second game/consumer per [ADR-0015](adr/0015-sdk-productization-of-app-gated-on-second-consumer.md)
 
 ## Decided (ADR merged), not yet built
 
@@ -56,17 +57,6 @@ any code, same as everything above did.
   merits.
 - [ ] **Save/load of actual game state** — distinct from ADR-0005's event journal (which persists
   *events*, not a snapshot of world state); not designed.
-- [ ] **UI/HUD as a system** (the book's `IScreenElement` stack) — what exists today is just the
-  raylib template's logo/title/gameplay/ending/options screen state machine, not a real UI system.
-  This is also where a generic `HumanView` base belongs, if one ever gets promoted to `app/`: the
-  book's own `GCC4::HumanView` (`UserInterface/HumanView.h`) is a base class holding exactly this
-  screen-element stack, plus a `VLoadGameDelegate` hook whose default impl pushes the base scene
-  onto it — `TeapotWarsHumanView` (in `TeapotWars/`, not the engine) overrides that hook for its own
-  content. Our `HumanView` ([ADR-0010](adr/0010-base-game-logic-and-igameview.md), living in
-  `game/sandbox/` per [ADR-0014](adr/0014-game-module-boundary-and-template-migration.md)) has no
-  screen-element stack to push onto, so it has nothing generic to leave behind in `app/` yet — it's
-  playing `TeapotWarsHumanView`'s role, not `GCC4::HumanView`'s. Promoting a generic base (with a
-  `VLoadGameDelegate`-style hook) only makes sense once this item actually builds that stack.
 - [ ] **Custom memory manager** — the book has a dedicated chapter; not even discussed here, likely
   correctly deferred (standard allocators are fine until profiling says otherwise) but never
   formally decided.

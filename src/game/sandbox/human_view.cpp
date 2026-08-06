@@ -1,5 +1,7 @@
 #include "human_view.h"
 
+#include <algorithm>
+
 #include <raymath.h>
 
 #include "app/transform.h"
@@ -9,6 +11,71 @@ namespace {
     // (ADR-0010's own Open Questions, still not designed here); this hardcodes arrow keys to X/Z
     // movement so there's something to observe, not a real bindings layer.
     constexpr float kMoveUnitsPerSecond = 4.0f;
+
+    // First real IScreenElement (docs/adr/0016): wraps what used to be HumanView::VOnRender's
+    // direct body -- same rendering, now reachable/orderable as an element instead of hardcoded.
+    // Holds camera_ by reference to HumanView's own Camera3D member (updated each frame by
+    // HumanView::VOnUpdate) -- safe for GameplayScene's whole lifetime, since it's owned by the
+    // same HumanView instance whose member it points at.
+    class GameplayScene : public IScreenElement {
+    public:
+        GameplayScene(entt::registry &registry, const Camera3D &camera)
+            : registry_(registry), camera_(camera) {}
+
+        void VOnUpdate(float dt) override { (void)dt; }
+
+        void VOnRender(float dt) override {
+            (void)dt;
+
+            BeginMode3D(camera_);
+
+            auto view = registry_.view<WorldTransform>();
+            for (auto entity : view) {
+                Vector3 position = Vector3Transform(Vector3Zero(), view.get<WorldTransform>(entity).matrix);
+                DrawCubeWires(position, 1.0f, 1.0f, 1.0f, MAROON);
+            }
+
+            DrawGrid(20, 1.0f);
+
+            EndMode3D();
+        }
+
+        int VGetZOrder() const override { return zOrder_; }
+        void VSetZOrder(int zOrder) override { zOrder_ = zOrder; }
+        bool VIsVisible() const override { return visible_; }
+        void VSetVisible(bool visible) override { visible_ = visible; }
+
+    private:
+        entt::registry &registry_;
+        const Camera3D &camera_;
+        int zOrder_ = 0;
+        bool visible_ = true;
+    };
+
+    // Second real IScreenElement (docs/adr/0016): the "PRESS ENTER..." prompt used to live in
+    // screen_gameplay.cpp's DrawGameplayScreen, drawn directly and entirely outside HumanView.
+    // Moved here so a HUD element actually exercises z-ordering against GameplayScene, not just
+    // single-element indirection through the same interface. zOrder_ deliberately higher than
+    // GameplayScene's default (0) so it renders after the 3D pass, visually layered on top --
+    // mirrors TeapotWarsHumanView pushing StandardHUD alongside the base scene.
+    class GameplayHud : public IScreenElement {
+    public:
+        void VOnUpdate(float dt) override { (void)dt; }
+
+        void VOnRender(float dt) override {
+            (void)dt;
+            DrawText("PRESS ENTER or TAP to JUMP to ENDING SCREEN", 130, 20, 20, MAROON);
+        }
+
+        int VGetZOrder() const override { return zOrder_; }
+        void VSetZOrder(int zOrder) override { zOrder_ = zOrder; }
+        bool VIsVisible() const override { return visible_; }
+        void VSetVisible(bool visible) override { visible_ = visible; }
+
+    private:
+        int zOrder_ = 100;
+        bool visible_ = true;
+    };
 }
 
 HumanView::HumanView(entt::registry &registry, ProcessManager &processes, ResourceCache<Sound> &sounds)
@@ -18,6 +85,9 @@ HumanView::HumanView(entt::registry &registry, ProcessManager &processes, Resour
     camera_.up = Vector3{0.0f, 1.0f, 0.0f};
     camera_.fovy = 45.0f;
     camera_.projection = CAMERA_PERSPECTIVE;
+
+    PushElement(std::make_unique<GameplayScene>(registry_, camera_));
+    PushElement(std::make_unique<GameplayHud>());
 }
 
 void HumanView::VOnAttach(GameViewId id, std::optional<entt::entity> actorId) {
@@ -26,6 +96,8 @@ void HumanView::VOnAttach(GameViewId id, std::optional<entt::entity> actorId) {
 }
 
 void HumanView::VOnUpdate(float dt) {
+    for (auto &[id, element] : elements_) element->VOnUpdate(dt);
+
     if (!possessedActor_.has_value()) return;
 
     LocalTransform *transform = registry_.try_get<LocalTransform>(*possessedActor_);
@@ -46,17 +118,24 @@ void HumanView::VOnUpdate(float dt) {
 }
 
 void HumanView::VOnRender(float dt) {
-    (void)dt;
+    // Sorted ascending by z-order right before rendering (mirrors GCC4::HumanView::VOnRender's own
+    // m_ScreenElements.sort() pass) -- lower z-order renders first, so a higher z-order element
+    // (GameplayHud) visually layers on top of one that rendered before it (GameplayScene).
+    std::stable_sort(elements_.begin(), elements_.end(), [](const auto &a, const auto &b) {
+        return a.second->VGetZOrder() < b.second->VGetZOrder();
+    });
 
-    BeginMode3D(camera_);
-
-    auto view = registry_.view<WorldTransform>();
-    for (auto entity : view) {
-        Vector3 position = Vector3Transform(Vector3Zero(), view.get<WorldTransform>(entity).matrix);
-        DrawCubeWires(position, 1.0f, 1.0f, 1.0f, MAROON);
+    for (auto &[id, element] : elements_) {
+        if (element->VIsVisible()) element->VOnRender(dt);
     }
+}
 
-    DrawGrid(20, 1.0f);
+ScreenElementId HumanView::PushElement(std::unique_ptr<IScreenElement> element) {
+    ScreenElementId id = nextElementId_++;
+    elements_.emplace_back(id, std::move(element));
+    return id;
+}
 
-    EndMode3D();
+void HumanView::RemoveElement(ScreenElementId id) {
+    std::erase_if(elements_, [id](const auto &pair) { return pair.first == id; });
 }

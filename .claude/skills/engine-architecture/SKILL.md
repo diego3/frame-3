@@ -1,6 +1,6 @@
 ---
 name: engine-architecture
-description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`), and a `ResourceCache<T>` (`src/app/resource_cache.h`, per ADR-0004, backing `Engine::Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader()`); one real component (`LocalTransform`/`WorldTransform`, via a `"Position"` `EntityFactory` loader) and a `BaseGameLogic`/`HumanView` Logic/View split (§9, ADR-0010) exist and are wired into the gameplay screen, but nothing subscribes to the event manager or attaches a process yet.
+description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`), and a `ResourceCache<T>` (`src/app/resource_cache.h`, per ADR-0004, backing `Engine::Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader()`); one real component (`LocalTransform`/`WorldTransform`, via a `"Position"` `EntityFactory` loader) and a `BaseGameLogic`/`HumanView` Logic/View split (§9, ADR-0010) exist and are wired into the gameplay screen, and `HumanView` composes an `IScreenElement` stack (§10, ADR-0016) instead of rendering directly, but nothing subscribes to the event manager or attaches a process yet.
 ---
 
 # Engine Architecture (Game Coding Complete Ch. 4, 6-8 — modernized)
@@ -494,19 +494,62 @@ by the same de facto singleton the `Run()` emscripten trampoline already relied 
 **Current state**: `IGameView`, `BaseGameLogic` (`src/app/`), `HumanView` (`src/game/sandbox/`) all
 exist and are wired directly into `game/sandbox/screen_gameplay.cpp` (no separate bridge file,
 per ADR-0014). `BaseGameLogic` gained `Pause()`/`Resume()` beyond the ADR's own sketch (freezes
-attached views' `VOnUpdate` only; `ProcessManager` keeps running regardless). `HumanView` renders
-every entity with a `WorldTransform` as a placeholder wireframe box (no render-component design
-exists yet — an explicit Open Question) and drives whichever entity it's attached to via hardcoded
-arrow-key movement (no input/action-mapping layer exists either — also an explicit Open Question).
-`HumanView` also now takes a `ProcessManager&`/`ResourceCache<Sound>&` in its constructor -- the
-"human" half of `GCC4::HumanView`'s own dependencies (`UserInterface/HumanView.h`:
-`m_pProcessManager`, `InitAudio()`) -- held, same as `BaseGameLogic::processes_` already is, not
-yet called into; no view-level process or sound-on-event exists to attach/play yet (roadmap's
-"UI/HUD as a system" item covers the screen-element stack that pattern actually needs). `RemoteView`/
-`AIView` are named in `GameViewType` but not implemented, exactly as decided. Verified
+attached views' `VOnUpdate` only; `ProcessManager` keeps running regardless). `HumanView` no longer
+renders directly -- see §10 for the `IScreenElement` stack that now does -- and still drives
+whichever entity it's attached to via hardcoded arrow-key movement in its own `VOnUpdate` (no
+input/action-mapping layer exists either — an explicit Open Question). `HumanView` also takes a
+`ProcessManager&`/`ResourceCache<Sound>&` in its constructor -- the "human" half of
+`GCC4::HumanView`'s own dependencies (`UserInterface/HumanView.h`: `m_pProcessManager`,
+`InitAudio()`) -- held, same as `BaseGameLogic::processes_` already is, still not called into; no
+view-level process or sound-on-event exists to attach/play yet, even with §10's stack now real.
+`RemoteView`/`AIView` are named in `GameViewType` but not implemented, exactly as decided. Verified
 end-to-end under `xvfb-run`: `Engine::Init` → `InitGameplayScreen` (loads
 `assets/levels/level_01.yaml`, spawns one entity) → several `Update`/`Draw` cycles →
 `UnloadGameplayScreen` → `Engine::Shutdown`, no crash.
+
+### 10. `IScreenElement` stack (Ch. 10) — `HumanView` composes layered elements, via ADR-0016
+
+[ADR-0016](../../../docs/adr/0016-screen-element-stack.md) (Accepted) is what §9's own "Current
+state" pointed at: `HumanView` used to render directly in one `VOnRender` body, and
+`screen_gameplay.cpp`'s `DrawGameplayScreen` bolted a raw `DrawText` call on top of that, entirely
+outside `HumanView`. Neither could be reordered, hidden, or composed with anything else.
+
+```cpp
+// Matches src/app/screen_element.h, game/sandbox/human_view.h/.cpp's PushElement/RemoveElement.
+class IScreenElement {
+public:
+    virtual void VOnUpdate(float dt) = 0;
+    virtual void VOnRender(float dt) = 0;
+    virtual int VGetZOrder() const = 0;
+    virtual void VSetZOrder(int zOrder) = 0;
+    virtual bool VIsVisible() const = 0;
+    virtual void VSetVisible(bool visible) = 0;
+};
+using ScreenElementId = std::uint32_t;
+```
+
+Dropped from the book's `IScreenElement` (`GameCode4/interfaces.h`), same category of cut §9 already
+made for `IGameView`: `VOnRestore()`/`VOnLostDevice()` (DirectX device-loss recovery, no
+raylib/OpenGL analogue) and `VOnMsgProc(AppMsg)` (no Win32 message queue -- input is already polled
+state). The book's own `operator<` on the interface is replaced by whoever owns the elements sorting
+on `VGetZOrder()` itself.
+
+**Current state**: `IScreenElement`/`ScreenElementId` live in `app/` (game-agnostic, same reasoning
+as `IGameView` -- ADR-0014). `HumanView::PushElement`/`RemoveElement` own a
+`vector<pair<ScreenElementId, unique_ptr<IScreenElement>>>` -- paired with an id rather than the
+book's `list<shared_ptr<...>>`, because `IScreenElement` (unlike `IGameView`) has no attach step to
+hang a self-known id on, and nothing here needs shared ownership (mirrors
+`BaseGameLogic::views_`'s own single-owner, id-based shape instead). `VOnRender` `stable_sort`s by
+`VGetZOrder()` before dispatching, mirroring the book's own `m_ScreenElements.sort()` pass. Two real
+elements exist, both file-local to `human_view.cpp` (nothing outside it names them, so no header of
+their own): `GameplayScene` (the 3D camera/entity render pass that used to be `VOnRender`'s direct
+body) and `GameplayHud` (the "PRESS ENTER..." prompt, promoted out of `screen_gameplay.cpp`,
+z-ordered above `GameplayScene` so it visually layers on top -- mirrors
+`TeapotWarsHumanView` pushing `StandardHUD` alongside the base scene). No `BaseUI`-equivalent
+convenience base, no console, no modal input priority (`VOnMsgProc`'s reverse-order dispatch was
+dropped) -- see the ADR's own Tradeoffs. A generic `HumanView` base promoted to `app/` (with a
+`VLoadGameDelegate`-style hook) is still explicitly deferred, gated on a second game/consumer per
+ADR-0015 -- this section's stack is the prerequisite for that, not the promotion itself.
 
 ## Decisions Made
 
