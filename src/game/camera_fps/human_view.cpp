@@ -15,10 +15,10 @@
 #include "components.h"
 
 namespace {
-    // View-local camera/presentation constants only now -- the movement-physics constants
-    // (gravity, friction, air drag, acceleration curve) moved to game_logic.cpp alongside the
-    // simulation they tune (docs/adr/0017 follow-up: CameraFpsLogic, a real BaseGameLogic
-    // subclass, owns the physics step now -- this view only reads input and presents a camera).
+    // View-local camera/presentation constants only -- the movement-physics constants (gravity,
+    // friction, air drag, acceleration curve) live in game_logic.cpp alongside the simulation they
+    // tune (docs/adr/0017 follow-up: CameraFpsLogic, a real BaseGameLogic subclass, owns the
+    // physics step; this file only reads input and presents a camera).
     constexpr float kSensitivityX = 0.001f;
     constexpr float kSensitivityY = 0.001f;
     constexpr float kCrouchHeight = 0.0f;
@@ -62,6 +62,27 @@ namespace {
         rig.camera.target = Vector3Add(rig.camera.position, pitch);
     }
 
+    // Head-bob/FOV/lean easing driven by whether the actor is moving on the ground -- ported from
+    // the same block of the example's main loop UpdateCameraFPS() itself doesn't own, factored out
+    // to its own function for the same reason UpdateCameraFps is already one: this is presentation
+    // math, not something that belongs inline in a per-frame method body.
+    void UpdateHeadBobEasing(FirstPersonCameraRig &rig, bool grounded, char sideway, char forward,
+                              bool crouching, float dt) {
+        rig.headLerp = Lerp(rig.headLerp, (crouching ? kCrouchHeight : kStandHeight), 20.0f * dt);
+
+        if (grounded && ((forward != 0) || (sideway != 0))) {
+            rig.headTimer += dt * 3.0f;
+            rig.walkLerp = Lerp(rig.walkLerp, 1.0f, 10.0f * dt);
+            rig.camera.fovy = Lerp(rig.camera.fovy, 55.0f, 5.0f * dt);
+        } else {
+            rig.walkLerp = Lerp(rig.walkLerp, 0.0f, 10.0f * dt);
+            rig.camera.fovy = Lerp(rig.camera.fovy, 60.0f, 5.0f * dt);
+        }
+
+        rig.lean.x = Lerp(rig.lean.x, sideway * 0.02f, 10.0f * dt);
+        rig.lean.y = Lerp(rig.lean.y, forward * 0.015f, 10.0f * dt);
+    }
+
     // Draws the floor tiles + red sun -- ported verbatim from the example's DrawLevel(), minus
     // the towers (those are now BoxRenderable entities, drawn below in FpsScene::VOnRender -- see
     // assets/levels/camera_fps.yaml). Scene dressing, not actors, same category as
@@ -84,12 +105,70 @@ namespace {
         DrawSphere(Vector3{300.0f, 300.0f, 0.0f}, 100.0f, Color{255, 0, 0, 255});
     }
 
-    // First IScreenElement (mirrors game/sandbox/human_view.cpp's GameplayScene): the 3D pass.
-    // Holds registry_ + a reference to CameraFpsView's possessedActor_ (stable for the view's
-    // whole lifetime, same reasoning FpsHud already used) and re-fetches FirstPersonCameraRig
-    // every VOnRender call -- never caches a pointer into it (see components.h). The towers
-    // themselves are drawn by app/scene_renderer.h's DrawBoxRenderables -- a generic, scene-graph-
-    // driven step shared with any other view that wants it, not hand-rolled here.
+    // The whole reason this file's per-frame algorithm used to live directly in
+    // CameraFpsView::VOnUpdate: reads raw mouse/keyboard input, publishes it as MovementIntent
+    // (components.h) for CameraFpsLogic to simulate on its next tick, and eases the camera
+    // (FirstPersonCameraRig) to follow the possessed actor. Pulled into its own IScreenElement so
+    // CameraFpsView itself stays pure composition -- mirrors FpsScene/FpsHud/
+    // DebugOverlayScreenElement, just for VOnUpdate instead of VOnRender (VOnRender is a no-op
+    // here; nothing about input capture or camera easing draws anything).
+    class PlayerMovementElement : public IScreenElement {
+    public:
+        PlayerMovementElement(entt::registry &registry, const std::optional<entt::entity> &possessedActor)
+            : registry_(registry), possessedActor_(possessedActor) {}
+
+        void VOnUpdate(float dt) override {
+            if (!possessedActor_.has_value()) return;
+
+            FirstPersonCameraRig *rig = registry_.try_get<FirstPersonCameraRig>(*possessedActor_);
+            LocalTransform *transform = registry_.try_get<LocalTransform>(*possessedActor_);
+            PlayerBody *body = registry_.try_get<PlayerBody>(*possessedActor_);
+            if (rig == nullptr || transform == nullptr || body == nullptr) return;
+
+            Vector2 mouseDelta = GetMouseDelta();
+            rig->lookRotation.x -= mouseDelta.x * kSensitivityX;
+            rig->lookRotation.y += mouseDelta.y * kSensitivityY;
+
+            char sideway = static_cast<char>(IsKeyDown(KEY_D) - IsKeyDown(KEY_A));
+            char forward = static_cast<char>(IsKeyDown(KEY_W) - IsKeyDown(KEY_S));
+            bool crouching = IsKeyDown(KEY_LEFT_CONTROL);
+
+            // Publishes this frame's input as intent for CameraFpsLogic::VOnUpdate to simulate on
+            // its *next* tick (components.h explains the one-frame lag this implies, and why
+            // facingYaw is copied here rather than CameraFpsLogic reading FirstPersonCameraRig
+            // directly).
+            registry_.get_or_emplace<MovementIntent>(*possessedActor_) =
+                MovementIntent{rig->lookRotation.x, sideway, forward, IsKeyPressed(KEY_SPACE), crouching};
+
+            UpdateHeadBobEasing(*rig, body->isGrounded, sideway, forward, crouching, dt);
+
+            rig->camera.position = Vector3{transform->position.x,
+                                            transform->position.y + (kBottomHeight + rig->headLerp),
+                                            transform->position.z};
+            UpdateCameraFps(*rig);
+        }
+
+        void VOnRender(float dt) override { (void)dt; }
+
+        int VGetZOrder() const override { return zOrder_; }
+        void VSetZOrder(int zOrder) override { zOrder_ = zOrder; }
+        bool VIsVisible() const override { return visible_; }
+        void VSetVisible(bool visible) override { visible_ = visible; }
+
+    private:
+        entt::registry &registry_;
+        const std::optional<entt::entity> &possessedActor_;
+        int zOrder_ = 0;
+        bool visible_ = true;
+    };
+
+    // First rendering IScreenElement (mirrors game/sandbox/human_view.cpp's GameplayScene): the 3D
+    // pass. Holds registry_ + a reference to CameraFpsView's possessedActor_ (stable for the
+    // view's whole lifetime, same reasoning FpsHud already used) and re-fetches
+    // FirstPersonCameraRig every VOnRender call -- never caches a pointer into it (see
+    // components.h). The towers themselves are drawn by app/scene_renderer.h's
+    // DrawBoxRenderables -- a generic, scene-graph-driven step shared with any other view that
+    // wants it, not hand-rolled here.
     class FpsScene : public IScreenElement {
     public:
         FpsScene(entt::registry &registry, const std::optional<entt::entity> &possessedActor)
@@ -121,10 +200,10 @@ namespace {
         bool visible_ = true;
     };
 
-    // Second IScreenElement (mirrors GameplayHud): the "Camera controls:" info box + live velocity
-    // readout, ported verbatim from the example's post-EndMode3D DrawText calls -- reading the
-    // possessed actor's PlayerBody component. zOrder_ higher than FpsScene's default (0) so it
-    // layers on top, same convention as GameplayHud.
+    // Second rendering IScreenElement (mirrors GameplayHud): the "Camera controls:" info box +
+    // live velocity readout, ported verbatim from the example's post-EndMode3D DrawText calls --
+    // reading the possessed actor's PlayerBody component. zOrder_ higher than FpsScene's default
+    // (0) so it layers on top, same convention as GameplayHud.
     class FpsHud : public IScreenElement {
     public:
         FpsHud(entt::registry &registry, const std::optional<entt::entity> &possessedActor)
@@ -162,13 +241,14 @@ namespace {
         int zOrder_ = 100;
         bool visible_ = true;
     };
-
 }
 
 // DebugOverlayScreenElement's zOrder_ (200, app/debug_overlay_screen_element.h) sits above
 // FpsHud's (100), preserving the draw-last-on-top order game/sandbox/main.cpp's own
-// UpdateDrawFrame already used (HUD, then debug overlay).
+// UpdateDrawFrame already used (HUD, then debug overlay). PlayerMovementElement doesn't render
+// (VOnRender is a no-op), so its z-order is irrelevant.
 CameraFpsView::CameraFpsView(entt::registry &registry) : registry_(registry) {
+    PushElement(std::make_unique<PlayerMovementElement>(registry_, possessedActor_));
     PushElement(std::make_unique<FpsScene>(registry_, possessedActor_));
     PushElement(std::make_unique<FpsHud>(registry_, possessedActor_));
     PushElement(std::make_unique<DebugOverlayScreenElement>());
@@ -177,7 +257,9 @@ CameraFpsView::CameraFpsView(entt::registry &registry) : registry_(registry) {
 // Seeds FirstPersonCameraRig onto the newly-possessed actor -- view/presentation setup, so it
 // belongs here rather than in main.cpp (which still emplaces PlayerBody itself: simulation state
 // the game logic owns, docs/adr/0017). get_or_emplace rather than emplace so re-attaching (e.g. a
-// future DetachView/AttachView cycle onto the same actor) doesn't reset an existing rig.
+// future DetachView/AttachView cycle onto the same actor) doesn't reset an existing rig. This is
+// an IGameView lifecycle hook (called once by BaseGameLogic::AttachView) -- unlike per-frame work,
+// it has no IScreenElement equivalent to delegate to, so it stays here.
 void CameraFpsView::VOnAttach(GameViewId id, std::optional<entt::entity> actorId) {
     HumanViewBase::VOnAttach(id, actorId);
     if (!actorId.has_value()) return;
@@ -192,47 +274,4 @@ void CameraFpsView::VOnAttach(GameViewId id, std::optional<entt::entity> actorId
                                    playerPosition.z};
 
     UpdateCameraFps(rig);   // Matches the example's own pre-loop UpdateCameraFPS(&camera) call.
-}
-
-void CameraFpsView::VOnUpdate(float dt) {
-    UpdateElements(dt);
-
-    if (!possessedActor_.has_value()) return;
-
-    PlayerBody *body = registry_.try_get<PlayerBody>(*possessedActor_);
-    LocalTransform *transform = registry_.try_get<LocalTransform>(*possessedActor_);
-    FirstPersonCameraRig *rig = registry_.try_get<FirstPersonCameraRig>(*possessedActor_);
-    if (body == nullptr || transform == nullptr || rig == nullptr) return;
-
-    Vector2 mouseDelta = GetMouseDelta();
-    rig->lookRotation.x -= mouseDelta.x * kSensitivityX;
-    rig->lookRotation.y += mouseDelta.y * kSensitivityY;
-
-    char sideway = static_cast<char>(IsKeyDown(KEY_D) - IsKeyDown(KEY_A));
-    char forward = static_cast<char>(IsKeyDown(KEY_W) - IsKeyDown(KEY_S));
-    bool crouching = IsKeyDown(KEY_LEFT_CONTROL);
-
-    // Publishes this frame's input as intent for CameraFpsLogic::VOnUpdate to simulate on its
-    // *next* tick (components.h explains the one-frame lag this implies, and why lookYaw is
-    // copied here rather than CameraFpsLogic reading FirstPersonCameraRig directly).
-    registry_.get_or_emplace<PlayerInput>(*possessedActor_) =
-        PlayerInput{rig->lookRotation.x, sideway, forward, IsKeyPressed(KEY_SPACE), crouching};
-
-    rig->headLerp = Lerp(rig->headLerp, (crouching ? kCrouchHeight : kStandHeight), 20.0f * dt);
-    rig->camera.position = Vector3{transform->position.x, transform->position.y + (kBottomHeight + rig->headLerp),
-                                    transform->position.z};
-
-    if (body->isGrounded && ((forward != 0) || (sideway != 0))) {
-        rig->headTimer += dt * 3.0f;
-        rig->walkLerp = Lerp(rig->walkLerp, 1.0f, 10.0f * dt);
-        rig->camera.fovy = Lerp(rig->camera.fovy, 55.0f, 5.0f * dt);
-    } else {
-        rig->walkLerp = Lerp(rig->walkLerp, 0.0f, 10.0f * dt);
-        rig->camera.fovy = Lerp(rig->camera.fovy, 60.0f, 5.0f * dt);
-    }
-
-    rig->lean.x = Lerp(rig->lean.x, sideway * 0.02f, 10.0f * dt);
-    rig->lean.y = Lerp(rig->lean.y, forward * 0.015f, 10.0f * dt);
-
-    UpdateCameraFps(*rig);
 }

@@ -2,10 +2,7 @@
 // game/sandbox/human_view.h/.cpp into app/ once a second concrete game (game/camera_fps) needed
 // the exact same plumbing -- the trigger docs/adr/0015 said to wait for before generalizing
 // anything (docs/adr/0017). Owns the IScreenElement stack (docs/adr/0016): push/remove elements,
-// the sorted VOnRender dispatch, and VOnAttach's id_/possessedActor_ bookkeeping. Deliberately does
-// NOT implement VOnUpdate -- reading input and deciding what a "human" does with it is exactly the
-// part that differs per game (sandbox's arrow-key box nudging vs. camera_fps's WASD+mouse FPS
-// movement), left abstract for each game's own subclass.
+// the sorted VOnRender dispatch, and VOnAttach's id_/possessedActor_ bookkeeping.
 #ifndef HUMAN_VIEW_BASE_H
 #define HUMAN_VIEW_BASE_H
 
@@ -25,6 +22,15 @@ public:
     void VOnRender(float dt) override;
     GameViewType VGetType() const override { return GameViewType::Human; }
 
+    // Default: just ticks the pushed element stack. Non-pure (unlike VOnRender being the only
+    // other thing every subclass needs) specifically so a subclass whose entire "human" update is
+    // element dispatch -- game/camera_fps/human_view.cpp's CameraFpsView, once its own per-frame
+    // input/camera work moved into a pushed PlayerMovementElement (docs/adr/0017 follow-up) --
+    // doesn't need to override this at all. A subclass that needs more (game/sandbox's HumanView,
+    // which also moves its possessed actor directly) still overrides it, calling UpdateElements
+    // itself to control ordering against its own input handling.
+    void VOnUpdate(float dt) override;
+
     // Lets a subclass compose multiple independently updated/rendered/shown/hidden pieces instead
     // of one monolithic VOnRender body. Mirrors BaseGameLogic::AttachView/DetachView's id-based
     // shape, not the book's shared_ptr<IScreenElement>/std::list -- nothing here needs shared
@@ -33,14 +39,11 @@ public:
     void RemoveElement(ScreenElementId id);
 
 protected:
-    // Not every subclass has an ECS actor to possess -- game/sandbox/human_view.cpp reads this to
-    // move a LocalTransform; game/camera_fps/human_view.cpp never sets it (its "player" is
-    // camera-attached state, not an entity).
+    // Not every subclass has an ECS actor to possess -- both game/sandbox/human_view.cpp and
+    // game/camera_fps/human_view.cpp set it today, but a RemoteView/observer-only view (still
+    // unbuilt) legitimately wouldn't.
     std::optional<entt::entity> possessedActor_;
 
-    // Ticks every pushed element's VOnUpdate -- a subclass's own VOnUpdate override calls this
-    // itself (not run implicitly) so it controls ordering against its own input handling, the same
-    // way game/sandbox/human_view.cpp's VOnUpdate already ran this before reading movement keys.
     void UpdateElements(float dt);
 
 private:

@@ -42,22 +42,28 @@ struct FirstPersonCameraRig {
     Vector2 lean{0.0f, 0.0f};
 };
 
-// The player actor's captured movement intent for the *next* physics step -- how
-// CameraFpsView::VOnUpdate (raw input -> meaning) hands off to CameraFpsLogic::VOnUpdate
-// (meaning -> simulation), game_logic.h's whole reason to exist (docs/adr/0017 follow-up: the
-// physics used to run inside the view directly, which is exactly the coupling ADR-0010's
-// Logic/View split exists to avoid). lookYaw duplicates FirstPersonCameraRig.lookRotation.x
-// deliberately, rather than CameraFpsLogic reaching into a presentation-only component to read
-// it -- movement direction genuinely depends on facing, but Logic doesn't need to know *how* that
-// facing was produced (mouse+keyboard here; could be a gamepad, a network snapshot, or an AI
-// decision for a future RemoteView/AIView, none of which should need a FirstPersonCameraRig to
-// exist at all). Not the same thing as ADR-0013's (still-Proposed) InputAction/InputBindings --
-// that's raw-key-to-action *mapping*; this is one specific game's already-resolved movement
-// intent for one frame.
-struct PlayerInput {
-    float lookYaw = 0.0f;   // radians, matches FirstPersonCameraRig.lookRotation.x
-    char side = 0;          // -1/0/1, A/D
-    char forward = 0;       // -1/0/1, S/W
+// An actor's captured movement intent for the *next* physics step -- how
+// PlayerMovementElement::VOnUpdate (raw input -> meaning, human_view.cpp) hands off to
+// CameraFpsLogic::VOnUpdate (meaning -> simulation), game_logic.h's whole reason to exist
+// (docs/adr/0017 follow-up: the physics used to run inside the view directly, which is exactly the
+// coupling ADR-0010's Logic/View split exists to avoid).
+//
+// Deliberately named/shaped so nothing about it is human-specific, despite its only producer today
+// being a human-driven view: CameraFpsLogic's physics step only ever reads a MovementIntent off
+// whatever actor has one -- it has no idea, and doesn't need one, whether a human, a future
+// AIView's decision tree, or a network snapshot for a future RemoteView produced it. Swapping the
+// player's controller for an AI later means writing an AIView that emplaces this same component
+// with its own decided values; CameraFpsLogic doesn't change at all. facingYaw exists for the same
+// reason: it's "which way this actor is currently facing, for the purpose of resolving movement
+// direction relative to it" -- a fact about the actor, not the rendering camera -- even though its
+// only current source happens to be FirstPersonCameraRig.lookRotation.x (deliberately copied here
+// rather than CameraFpsLogic reaching into that presentation-only component to read it directly).
+// Not the same thing as ADR-0013's (still-Proposed) InputAction/InputBindings -- that's
+// raw-key-to-action *mapping*; this is one already-resolved movement intent for one frame.
+struct MovementIntent {
+    float facingYaw = 0.0f;   // radians -- which way the actor is currently facing
+    char side = 0;            // -1/0/1, A/D
+    char forward = 0;         // -1/0/1, S/W
     bool jumpPressed = false;
     bool crouchHold = false;
 };

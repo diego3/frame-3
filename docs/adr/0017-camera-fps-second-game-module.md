@@ -152,26 +152,65 @@ level. `game/camera_fps` does:
 - **New**: `game/camera_fps/game_logic.h`/`.cpp` — `CameraFpsLogic : public BaseGameLogic`,
   overriding the now-`virtual` `BaseGameLogic::VOnUpdate` (was non-virtual; this is the first
   subclass to need overriding it, the same reason `VLoadLevel` was already `virtual`). Each tick:
-  advances every actor with a `PlayerInput`/`PlayerBody`/`LocalTransform` one physics step (the
+  advances every actor with a `MovementIntent`/`PlayerBody`/`LocalTransform` one physics step (the
   `UpdateBody` math, moved here verbatim from `human_view.cpp`, along with its physics-only
   constants — gravity, friction, air drag, the acceleration curve), *then* calls
-  `BaseGameLogic::VOnUpdate` to tick attached views.
-- **New component**: `PlayerInput` (`game/camera_fps/components.h`) — `lookYaw`/`side`/`forward`/
-  `jumpPressed`/`crouchHold`. The seam that crosses the Logic/View boundary now that physics moved
-  out of the view: `CameraFpsView::VOnUpdate` still reads raw mouse/keyboard every frame (that's
-  legitimately View's job — turning hardware input into meaning), but now just writes the result
-  as `PlayerInput` instead of computing physics from it directly. `lookYaw` is a deliberate copy of
-  `FirstPersonCameraRig.lookRotation.x` rather than `CameraFpsLogic` reading that (presentation-
-  only) component itself — movement direction needs to know facing, but Logic shouldn't need to
-  know facing came from a mouse, and not e.g. a gamepad or a future `AIView`'s decision.
+  `BaseGameLogic::VOnUpdate` to tick attached views. `registry_.view<...>()` here *is* this
+  project's ECS-native form of "`GameLogic` walks its actors, updating their components" — there's
+  no separate actor list to iterate by hand the way an OOP actor-with-components model would need;
+  the view itself is that walk, scoped to exactly the actors with every component this one system
+  cares about.
+- **New component, deliberately not player- or camera-specific**: `MovementIntent`
+  (`game/camera_fps/components.h`) — `facingYaw`/`side`/`forward`/`jumpPressed`/`crouchHold`. The
+  seam that crosses the Logic/View boundary now that physics moved out of the view:
+  `PlayerMovementElement::VOnUpdate` (next section) still reads raw mouse/keyboard every frame
+  (legitimately View's job — turning hardware input into meaning), but now just writes the result
+  as `MovementIntent` instead of computing physics from it directly. Named and shaped so nothing
+  about it is human-specific: `CameraFpsLogic`'s physics step only ever reads whatever
+  `MovementIntent` an actor has — it has no idea, and doesn't need one, whether a human or a future
+  `AIView`'s decision tree produced it. Swapping the player's controller for an AI later means
+  writing an `AIView` that emplaces this same component with its own decided values;
+  `CameraFpsLogic` doesn't change. `facingYaw` (not `lookYaw`) is the same reasoning applied to the
+  field itself — it's "which way this actor is facing, for resolving movement direction," a fact
+  about the actor, not about a rendering camera, even though its only current source happens to be
+  `FirstPersonCameraRig.lookRotation.x` (still deliberately copied rather than read directly, for
+  the same reason).
 - **Ordering, and the tradeoff it accepts**: `CameraFpsLogic::VOnUpdate` runs the physics step
   *before* ticking views, so `CameraFpsView`'s camera-position update reads this frame's
   already-integrated `LocalTransform` (no lag there). The cost: the physics step consumes
-  `PlayerInput` as it stood after the *previous* frame's view tick, since this frame's view tick
+  `MovementIntent` as it stood after the *previous* frame's view tick, since this frame's view tick
   (which would overwrite it) hasn't run yet — a one-frame input-to-physics lag. Standard for any
   engine with this split, imperceptible at real frame rates. Self-healing on boot, too: frame 0's
-  physics step finds no actor with a `PlayerInput` yet (no view has ticked) and simply skips it,
+  physics step finds no actor with a `MovementIntent` yet (no view has ticked) and simply skips it,
   not a special case to handle.
+- **`EventManager` use, via the seam `BaseGameLogic` already exposes**: the ported example's own
+  `UpdateBody()` had a commented-out "Sound can be played at this moment" hook right where a jump
+  triggers. `CameraFpsLogic::VOnUpdate` now queues a new `EvtData_ActorJumped{entity}`
+  (`game_logic.h`) via `events_` at exactly that point — the same "fire it even with no subscriber
+  yet" precedent `app/level_loader.h`'s `EvtData_EntitySpawned` already set (ADR-0009). `UpdateBody`
+  itself stays a pure function of its inputs/outputs (returns whether it triggered a jump, no
+  `EventManager` dependency of its own) — `CameraFpsLogic::VOnUpdate` queues based on the result.
+
+### `PlayerMovementElement`: the per-frame input/camera work becomes its own `IScreenElement`
+
+Even after physics moved to `CameraFpsLogic`, `CameraFpsView::VOnUpdate` still directly held ~40
+lines of algorithm: reading raw input, publishing `MovementIntent`, and easing the camera
+(`FirstPersonCameraRig`'s head-bob/FOV/lean state) to follow the possessed actor. That's exactly
+the same shape `FpsScene`/`FpsHud`/`DebugOverlayScreenElement` already existed to avoid for
+rendering — nothing said per-frame *update* work couldn't get the same treatment:
+
+- **New**: `game/camera_fps/human_view.cpp`'s `PlayerMovementElement : IScreenElement` — owns what
+  `VOnUpdate` used to: reads mouse/keyboard, writes `MovementIntent`, calls a newly-factored-out
+  `UpdateHeadBobEasing` (mirrors `UpdateCameraFps` already being its own function) and
+  `UpdateCameraFps`. `VOnRender` is a no-op — nothing here draws.
+- **`CameraFpsView` stops overriding `VOnUpdate` entirely.** Its whole per-frame job was always
+  just `UpdateElements(dt)` once `PlayerMovementElement` existed to do the real work, so
+  `app/human_view_base.h`'s `HumanViewBase::VOnUpdate` gained a default body (`UpdateElements(dt)`)
+  — non-`virtual`-`=0` now, specifically so a subclass whose entire "human" update *is* element
+  dispatch doesn't need to override it at all. `game/sandbox`'s `HumanView` still overrides it
+  (it also moves its possessed actor directly, not through a pushed element) — unaffected.
+  `CameraFpsView` itself is left holding only composition (its constructor) and `VOnAttach` (an
+  `IGameView` lifecycle hook with no `IScreenElement` equivalent to delegate to).
 
 ### `src/Makefile`: a `GAME` build selector
 
@@ -228,15 +267,16 @@ the shipped product (`sandbox`), not every module in-tree.
 
 ## What actually shipped, alongside this ADR
 
-Implemented in the same change: `app/human_view_base.h`/`.cpp`, `app/render_components.h`,
-`app/scene_renderer.h`, `app/debug_overlay_screen_element.h` (all new); `app/base_game_logic.h`/
-`.cpp`'s `VLoadLevel` return-type change and `VOnUpdate` becoming `virtual`, plus new test
-coverage; `game/sandbox/human_view.h`/`.cpp` (refactored onto `HumanViewBase`) and
-`screen_gameplay.cpp` (updated to `VLoadLevel`'s returned entity list) — both pure refactors, no
-behavior change; `game/camera_fps/human_view.h`/`.cpp`, `main.cpp`, `components.h` (`PlayerBody`,
-`FirstPersonCameraRig`, `PlayerInput`), `game_logic.h`/`.cpp` (`CameraFpsLogic`, new);
-`assets/levels/camera_fps.yaml`, `assets/entities/tower.yaml` (new); the `GAME` Makefile variable
-and `build.sh` passthrough; the `ci_sanity.yml` second build step.
+Implemented in the same change: `app/human_view_base.h`/`.cpp` (new, plus a later default
+`VOnUpdate` body), `app/render_components.h`, `app/scene_renderer.h`,
+`app/debug_overlay_screen_element.h` (all new); `app/base_game_logic.h`/`.cpp`'s `VLoadLevel`
+return-type change and `VOnUpdate` becoming `virtual`, plus new test coverage; `game/sandbox/
+human_view.h`/`.cpp` (refactored onto `HumanViewBase`) and `screen_gameplay.cpp` (updated to
+`VLoadLevel`'s returned entity list) — both pure refactors, no behavior change; `game/camera_fps/
+human_view.h`/`.cpp` (`PlayerMovementElement`, `FpsScene`, `FpsHud`), `main.cpp`, `components.h`
+(`PlayerBody`, `FirstPersonCameraRig`, `MovementIntent`), `game_logic.h`/`.cpp` (`CameraFpsLogic`,
+`EvtData_ActorJumped`, new); `assets/levels/camera_fps.yaml`, `assets/entities/tower.yaml` (new);
+the `GAME` Makefile variable and `build.sh` passthrough; the `ci_sanity.yml` second build step.
 Verified via: `make ... GAME=sandbox` and `make ... GAME=camera_fps` both building clean under
 `-Werror`; the full unit test suite (84/84, including the new `VLoadLevel` coverage) passing; and a
 headless (`xvfb-run`) smoke test of both binaries running several hundred frames each with no crash

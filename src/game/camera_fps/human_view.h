@@ -1,12 +1,14 @@
 // Second concrete IGameView (the first was game/sandbox/human_view.h) -- ported from raylib's own
 // examples/core/core_3d_camera_fps.c ("raylib [core] example - 3d camera fps"). Reuses
 // HumanViewBase's IScreenElement stack (docs/adr/0016) exactly like sandbox's HumanView does.
-// Unlike sandbox's HumanView, this class holds no per-frame simulation OR presentation state of
-// its own at all -- the possessed actor's PlayerBody, LocalTransform, and FirstPersonCameraRig
-// (all real ECS components, game/camera_fps/components.h) hold everything, including the camera
-// itself and its look/head-bob easing. VOnAttach seeds FirstPersonCameraRig onto the actor;
-// VOnUpdate reads/writes it. See components.h for why nothing here may cache a pointer into it
-// across frames.
+//
+// This class itself holds no per-frame logic at all: every frame's actual work (reading input,
+// publishing MovementIntent, easing the camera, rendering, the F3 overlay) lives in the
+// IScreenElements pushed in the constructor (human_view.cpp) -- CameraFpsView doesn't even
+// override VOnUpdate, relying on HumanViewBase's default (just ticks those elements). Its own two
+// jobs are composition (the constructor) and VOnAttach, which seeds FirstPersonCameraRig onto the
+// newly-possessed actor -- a lifecycle hook only the view itself has, not something an
+// IScreenElement participates in.
 #ifndef CAMERA_FPS_HUMAN_VIEW_H
 #define CAMERA_FPS_HUMAN_VIEW_H
 
@@ -19,7 +21,6 @@ public:
     explicit CameraFpsView(entt::registry &registry);
 
     void VOnAttach(GameViewId id, std::optional<entt::entity> actorId) override;
-    void VOnUpdate(float dt) override;
 
 private:
     entt::registry &registry_;

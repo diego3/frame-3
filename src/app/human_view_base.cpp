@@ -11,6 +11,10 @@ void HumanViewBase::UpdateElements(float dt) {
     for (auto &[id, element] : elements_) element->VOnUpdate(dt);
 }
 
+void HumanViewBase::VOnUpdate(float dt) {
+    UpdateElements(dt);
+}
+
 void HumanViewBase::VOnRender(float dt) {
     // Sorted ascending by z-order right before rendering (mirrors GCC4::HumanView::VOnRender's own
     // m_ScreenElements.sort() pass) -- lower z-order renders first, so a higher z-order element

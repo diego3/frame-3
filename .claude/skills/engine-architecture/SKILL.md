@@ -555,12 +555,14 @@ dropped) -- see ADR-0016's own Tradeoffs.
 
 **`HumanViewBase` and the second game module (ADR-0017)**: `game/camera_fps/` (raylib's own "3d
 camera fps" example) is frame-3's second concrete game module, and its `CameraFpsView` is the
-second `IGameView` to need this stack -- with a completely different `VOnUpdate` (WASD+mouse FPS
-body movement vs. sandbox's arrow-key box nudging). That confirmed exactly what ADR-0015 said to
-wait for a second data point before generalizing: `HumanViewBase : public IGameView` now holds the
-stack plumbing and a protected `UpdateElements(dt)` helper a subclass's own `VOnUpdate` calls
-explicitly; `VOnUpdate` itself stays pure virtual. `game/sandbox/human_view.h`'s `HumanView` and
-`game/camera_fps/human_view.h`'s `CameraFpsView` both subclass it now, keeping only what's actually
+second `IGameView` to need this stack -- with a completely different per-frame behavior (WASD+mouse
+FPS body movement vs. sandbox's arrow-key box nudging). That confirmed exactly what ADR-0015 said
+to wait for a second data point before generalizing: `HumanViewBase : public IGameView` now holds
+the stack plumbing and a protected `UpdateElements(dt)` helper. `VOnUpdate` has a default body now
+(just `UpdateElements(dt)`), not pure virtual -- `game/camera_fps`'s `CameraFpsView` doesn't
+override it at all (its own per-frame work fully lives in a pushed `PlayerMovementElement`, see
+below), while `game/sandbox`'s `HumanView` still does (it moves its possessed actor directly, not
+through a pushed element). Both subclass `HumanViewBase` now, keeping only what's actually
 game-specific.
 
 `camera_fps` also uses the same data-driven wiring §6-7 already describe, not a special case: its
@@ -611,13 +613,30 @@ raw input *and* wrote `PlayerBody`/`LocalTransform` in the same method -- exactl
 section's own Logic/View split exists to prevent, and `BaseGameLogic::VLoadLevel`'s own doc comment
 had already left "a future game-specific `BaseGameLogic` subclass" as an explicit, unused seam.
 `game/camera_fps/game_logic.h`/`.cpp` is that subclass now: `CameraFpsLogic::VOnUpdate` (overriding
-`BaseGameLogic::VOnUpdate`, made `virtual` for this) advances every actor with a `PlayerInput`/
-`PlayerBody`/`LocalTransform` one physics step, *then* calls the base class to tick views -- so a
-view renders this frame's already-integrated position. `CameraFpsView::VOnUpdate` still reads raw
-input every frame (that's legitimately View's job), but now just publishes it as a new
-`PlayerInput` component (`lookYaw`/`side`/`forward`/`jumpPressed`/`crouchHold`) instead of
-computing physics from it directly -- the seam that crosses the boundary, consumed on the *next*
-tick (a one-frame input-to-physics lag, same tradeoff any Logic/View-separated engine accepts).
+`BaseGameLogic::VOnUpdate`, made `virtual` for this) advances every actor with a `MovementIntent`/
+`PlayerBody`/`LocalTransform` one physics step -- `registry_.view<...>()` here *is* the ECS-native
+form of "`GameLogic` walks its actors, updating their components," no separate actor list to walk
+by hand -- *then* calls the base class to tick views, so a view renders this frame's
+already-integrated position. It also queues a new `EvtData_ActorJumped` via `events_`
+(`EventManager`, §1) whenever the physics step triggers a jump -- the ported example's own
+commented-out "Sound can be played at this moment" hook, done the way `app/level_loader.h`'s
+`EvtData_EntitySpawned` already established (fire it even with no subscriber yet).
+
+`MovementIntent` (`facingYaw`/`side`/`forward`/`jumpPressed`/`crouchHold`, not `PlayerInput`) is
+the seam that crosses the Logic/View boundary -- named and shaped so nothing about it is
+human-specific: `CameraFpsLogic` only ever reads whatever `MovementIntent` an actor has, with no
+idea whether a human or a future `AIView` produced it. `facingYaw` (not `lookYaw`) is the same
+reasoning applied to one field -- "which way this actor faces," a fact about the actor's movement,
+not the rendering camera, even though its only source today is `FirstPersonCameraRig`.
+
+Reading input and publishing `MovementIntent` -- plus easing the camera to follow the actor -- used
+to be `CameraFpsView::VOnUpdate`'s own ~40-line body even after physics moved out. That became its
+own `IScreenElement`, `PlayerMovementElement` (mirrors `FpsScene`/`FpsHud`/
+`DebugOverlayScreenElement`, just for `VOnUpdate` instead of `VOnRender`) -- at which point
+`CameraFpsView` stopped overriding `VOnUpdate` at all, since its whole job was `UpdateElements(dt)`
+once nothing else needed doing directly. `HumanViewBase::VOnUpdate` (§10) gained a default body
+(`UpdateElements(dt)`) for exactly this -- `game/sandbox`'s `HumanView` still overrides it, since it
+moves its possessed actor directly rather than through a pushed element.
 
 ## Decisions Made
 
