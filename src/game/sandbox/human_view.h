@@ -15,10 +15,10 @@
 #include <entt/entt.hpp>
 #include <raylib.h>
 
-#include "app/game_view.h"
-#include "app/process_manager.h"
-#include "app/resource_cache.h"
-#include "app/screen_element.h"
+#include "app/view/game_view.h"
+#include "app/process/process_manager.h"
+#include "app/resource/resource_cache.h"
+#include "app/view/screen_element.h"
 
 class HumanView : public IGameView {
 public:

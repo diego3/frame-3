@@ -13,7 +13,7 @@
 #include <memory>
 #include <unordered_map>
 
-#include "serializable_event.h"
+#include "app/events/serializable_event.h"
 
 class EventTypeRegistry {
 public:

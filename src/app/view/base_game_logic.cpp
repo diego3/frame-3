@@ -1,4 +1,4 @@
-#include "base_game_logic.h"
+#include "app/view/base_game_logic.h"
 
 BaseGameLogic::BaseGameLogic(entt::registry &registry, EventManager &events,
                               ProcessManager &processes, LevelLoader &levelLoader)

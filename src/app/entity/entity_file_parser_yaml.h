@@ -5,7 +5,7 @@
 #ifndef ENTITY_FILE_PARSER_YAML_H
 #define ENTITY_FILE_PARSER_YAML_H
 
-#include "entity_file_parser.h"
+#include "app/entity/entity_file_parser.h"
 
 class YamlEntityFileParser : public IEntityFileParser {
 public:

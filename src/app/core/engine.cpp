@@ -1,6 +1,6 @@
-#include "engine.h"
+#include "app/core/engine.h"
 
-#include "hierarchy.h"
+#include "app/scene/hierarchy.h"
 #include "raylib.h"
 
 #if defined(PLATFORM_WEB)
@@ -55,11 +55,11 @@ namespace {
         // Frame budget SLO: both loop paths in Run() below target config.targetFps (ADR-0011;
         // SetTargetFPS on desktop, emscripten_set_main_loop's rate argument on web), so a frame is
         // "in budget" under roughly 1000/targetFps ms.
-        float dtMs = dt * 1000.0f;
-        float frameBudgetMs = 1000.0f / static_cast<float>(g_runningEngine->Config().targetFps);
-        if (dtMs > frameBudgetMs) {
-            TraceLog(LOG_WARNING, "Frame budget exceeded: %.2fms (budget %.2fms)", dtMs, frameBudgetMs);
-        }
+        //float dtMs = dt * 1000.0f;
+        //float frameBudgetMs = 1000.0f / static_cast<float>(g_runningEngine->Config().targetFps);
+        //if (dtMs > frameBudgetMs) {
+        //    TraceLog(LOG_WARNING, "Frame budget exceeded: %.2fms (budget %.2fms)", dtMs, frameBudgetMs);
+        //}
 
         g_runningEngine->Events().DispatchQueued();
         g_runningEngine->Processes().Update(dt);

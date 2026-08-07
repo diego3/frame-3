@@ -91,7 +91,7 @@ jobs:
 
     # Generating static library, note that i386 architecture is deprecated
     # Defining GL_SILENCE_DEPRECATION because OpenGL is deprecated on macOS
-    # x86_64 target is macos10.15, not the template's original 10.12: app/file_io.h (backing
+    # x86_64 target is macos10.15, not the template's original 10.12: app/io/file_io.h (backing
     # engine_config.cpp since docs/adr/0011) uses std::filesystem::path, unavailable before 10.15.
     # Kept in sync with the same target in the "Build Product" step below.
     - name: Build raylib Library

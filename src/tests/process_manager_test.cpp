@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "app/process_manager.h"
+#include "app/process/process_manager.h"
 
 namespace {
     struct FakeProcessState {

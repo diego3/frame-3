@@ -10,10 +10,10 @@
 #include <entt/entt.hpp>
 #include <raylib.h>
 
-#include "engine_config.h"
-#include "event_manager.h"
-#include "process_manager.h"
-#include "resource_cache.h"
+#include "app/core/engine_config.h"
+#include "app/events/event_manager.h"
+#include "app/process/process_manager.h"
+#include "app/resource/resource_cache.h"
 
 class Engine {
 public:

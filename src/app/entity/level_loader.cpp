@@ -1,4 +1,4 @@
-#include "level_loader.h"
+#include "app/entity/level_loader.h"
 
 LevelLoader::LevelLoader(EntityFactory &entityFactory, IEntityFileParser &parser, FileReader readFile)
     : entityFactory_(entityFactory), parser_(parser), readFile_(std::move(readFile)) {}

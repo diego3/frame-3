@@ -1,6 +1,6 @@
 ---
 name: engine-architecture
-description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/event_manager.h`), a `ProcessManager` (`src/app/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`), and a `ResourceCache<T>` (`src/app/resource_cache.h`, per ADR-0004, backing `Engine::Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader()`); one real component (`LocalTransform`/`WorldTransform`, via a `"Position"` `EntityFactory` loader) and a `BaseGameLogic`/`HumanView` Logic/View split (§9, ADR-0010) exist and are wired into the gameplay screen, and `HumanView` composes an `IScreenElement` stack (§10, ADR-0016) instead of rendering directly, but nothing subscribes to the event manager or attaches a process yet.
+description: Design guidance for frame-3's core systems (event manager, process manager, ECS entity/prototype spawning via EnTT, resource cache) based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 4, 6-8, modernized for raylib + C++ + 3D instead of the book's 2004-era Win32/DirectX target. Use this skill whenever adding cross-system communication, timed/multi-frame behavior (cooldowns, animations, camera effects), spawning game entities, or loading/caching 3D models, textures, or shaders. Also use it when the user asks "how should this be structured", mentions object pooling, ECS, EnTT, event manager, event bus, process manager, resource cache, or references Game Coding Complete directly. This is forward-looking design guidance, not a description of existing code — frame-3 has an `Engine` class (Ch. 5, `src/app/core/engine.h`/`.cpp`) owning window/audio lifecycle, loop driving, the `entt::registry`, an `EventManager` (`src/app/events/event_manager.h`), a `ProcessManager` (`src/app/process/process_manager.h`/`.cpp`, ticked once per frame from `Engine::Run`), and a `ResourceCache<T>` (`src/app/resource/resource_cache.h`, per ADR-0004, backing `Engine::Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader()`); one real component (`LocalTransform`/`WorldTransform`, via a `"Position"` `EntityFactory` loader) and a `BaseGameLogic`/`HumanView` Logic/View split (§9, ADR-0010) exist and are wired into the gameplay screen, and `HumanView` composes an `IScreenElement` stack (§10, ADR-0016) instead of rendering directly, but nothing subscribes to the event manager or attaches a process yet.
 ---
 
 # Engine Architecture (Game Coding Complete Ch. 4, 6-8 — modernized)
@@ -12,7 +12,7 @@ shared packaging), per [ADR-0014](../../../docs/adr/0014-game-module-boundary-an
 (Accepted). The one game module built so far, `src/game/sandbox/`, is the migrated raylib template
 itself -- now C++, not C -- with a simple logo/title/gameplay/ending/options screen state machine
 (`src/game/sandbox/screens.h`) driven by `src/game/sandbox/main.cpp`. The
-`src/app/` layer: **`Engine`** (`src/app/engine.h`/`.cpp`, Ch. 5 Application layer) owns
+`src/app/` layer: **`Engine`** (`src/app/core/engine.h`/`.cpp`, Ch. 5 Application layer) owns
 window/audio lifecycle, drives the main loop via a function-pointer callback, owns an
 `entt::registry`, and now also owns and drives §§1-2's systems (`EventManager`, `ProcessManager`)
 plus §4's `ResourceCache<T>` — see §3 for what it does (and deliberately doesn't) touch re: ECS.
@@ -50,7 +50,7 @@ not coincidentally — the same shape already proven out in this project's sibli
 bus".
 
 ```cpp
-// Sketch — matches src/app/event_manager.h; adjust here if that file's shape changes.
+// Sketch — matches src/app/events/event_manager.h; adjust here if that file's shape changes.
 class EventManager {
 public:
     template <typename T>
@@ -76,8 +76,8 @@ defining a new struct — the same win the book's Ch. 4 was actually chasing (av
 "terrible monolithic enumeration" compile-time trap), achieved with templates instead of an
 integer registry.
 
-**Current state**: `EventManager` (`src/app/event_manager.h`, header-only) exists and
-`Engine::Events()` (`src/app/engine.h`) owns the one instance — but nothing subscribes or emits
+**Current state**: `EventManager` (`src/app/events/event_manager.h`, header-only) exists and
+`Engine::Events()` (`src/app/core/engine.h`) owns the one instance — but nothing subscribes or emits
 yet. No event struct types exist yet either; define one per event kind as gameplay code needs to
 announce something (e.g. a future `EvtData_EnemyDied`), don't pre-build a taxonomy of events
 speculatively.
@@ -86,13 +86,13 @@ Per [ADR-0005](../../../docs/adr/0005-event-manager-queued-dispatch-idata-lua-pr
 (Partially Accepted), `EventManager` also has `Queue<T>`/`DispatchQueued()` — a deferred-dispatch
 path that avoids the reentrancy hazard of a handler `Emit`-ing the same type it's currently
 handling — ticked once per frame from `Engine::Run`'s `TickAndUpdateDraw`
-(`src/app/engine.cpp`), right alongside `ProcessManager::Update`. `Emit<T>` is unchanged. Separately,
+(`src/app/core/engine.cpp`), right alongside `ProcessManager::Update`. `Emit<T>` is unchanged. Separately,
 for events that need to cross a process or time boundary (networking, an event journal — neither
 exists yet), there's now an **opt-in** serialization path: `ISerializableEvent`
-(`src/app/serializable_event.h`), a stable compile-time type ID via `Fnv1aHash`
-(`src/app/event_type_id.h`), a factory table to reconstruct a concrete type from raw bytes
-(`EventTypeRegistry`, `src/app/event_type_registry.h`), and a minimal in-memory
-`ByteWriter`/`ByteReader` (`src/app/byte_stream.h`). Purely local events (everything today) never
+(`src/app/events/serializable_event.h`), a stable compile-time type ID via `Fnv1aHash`
+(`src/app/events/event_type_id.h`), a factory table to reconstruct a concrete type from raw bytes
+(`EventTypeRegistry`, `src/app/events/event_type_registry.h`), and a minimal in-memory
+`ByteWriter`/`ByteReader` (`src/app/events/byte_stream.h`). Purely local events (everything today) never
 touch any of this — it's paid for only by an event type that explicitly implements
 `ISerializableEvent`, and no real event type does yet (`src/tests/serializable_event_test.cpp`
 exercises it with a stand-in event). `EventJournal` and the actual network transport are still just
@@ -105,7 +105,7 @@ across multiple frames and reports its own completion; a `ProcessManager` owns a
 `Update(dt)` on each once per frame, removing finished ones.
 
 ```cpp
-// Sketch — matches src/app/process.h + src/app/process_manager.h/.cpp; adjust here if those
+// Sketch — matches src/app/process/process.h + src/app/process/process_manager.h/.cpp; adjust here if those
 // files' shape changes.
 class Process {
 public:
@@ -134,7 +134,7 @@ Use this for behavior that isn't naturally one object's own state — camera sha
 example (there's no single "camera actor" to hang a cooldown field off of). Don't reach for this
 for a single entity's own cooldown; that's just a member variable on the entity.
 
-**Current state**: `Process`/`ProcessManager` exist and `Engine::Processes()` (`src/app/engine.h`)
+**Current state**: `Process`/`ProcessManager` exist and `Engine::Processes()` (`src/app/core/engine.h`)
 owns the one `ProcessManager` instance, ticked once per frame from `Engine::Run` (both the desktop
 `while` loop and the `PLATFORM_WEB` `emscripten_set_main_loop` path go through the same
 `TickAndUpdateDraw` trampoline in `engine.cpp`, so process ticking isn't duplicated per-platform)
@@ -173,7 +173,7 @@ read by one generic factory — still not a reason to reach for EnTT's snapshot/
 utilities prematurely; a plain data table is enough until it visibly isn't.
 
 **Current state**: EnTT compiles/links/runs as part of the build, and `Engine::Registry()`
-(`src/app/engine.h`) owns the one `entt::registry` instance. `SpawnEnemy`-style hardcoded factory
+(`src/app/core/engine.h`) owns the one `entt::registry` instance. `SpawnEnemy`-style hardcoded factory
 functions still don't exist — but the "small data table read by one generic factory" extension
 mentioned above is now real (§6), and one real component pairing has actually landed through it:
 `"Position"` → `LocalTransform`/`WorldTransform` (§9's `game/sandbox/screen_gameplay.cpp`), the first
@@ -193,7 +193,7 @@ book's `ResHandle`/`shared_ptr` lifetime-safety piece pulled forward alongside i
 can't be freed out from under a caller still holding a handle to it:
 
 ```cpp
-// Sketch — matches src/app/resource_cache.h; adjust here if that file's shape changes.
+// Sketch — matches src/app/resource/resource_cache.h; adjust here if that file's shape changes.
 template <typename T>
 class ResourceCache {
 public:
@@ -225,8 +225,8 @@ or LRU+budget eviction until there's an actual reason to (many small files, cust
 beyond a single raylib call, or a measured memory-pressure problem) — that's premature for a
 learning project's early demos; see ADR-0004 for the full comparison and reasoning.
 
-**Current state**: `ResourceCache<T>` (`src/app/resource_cache.h`, header-only, templated) exists.
-`Engine` (`src/app/engine.h`/`.cpp`) owns `ResourceCache<Font>`, `ResourceCache<Sound>`,
+**Current state**: `ResourceCache<T>` (`src/app/resource/resource_cache.h`, header-only, templated) exists.
+`Engine` (`src/app/core/engine.h`/`.cpp`) owns `ResourceCache<Font>`, `ResourceCache<Sound>`,
 `ResourceCache<Model>`, `ResourceCache<Texture2D>`, and `ResourceCache<Shader>`, exposed via
 `Fonts()`/`Sounds()`/`Models()`/`Textures()`/`GetShader(vsPath, fsPath)`. `LoadShader` takes two
 file paths, not one, so the `Shader` cache is keyed via `ResourceCacheKeys::Combine()`/`Split()`
@@ -270,7 +270,7 @@ renderer). The chosen shape is EnTT's own documented "Pattern A" for exactly thi
 plus a topological transform-propagation system:
 
 ```cpp
-// Sketch — matches src/app/hierarchy.h + src/app/transform.h; adjust here if those files' shape
+// Sketch — matches src/app/scene/hierarchy.h + src/app/scene/transform.h; adjust here if those files' shape
 // changes.
 struct Relationship {
     std::size_t children{};
@@ -296,9 +296,9 @@ hierarchy depth regardless of EnTT's internal storage order, with no sort step t
 as parents change. Simpler to reason about at this project's scale (a handful of entities per
 scene); worth revisiting only if profiling ever shows the recursion itself is hot.
 
-**Current state**: `Relationship` (`src/app/hierarchy.h`) and `LocalTransform`/`WorldTransform`
-(`src/app/transform.h`) exist, both header-only. `PropagateTransforms` is ticked once per frame from
-`Engine::Run`'s `TickAndUpdateDraw` (`src/app/engine.cpp`), after `ProcessManager::Update` and
+**Current state**: `Relationship` (`src/app/scene/hierarchy.h`) and `LocalTransform`/`WorldTransform`
+(`src/app/scene/transform.h`) exist, both header-only. `PropagateTransforms` is ticked once per frame from
+`Engine::Run`'s `TickAndUpdateDraw` (`src/app/core/engine.cpp`), after `ProcessManager::Update` and
 before `updateAndDraw()` — the same per-frame-tick spot §§1-2's systems use. One real gameplay
 entity uses this now (§9's `"Position"` component loader emplaces `LocalTransform`+`WorldTransform`,
 no `Relationship` — a standalone root); `src/tests/hierarchy_test.cpp` exercises
@@ -316,7 +316,7 @@ varies between formats (file syntax) is fully consumed during parsing and nothin
 runtime polymorphism to stay format-agnostic:
 
 ```cpp
-// Sketch — matches src/app/entity_def.h, entity_file_parser.h/_yaml.h/.cpp, entity_factory.h;
+// Sketch — matches src/app/entity/entity_def.h, entity_file_parser.h/_yaml.h/.cpp, entity_factory.h;
 // adjust here if those files' shape changes.
 class EntityDefNode {
 public:
@@ -357,9 +357,9 @@ flow-style maps/sequences (`{ x: 1 }`, `[a, b]`) — silently misparses them as 
 rather than throwing. Entity/level definition files must use block style (newline + indentation).
 See ADR-0008's Implementation status note.
 
-**Current state**: `EntityDefNode` (`src/app/entity_def.h`), `IEntityFileParser`
-(`src/app/entity_file_parser.h`), `YamlEntityFileParser`
-(`src/app/entity_file_parser_yaml.h`/`.cpp`), and `EntityFactory` (`src/app/entity_factory.h`) all
+**Current state**: `EntityDefNode` (`src/app/entity/entity_def.h`), `IEntityFileParser`
+(`src/app/entity/entity_file_parser.h`), `YamlEntityFileParser`
+(`src/app/entity/entity_file_parser_yaml.h`/`.cpp`), and `EntityFactory` (`src/app/entity/entity_factory.h`) all
 exist and are unit-tested against fake components (`src/tests/entity_def_test.cpp`,
 `entity_file_parser_yaml_test.cpp`, `entity_factory_test.cpp`) — composed into a real
 `LevelLoader` (§7), which a real gameplay screen now constructs and calls (§9's
@@ -373,7 +373,7 @@ with placement + per-instance overrides, without needing a `BaseGameLogic` host 
 is just this project's `entt::registry`; process management is already `ProcessManager`, §2):
 
 ```cpp
-// Sketch — matches src/app/level_loader.h/.cpp, entity_def.h's MergeOverrides; adjust here if
+// Sketch — matches src/app/entity/level_loader.h/.cpp, entity_def.h's MergeOverrides; adjust here if
 // those files' shape changes.
 struct EvtData_EntitySpawned { entt::entity entity; };  // this project's first real event type
 
@@ -395,8 +395,8 @@ ADR-0009's "View-plurality seam, kept on purpose": the whole value is that `Leve
 to change once one does — a deliberate exception to this project's usual defer-until-needed
 discipline).
 
-**Current state**: `MergeOverrides` (`src/app/entity_def.h`), `LevelLoader`
-(`src/app/level_loader.h`/`.cpp`), and `EvtData_EntitySpawned` (`src/app/level_loader.h`) all exist,
+**Current state**: `MergeOverrides` (`src/app/entity/entity_def.h`), `LevelLoader`
+(`src/app/entity/level_loader.h`/`.cpp`), and `EvtData_EntitySpawned` (`src/app/entity/level_loader.h`) all exist,
 tested against in-memory fake files (`src/tests/level_loader_test.cpp`) via `LevelLoader`'s
 injectable `FileReader`. Now wired into a real gameplay screen — see §9
 ([ADR-0010](../../../docs/adr/0010-base-game-logic-and-igameview.md), Accepted):
@@ -410,7 +410,7 @@ same boundary ADR-0001 Decision 2 already drew: `Engine` owns exactly the parame
 takes/uses, a specific game owns whatever it needs beyond that:
 
 ```cpp
-// Sketch — matches src/app/engine_config.h/.cpp, src/game/sandbox/game_config.h.
+// Sketch — matches src/app/core/engine_config.h/.cpp, src/game/sandbox/game_config.h.
 struct EngineConfig {
     int screenWidth = 800, screenHeight = 450;
     bool fullscreen = false;
@@ -448,7 +448,7 @@ next-planned work and retrofitting the seam after any get built independently co
 building it once now:
 
 ```cpp
-// Sketch — matches src/app/game_view.h, base_game_logic.h/.cpp (game-agnostic, per ADR-0014);
+// Sketch — matches src/app/view/game_view.h, base_game_logic.h/.cpp (game-agnostic, per ADR-0014);
 // src/game/sandbox/human_view.h/.cpp (concrete, game-layer). Adjust here if those files' shape
 // changes.
 enum class GameViewType { Human, Remote, AI, Other };
@@ -487,7 +487,7 @@ uses for screen-transition state. This used to go through a small `extern "C"` b
 (`gameplay_bridge.h`/`.cpp`) while the screen was still plain C; [ADR-0014](../../../docs/adr/0014-game-module-boundary-and-template-migration.md)
 removed that indirection once the screen itself became a real C++ translation unit —
 `BaseGameLogic`/`HumanView` are reachable directly, no bridge needed. `Engine::Current()`
-(`src/app/engine.h`/`.cpp` — not anticipated by ADR-0010's own sketch) is how the screen reaches
+(`src/app/core/engine.h`/`.cpp` — not anticipated by ADR-0010's own sketch) is how the screen reaches
 `Engine`'s `registry_`/`eventManager_`/`processManager_` to construct one: a static accessor backed
 by the same de facto singleton the `Run()` emscripten trampoline already relied on internally.
 
@@ -515,7 +515,7 @@ state" pointed at: `HumanView` used to render directly in one `VOnRender` body, 
 outside `HumanView`. Neither could be reordered, hidden, or composed with anything else.
 
 ```cpp
-// Matches src/app/screen_element.h, game/sandbox/human_view.h/.cpp's PushElement/RemoveElement.
+// Matches src/app/view/screen_element.h, game/sandbox/human_view.h/.cpp's PushElement/RemoveElement.
 class IScreenElement {
 public:
     virtual void VOnUpdate(float dt) = 0;

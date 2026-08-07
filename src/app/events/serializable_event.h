@@ -7,7 +7,7 @@
 
 #include <cstdint>
 
-#include "byte_stream.h"
+#include "app/events/byte_stream.h"
 
 class ISerializableEvent {
 public:

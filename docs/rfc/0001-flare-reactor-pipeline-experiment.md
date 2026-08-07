@@ -98,7 +98,7 @@ simplificado enquanto a lacuna não for resolvida.
 
 | Lacuna | Onde aparece no pedido original | Bloqueia hoje | Próximo passo |
 |---|---|---|---|
-| ~~**Ação de input abstrata** (`ACTION_INTERACT`, tecla→ação rebindável)~~ **Resolvida (2026-08-06)** | InputManager | ~~nenhuma camada de ação nomeada~~ — `app/input_bindings.h`/`.cpp` implementa ADR-0013 (agora `Accepted`): `InputAction`/`InputBindings`, `config/keybindings.yaml` gerado no primeiro run. `FlareReactorView` usa `input_.IsDown(InputAction::MoveForward/...)` e `input_.IsPressed(InputAction::Interact)` em vez de `IsKeyDown`/`IsKeyPressed` direto | Nenhum — implementado. `InputAction::Interact` e `IsPressed` (borda) são extensões reais além do sketch original da ADR-0013 (só tinha `IsDown`/movimento) — ver a nota de implementação na própria ADR |
+| ~~**Ação de input abstrata** (`ACTION_INTERACT`, tecla→ação rebindável)~~ **Resolvida (2026-08-06)** | InputManager | ~~nenhuma camada de ação nomeada~~ — `app/input/input_bindings.h`/`.cpp` implementa ADR-0013 (agora `Accepted`): `InputAction`/`InputBindings`, `config/keybindings.yaml` gerado no primeiro run. `FlareReactorView` usa `input_.IsDown(InputAction::MoveForward/...)` e `input_.IsPressed(InputAction::Interact)` em vez de `IsKeyDown`/`IsKeyPressed` direto | Nenhum — implementado. `InputAction::Interact` e `IsPressed` (borda) são extensões reais além do sketch original da ADR-0013 (só tinha `IsDown`/movimento) — ver a nota de implementação na própria ADR |
 | **Colisão/proximidade real** | implícito em "jogador perto do reator" | checagem via `Vector3Distance` puro, sem `IGamePhysics`/colisão de verdade | Retomar ADR-0012 (`Proposed`, nunca implementado) — prioridade menor, o pedido original não exige física de corpo rígido, só proximidade |
 | **Sistema de partículas** | "efeito visual em tempo real... partículas" | nenhum efeito de partícula existe ou é possível hoje — não há `ParticleEmitter`, nem sistema algum | Nova ADR — infraestrutura inteira a desenhar |
 | **Material/shader por entidade (emissão)** | "ativa um efeito visual... emissão de luz" | `Renderable.color` é a única aparência possível hoje (cor lida, desenho imediato); não existe conceito de material/shader amarrado a uma entidade, só `ResourceCache<Shader>` cacheando por path | Nova ADR — provavelmente junto com o item de partículas acima (ambos tocam "como uma entidade é desenhada") |
@@ -153,7 +153,7 @@ nenhuma camada de tradução — decisão explícita do ADR-0010 (raylib já ent
 não há fila de mensagens Win32 para traduzir). `FlareReactorView` começou exatamente igual.
 
 **Agora**: implementada a ADR-0013 completa (`InputAction`/`InputBindings`,
-`src/app/input_bindings.h`/`.cpp`), com duas extensões que o sketch original da ADR não cobria —
+`src/app/input/input_bindings.h`/`.cpp`), com duas extensões que o sketch original da ADR não cobria —
 ver a nota de implementação na própria ADR-0013 para o motivo de cada uma:
 
 - `InputAction::Interact` — a ADR original só tinha ações de movimento; `Interact` foi adicionado
@@ -191,7 +191,7 @@ instante.
 
 ### 3. `EventManager` — nenhum código novo
 
-`Subscribe`/`Emit`/`Queue`/`DispatchQueued` (`app/event_manager.h`, ADR-0003/0005) já bastam. Uso
+`Subscribe`/`Emit`/`Queue`/`DispatchQueued` (`app/events/event_manager.h`, ADR-0003/0005) já bastam. Uso
 proposto: `EvtData_ActivateBeacon` via `Emit` (hop único, síncrono); o broadcast de saída da
 `GameLogic`, `EvtData_BeaconTriggered`, via `Queue` — não estritamente necessário hoje (nenhum dos
 três assinantes plancjados re-emite o mesmo tipo), mas é a mesma proteção contra reentrância que
@@ -267,7 +267,7 @@ estado; aqui a entidade ECS não tem *nenhum* estado próprio fora de componente
 é o lugar natural para a animação, não um adendo). Anexado via `processes_.Attach(...)` dentro do
 mesmo handler do passo 4, logo após validar. Ao contrário do GCC4 original (que o cenário-fonte
 cita com `OnSuccess()`), `Process` neste projeto não tem esse hook — o próprio `Update` faz o
-trabalho de "ao terminar" inline antes de chamar `Succeed()` (ver `app/process.h`); não há
+trabalho de "ao terminar" inline antes de chamar `Succeed()` (ver `app/process/process.h`); não há
 callback separado a implementar.
 
 Note a separação deliberada: o passo 4 (`GameLogic`) decide *se* a ativação é válida e vira o
@@ -294,7 +294,7 @@ struct Renderable {
 void DrawRenderables(entt::registry &registry);  // itera WorldTransform + Renderable
 ```
 
-Proposto em `app/renderable.h` (game-agnostic), não em `src/game/flare_reactor/` — é
+Proposto em `app/scene/renderable.h` (game-agnostic), não em `src/game/flare_reactor/` — é
 genuinamente reutilizável por `game/sandbox` no dia em que sua `GameplayScene` quiser parar de
 hardcodar `DrawCubeWires`. (Nota lateral: uma preocupação equivalente — duplicar
 `DrawBoxRenderables` por jogo — já foi registrada de forma independente num rascunho de ADR-0018
@@ -496,7 +496,7 @@ pausa até decidirmos, na hora, se a resposta é uma ADR pequena ou implementaç
 ## Questões em aberto
 
 - **Onde mora o `Subscribe` de `GameLogic` (passo 4)?** `BaseGameLogic::VOnUpdate` não é
-  `virtual` hoje (`app/base_game_logic.h`) — só `VLoadLevel` é. Não há um hook de "tick de
+  `virtual` hoje (`app/view/base_game_logic.h`) — só `VLoadLevel` é. Não há um hook de "tick de
   gameplay específico do jogo" para uma futura `FlareReactorGameLogic : BaseGameLogic` sobrescrever.
   Duas saídas: (a) registrar o `Subscribe`/tickar `UpdateSentinel` diretamente do
   `UpdateGameplayScreen`-equivalente do novo módulo (mesmo lugar onde `HumanView`'s movimento do

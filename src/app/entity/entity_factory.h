@@ -19,7 +19,7 @@
 
 #include <entt/entt.hpp>
 
-#include "entity_def.h"
+#include "app/entity/entity_def.h"
 
 class EntityFactory {
 public:

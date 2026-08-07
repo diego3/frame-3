@@ -8,7 +8,7 @@
 
 #include <string>
 
-#include "entity_def.h"
+#include "app/entity/entity_def.h"
 
 class IEntityFileParser {
 public:

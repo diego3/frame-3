@@ -2,8 +2,8 @@
 
 #include <sstream>
 
-#include "app/entity_file_parser_yaml.h"
-#include "app/file_io.h"
+#include "app/entity/entity_file_parser_yaml.h"
+#include "app/io/file_io.h"
 
 namespace {
     // Minimal, hand-written emitter, same shape as SerializeEngineConfig (app/engine_config.cpp) --

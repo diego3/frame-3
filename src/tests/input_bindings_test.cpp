@@ -4,8 +4,8 @@
 
 #include <raylib.h>
 
-#include "app/file_io.h"
-#include "app/input_bindings.h"
+#include "app/io/file_io.h"
+#include "app/input/input_bindings.h"
 
 namespace {
     // Isolated from the real config/ a running game would use, same pattern engine_config_test.cpp

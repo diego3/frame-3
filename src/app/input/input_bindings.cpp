@@ -1,11 +1,11 @@
-#include "input_bindings.h"
+#include "app/input/input_bindings.h"
 
 #include <sstream>
 
 #include <raylib.h>
 
-#include "entity_file_parser_yaml.h"
-#include "file_io.h"
+#include "app/entity/entity_file_parser_yaml.h"
+#include "app/io/file_io.h"
 
 namespace {
     struct ActionName {

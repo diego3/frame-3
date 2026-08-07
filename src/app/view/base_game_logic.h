@@ -14,10 +14,10 @@
 
 #include <entt/entt.hpp>
 
-#include "event_manager.h"
-#include "game_view.h"
-#include "level_loader.h"
-#include "process_manager.h"
+#include "app/events/event_manager.h"
+#include "app/view/game_view.h"
+#include "app/entity/level_loader.h"
+#include "app/process/process_manager.h"
 
 // Trimmed to Loading/Running/Paused, not the book's fuller MainMenu/WaitingForPlayers/... states
 // -- screens.h's GameScreen enum (LOGO/TITLE/OPTIONS/GAMEPLAY/ENDING) already answers the

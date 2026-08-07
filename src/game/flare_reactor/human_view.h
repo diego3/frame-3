@@ -22,9 +22,9 @@
 #include <entt/entt.hpp>
 #include <raylib.h>
 
-#include "app/game_view.h"
-#include "app/input_bindings.h"
-#include "app/screen_element.h"
+#include "app/view/game_view.h"
+#include "app/input/input_bindings.h"
+#include "app/view/screen_element.h"
 
 class FlareReactorView : public IGameView {
 public:

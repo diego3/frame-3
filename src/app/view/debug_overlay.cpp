@@ -1,4 +1,4 @@
-#include "debug_overlay.h"
+#include "app/view/debug_overlay.h"
 
 #include "raylib.h"
 

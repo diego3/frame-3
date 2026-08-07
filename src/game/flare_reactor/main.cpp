@@ -18,15 +18,15 @@
 
 #include <entt/entt.hpp>
 
-#include "app/base_game_logic.h"
-#include "app/debug_overlay.h"
-#include "app/engine.h"
-#include "app/engine_config.h"
-#include "app/entity_factory.h"
-#include "app/entity_file_parser_yaml.h"
-#include "app/level_loader.h"
-#include "app/renderable.h"
-#include "app/transform.h"
+#include "app/view/base_game_logic.h"
+#include "app/view/debug_overlay.h"
+#include "app/core/engine.h"
+#include "app/core/engine_config.h"
+#include "app/entity/entity_factory.h"
+#include "app/entity/entity_file_parser_yaml.h"
+#include "app/entity/level_loader.h"
+#include "app/scene/renderable.h"
+#include "app/scene/transform.h"
 #include "human_view.h"
 #include "tags.h"
 

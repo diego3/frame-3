@@ -4,7 +4,7 @@
 
 #include <raymath.h>
 
-#include "app/transform.h"
+#include "app/scene/transform.h"
 
 namespace {
     // Placeholder input scheme -- raw key/gesture to actor-action mapping is an open question

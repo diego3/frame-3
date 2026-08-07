@@ -2,7 +2,7 @@
 
 #include <filesystem>
 
-#include "app/file_io.h"
+#include "app/io/file_io.h"
 
 namespace {
     const std::string kScratchDir = "test_scratch/file_io_test";

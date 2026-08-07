@@ -1,9 +1,9 @@
-#include "engine_config.h"
+#include "app/core/engine_config.h"
 
 #include <sstream>
 
-#include "entity_file_parser_yaml.h"
-#include "file_io.h"
+#include "app/entity/entity_file_parser_yaml.h"
+#include "app/io/file_io.h"
 
 namespace {
     // Minimal, hand-written emitter scoped to exactly EngineConfig's flat, scalar-fields-only

@@ -60,14 +60,14 @@ PROJECT_SOURCE_FILES  ?=
 # EntityFactory directly, not just their own unit tests. input_bindings.cpp (docs/adr/0013) joins
 # them once game/flare_reactor's FlareReactorView became its first real caller.
 PROJECT_SOURCE_FILES_CPP ?= \
-    app/engine.cpp \
-    app/process_manager.cpp \
-    app/debug_overlay.cpp \
-    app/entity_file_parser_yaml.cpp \
-    app/engine_config.cpp \
-    app/level_loader.cpp \
-    app/base_game_logic.cpp \
-    app/input_bindings.cpp
+    app/core/engine.cpp \
+    app/process/process_manager.cpp \
+    app/view/debug_overlay.cpp \
+    app/entity/entity_file_parser_yaml.cpp \
+    app/core/engine_config.cpp \
+    app/entity/level_loader.cpp \
+    app/view/base_game_logic.cpp \
+    app/input/input_bindings.cpp
 
 # game/sandbox (docs/adr/0014): the migrated raylib template, with a Logo/Title/Options/Gameplay/
 # Ending screen state machine and data-driven (YAML) level content. game_config.cpp is
@@ -534,14 +534,14 @@ TEST_SOURCE_FILES_CPP ?= \
 
 TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH) -I$(RAYLIB_INCLUDE_PATH) -I$(ENTT_INCLUDE_PATH) -I$(MINI_YAML_INCLUDE_PATH)
 
-# ProcessManager's implementation lives in app/process_manager.cpp (EventManager is header-only,
-# needs no object of its own). Built into a tests/-local object, never app/process_manager.o, so
-# it can't collide with the object the main product target above produces from the same source
-# with different flags. entity_file_parser_yaml.cpp/engine_config.cpp/level_loader.cpp/
-# base_game_logic.cpp/game/sandbox/game_config.cpp (all now also in PROJECT_SOURCE_FILES_CPP,
-# docs/adr/0008/0009/0010/0011) get the same tests/-local treatment, so the test build's flags
-# (TEST_CXXFLAGS) never collide with the main product's (CXXFLAGS). game/sandbox/human_view.cpp
-# and game/sandbox/screen_gameplay.cpp
+# ProcessManager's implementation lives in app/process/process_manager.cpp (EventManager is
+# header-only, needs no object of its own). Built into a tests/-local object, never
+# app/process/process_manager.o, so it can't collide with the object the main product target above
+# produces from the same source with different flags. entity_file_parser_yaml.cpp/engine_config.cpp/
+# level_loader.cpp/base_game_logic.cpp/game/sandbox/game_config.cpp (all now also in
+# PROJECT_SOURCE_FILES_CPP, docs/adr/0008/0009/0010/0011) get the same tests/-local treatment, so
+# the test build's flags (TEST_CXXFLAGS) never collide with the main product's (CXXFLAGS).
+# game/sandbox/human_view.cpp and game/sandbox/screen_gameplay.cpp
 # (docs/adr/0010, docs/adr/0014) deliberately do NOT get a tests/-local object -- both call real
 # raylib runtime functions (IsKeyDown, DrawCubeWires, BeginMode3D, ...), and the test build never
 # links -lraylib (see TEST_CXXFLAGS above: raylib's *headers* are on the include path for types
@@ -550,7 +550,8 @@ TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH) -I$(RAYLIB_INCLUDE_PAT
 # EventManager, ProcessManager, LevelLoader -- none of them touch raylib), so it's tested the same
 # way level_loader.cpp already is, with a FakeView standing in for HumanView. mini-yaml isn't
 # header-only either, so its own yaml/Yaml.cpp needs compiling into the test binary too
-# (tests/mini_yaml.o below).
+# (tests/mini_yaml.o below). Paths below reflect app/'s topic-subfolder split (core/events/process/
+# scene/entity/view/input/resource/io) -- same reasoning as always, just relocated.
 TEST_OBJS = $(patsubst tests/%.cpp, tests/%.o, $(TEST_SOURCE_FILES_CPP)) tests/process_manager.o tests/entity_file_parser_yaml.o tests/engine_config.o tests/level_loader.o tests/base_game_logic.o tests/game_config.o tests/input_bindings.o tests/mini_yaml.o
 
 tests: $(TEST_OBJS)
@@ -559,25 +560,25 @@ tests: $(TEST_OBJS)
 test-run: tests
 	./tests_runner
 
-tests/process_manager.o: app/process_manager.cpp
+tests/process_manager.o: app/process/process_manager.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
-tests/entity_file_parser_yaml.o: app/entity_file_parser_yaml.cpp
+tests/entity_file_parser_yaml.o: app/entity/entity_file_parser_yaml.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
-tests/engine_config.o: app/engine_config.cpp
+tests/engine_config.o: app/core/engine_config.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
-tests/level_loader.o: app/level_loader.cpp
+tests/level_loader.o: app/entity/level_loader.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
-tests/base_game_logic.o: app/base_game_logic.cpp
+tests/base_game_logic.o: app/view/base_game_logic.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
 tests/game_config.o: game/sandbox/game_config.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
-tests/input_bindings.o: app/input_bindings.cpp
+tests/input_bindings.o: app/input/input_bindings.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
 # NOTE: deliberately no prerequisite on this rule's own line (unlike process_manager.o/

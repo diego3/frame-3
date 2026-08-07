@@ -11,11 +11,11 @@
 
 #include <entt/entt.hpp>
 
-#include "entity_def.h"
-#include "entity_factory.h"
-#include "entity_file_parser.h"
-#include "event_manager.h"
-#include "file_io.h"
+#include "app/entity/entity_def.h"
+#include "app/entity/entity_factory.h"
+#include "app/entity/entity_file_parser.h"
+#include "app/events/event_manager.h"
+#include "app/io/file_io.h"
 
 // Fired for every entity LevelLoader::Load spawns (docs/adr/0009's "View-plurality seam, kept on
 // purpose" -- fired unconditionally even though no RemoteView/AIView-equivalent subscriber exists

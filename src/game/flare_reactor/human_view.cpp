@@ -4,8 +4,8 @@
 
 #include <raymath.h>
 
-#include "app/renderable.h"
-#include "app/transform.h"
+#include "app/scene/renderable.h"
+#include "app/scene/transform.h"
 
 namespace {
     constexpr float kMoveUnitsPerSecond = 4.0f;
