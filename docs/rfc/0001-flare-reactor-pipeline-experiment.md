@@ -325,33 +325,42 @@ outras partes do pedido original pra este passo — são as lacunas "Sistema de 
 "Material/shader por entidade (emissão)" na tabela acima: não são simplificações permanentes,
 são paradas explícitas aguardando uma ADR nova antes de serem implementadas.
 
-### 7. Áudio
+### 7. Áudio — implementado (2026-08-07)
 
 **Correção em relação ao cenário original**: raylib não expõe áudio 3D/posicional
 (`PlaySound3D`/`PlaySoundSound3D` não existem — conferido em
 `vendor/raylib/src/raylib.h:1684-1691`). O que existe: `PlaySound`, `SetSoundVolume`,
 `SetSoundPitch`, `SetSoundPan` (mono pan -1..1). Isto é a lacuna "Áudio 3D real" da tabela acima —
 teto real da biblioteca, não uma escolha deste projeto. O efeito "3D" é aproximado, calculado uma
-vez no momento do gatilho, a partir da posição da câmera (`HumanView::camera_`) e da posição do
-evento:
+vez no momento do gatilho, a partir da posição da câmera (`FlareReactorView::camera_`) e da posição
+do evento — implementado quase 1:1 conforme o sketch original, em `FlareReactorView::OnBeaconTriggered`:
 
 ```cpp
-// No handler de EvtData_BeaconTriggered, dentro de HumanView (que já guarda camera_ e sounds_):
-Vector3 toSound = Vector3Subtract(evt.position, camera_.target);
+Vector3 toSound = Vector3Subtract(event.position, camera_.target);
 float distance = Vector3Length(toSound);
 float volume = Clamp(1.0f - distance / kMaxAudibleDistance, 0.0f, 1.0f);
 Vector3 right = Vector3CrossProduct(Vector3Subtract(camera_.target, camera_.position), camera_.up);
 float pan = Clamp(0.5f + Vector3DotProduct(Vector3Normalize(toSound), Vector3Normalize(right)) * 0.5f, 0.0f, 1.0f);
 
-Sound beacon = *sounds_.GetHandle("resources/sound/beacon.wav");   // ResourceCache<Sound>, ADR-0004
-SetSoundVolume(beacon, volume);
-SetSoundPan(beacon, pan);
-PlaySound(beacon);
+SetSoundVolume(*beaconSound_, volume);
+SetSoundPan(*beaconSound_, pan);
+PlaySound(*beaconSound_);
 ```
 
-Isso exige que `HumanView` passe a assinar `EvtData_BeaconTriggered` — hoje `HumanView` não guarda
-uma referência a `EventManager` (só `registry_`/`processes_`/`sounds_`); este é um novo parâmetro
-de construtor, mesmo padrão incremental já usado quando `processes_`/`sounds_` foram adicionados.
+`FlareReactorView` passou a assinar `EvtData_BeaconTriggered` no próprio construtor — o novo
+parâmetro (`ResourceCache<Sound> &sounds`) segue o mesmo padrão incremental que `events`/`input_`
+já tinham. `beaconSound_` (`std::shared_ptr<Sound>`) é carregado uma vez, no construtor
+(`sounds_.GetHandle(...)`), não a cada disparo — cacheado por `ResourceCache<Sound>`, ADR-0004.
+
+Desvio de conteúdo, não de arquitetura: não existe `resources/sound/beacon.wav` (nenhum asset de
+áudio novo foi criado para este experimento). Reaproveita `assets/audio/fx/coin.wav` — o único som
+que já existe no repo, usado pelo `game/sandbox` — como placeholder, decisão explícita do usuário
+ao ser perguntado. Troca futura é só mudar o caminho passado a `GetHandle`, nenhum código muda.
+
+Este é também o primeiro uso real de uma view segurando `ResourceCache<Sound>&` diretamente e
+chamando `GetHandle`/`PlaySound` a partir dele — `game/sandbox`'s `HumanView` já guarda um
+`ResourceCache<Sound>&` (`sounds_`) desde o ADR-0010, mas nunca o usa; `screens.h`'s
+`PlaySound(fxCoin)` chama uma global carregada direto em `main.cpp`, não pela view.
 
 ### 8. IA — percepção, FSM, steering
 
@@ -471,7 +480,7 @@ sequenceDiagram
 | `BaseGameLogic` subclass | Não (só a classe base, sem consumidor específico) | `FlareReactorGameLogic`, implementado 2026-08-07 |
 | `ProcessManager` | ✅ completo, agora com um consumidor real (implementado 2026-08-07) | `BeaconPulseProcess` |
 | Render por dado | Não (hardcoded `DrawCubeWires`) | `Renderable` (app/), `DrawRenderables` |
-| Áudio | Sim (`ResourceCache<Sound>`, `PlaySound`) | cálculo de pan/volume por distância |
+| Áudio | ✅ `ResourceCache<Sound>`/`PlaySound`, agora com um consumidor real de view (implementado 2026-08-07) | `FlareReactorView::OnBeaconTriggered`, cálculo de pan/volume por distância |
 | IA | Nenhuma (projeto não tem IA nenhuma ainda) | `SentinelAI`, `Patrol`, `UpdateSentinel`, percepção via evento |
 | Módulo de jogo | `sandbox`, `camera_fps` (branch separada) | `src/game/flare_reactor/` (novo, terceiro) |
 
@@ -503,8 +512,10 @@ pausa até decidirmos, na hora, se a resposta é uma ADR pequena ou implementaç
    raylib — ver §5. Não inclui emissão/partículas — essa parte do pedido original segue pausada
    nas lacunas "Sistema de partículas"/"Material/shader por entidade" até uma ADR decidir o
    caminho.
-5. **Áudio**: assinatura em `HumanView`, cálculo de pan/volume — teto real da lacuna "Áudio 3D
-   real", não uma etapa intermediária rumo a algo melhor sem mudar de biblioteca.
+5. ✅ **Áudio** (implementada, 2026-08-07): assinatura em `FlareReactorView`, cálculo de pan/volume
+   — teto real da lacuna "Áudio 3D real", não uma etapa intermediária rumo a algo melhor sem mudar
+   de biblioteca. Reaproveita `assets/audio/fx/coin.wav` como placeholder (decisão do usuário) --
+   não existe asset de áudio dedicado a este experimento.
 6. **IA**: `SentinelAI`/`Patrol`, percepção via evento, `Seek`. Fase mais isolada — pode ser
    desenvolvida em paralelo às fases 3-5 uma vez que a fase 1 exista, já que só depende de
    `EvtData_BeaconTriggered` existir como tipo (não do handler completo da fase 3 estar

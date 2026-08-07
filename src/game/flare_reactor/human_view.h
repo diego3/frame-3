@@ -6,6 +6,11 @@
 // VOnAttach knows the possessed actor -- it only translates the key into EvtData_ActivateBeacon
 // (events.h), no validation of its own; FlareReactorGameLogic (Phase 3) owns that.
 //
+// Also this project's first real (non-dead) use of a view directly holding a
+// ResourceCache<Sound>& (Phase 5) -- game/sandbox's own HumanView holds one too, but nothing
+// calls into it (screens.h's PlaySound(fxCoin) calls go through a plain global instead). Here,
+// OnBeaconTriggered (subscribed to EvtData_BeaconTriggered in the constructor) actually uses it.
+//
 // Deliberately duplicates game/sandbox/HumanView's small IScreenElement-stack plumbing
 // (PushElement/RemoveElement, sorted VOnRender) rather than sharing it -- there is no
 // HumanViewBase in this tree to subclass (main doesn't have the claude/camera-fps-second-game-
@@ -25,11 +30,13 @@
 #include "app/events/event_manager.h"
 #include "app/view/game_view.h"
 #include "app/input/input_bindings.h"
+#include "app/resource/resource_cache.h"
 #include "app/view/screen_element.h"
+#include "events.h"
 
 class FlareReactorView : public IGameView {
 public:
-    FlareReactorView(entt::registry &registry, EventManager &events);
+    FlareReactorView(entt::registry &registry, EventManager &events, ResourceCache<Sound> &sounds);
 
     void VOnAttach(GameViewId id, std::optional<entt::entity> actorId) override;
     void VOnUpdate(float dt) override;
@@ -40,8 +47,12 @@ public:
     void RemoveElement(ScreenElementId id);
 
 private:
+    void OnBeaconTriggered(const EvtData_BeaconTriggered &event);
+
     entt::registry &registry_;
     EventManager &events_;
+    ResourceCache<Sound> &sounds_;
+    std::shared_ptr<Sound> beaconSound_;   // loaded once in the constructor, released before Shutdown
     std::optional<entt::entity> possessedActor_;
     Camera3D camera_;
     InputBindings input_;   // config/keybindings.yaml, loaded once here (ADR-0013 Decision 3)

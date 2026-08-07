@@ -16,7 +16,7 @@ the chapter reference and full reasoning.
 - [x] Process Manager — [ADR-0003](adr/0003-event-manager-and-process-manager-game-loop.md) — first real `Process` subclass landed via [RFC-0001](rfc/0001-flare-reactor-pipeline-experiment.md) Phase 4: `game/flare_reactor`'s `BeaconPulseProcess`
 - [x] Application layer / main loop (`Engine`) — [ADR-0001](adr/0001-ecs-via-entt-and-cpp-engine-init.md) Decision 2
 - [x] Actors/Components → ECS via EnTT — [ADR-0001](adr/0001-ecs-via-entt-and-cpp-engine-init.md) Decision 1
-- [x] Resource cache (`ResourceCache<T>`: Font/Sound/Model/Texture2D/Shader) — [ADR-0004](adr/0004-resource-cache-thin-vs-full-book-rescache.md)
+- [x] Resource cache (`ResourceCache<T>`: Font/Sound/Model/Texture2D/Shader) — [ADR-0004](adr/0004-resource-cache-thin-vs-full-book-rescache.md) — first real view-owned `ResourceCache<Sound>` consumer (`GetHandle`/`PlaySound` called from the view itself, not a global loaded in `main`) landed via [RFC-0001](rfc/0001-flare-reactor-pipeline-experiment.md) Phase 5: `game/flare_reactor`'s `FlareReactorView::OnBeaconTriggered`
 - [x] Unit test framework (doctest) — [ADR-0006](adr/0006-doctest-for-unit-tests.md)
 - [x] Queued event dispatch (`Queue`/`DispatchQueued`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §5
 - [x] Scene graph / transform hierarchy (`Relationship`, `LocalTransform`/`WorldTransform`, `PropagateTransforms`) — [ADR-0002](adr/0002-scene-graph-hierarchy-options.md)

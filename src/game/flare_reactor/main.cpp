@@ -131,7 +131,7 @@ int main() {
                                                         engine.Processes(), *g_levelLoader);
     g_logic->VLoadLevel("resources/levels/flare_reactor.yaml");
 
-    auto view = std::make_unique<FlareReactorView>(engine.Registry(), engine.Events());
+    auto view = std::make_unique<FlareReactorView>(engine.Registry(), engine.Events(), engine.Sounds());
     g_view = view.get();
 
     // PlayerTag resolves this explicitly instead of game/sandbox's "first entity in the registry"
