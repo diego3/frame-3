@@ -1,0 +1,18 @@
+# Shared entity definition for game/camera_fps's 4 towers (docs/adr/0017 follow-up -- the level
+# file overrides just Position per corner, see assets/levels/camera_fps.yaml). Size/color ported
+# verbatim from the raylib example's hardcoded towerSize/towerColor.
+components:
+  Position:
+    x: 0
+    y: 0
+    z: 0
+  BoxRenderable:
+    size:
+      x: 16
+      y: 32
+      z: 16
+    color:
+      r: 150
+      g: 200
+      b: 200
+      a: 255

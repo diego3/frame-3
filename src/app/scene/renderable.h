@@ -7,9 +7,13 @@
 // instantiate.
 //
 // NOTE: an equivalent concern (per-game duplication of "how do I draw the thing this entity
-// carries") was independently raised, not yet merged, on the claude/camera-fps-second-game-module
-// branch (draft docs/adr/0018, BoxRenderable/SceneIndex). If that branch merges first, this file
-// should converge with whatever it shipped instead of the two coexisting.
+// carries") was independently raised and merged from the claude/camera-fps-second-game-module
+// branch -- app/scene/render_components.h's BoxRenderable/app/scene/scene_renderer.h. Deliberately
+// left coexisting rather than converged on merge: unifying the two is real new design (an
+// indexing/discovery layer across render-component types, not a rename) and belongs in its own
+// ADR, not as a side effect of reconciling two branches' file layouts. See
+// app/scene/render_components.h's own note and the proposed follow-up ADR revisiting scene-graph
+// indexing for where that question actually lives.
 #ifndef RENDERABLE_H
 #define RENDERABLE_H
 

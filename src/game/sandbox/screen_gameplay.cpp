@@ -96,18 +96,17 @@ void InitGameplayScreen(void)
     // there's no entity to name before the level actually spawns one. BaseGameLogic itself doesn't
     // enforce attach-before-load ordering (nothing in VLoadLevel/AttachView depends on the other
     // having run first), so this is a safe reordering, not a workaround for a real constraint.
-    g_logic->VLoadLevel("resources/levels/level_01.yaml");
+    std::vector<entt::entity> spawned = g_logic->VLoadLevel("resources/levels/level_01.yaml");
 
     auto humanView = std::make_unique<HumanView>(engine->Registry(), engine->Processes(), engine->Sounds());
     g_humanView = humanView.get();
 
-    // First entity in the registry stands in for "the player" until a real PlayerTag/possession
-    // mechanism exists -- level_01.yaml (assets/levels/) currently spawns exactly one entity, so
-    // this is unambiguous today; revisit once a level has more than one entity and "which one is
-    // the player" needs a real answer.
+    // First entity in the level file's own actors[] order stands in for "the player" until a real
+    // PlayerTag/possession mechanism exists (docs/adr/0017's game/camera_fps.yaml needed
+    // VLoadLevel's return value for the same reason -- this used to guess from registry iteration
+    // order instead, which only happened to work while level_01.yaml spawned exactly one entity).
     std::optional<entt::entity> playerActor;
-    auto positioned = engine->Registry().view<LocalTransform>();
-    if (positioned.begin() != positioned.end()) playerActor = *positioned.begin();
+    if (!spawned.empty()) playerActor = spawned.front();
 
     g_logic->AttachView(std::move(humanView), playerActor);
 }

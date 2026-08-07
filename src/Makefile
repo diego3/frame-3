@@ -40,14 +40,15 @@ PROJECT_VERSION       ?= 1.0
 PROJECT_BUILD_PATH    ?= ../build/desktop
 
 # Which concrete game module (src/game/<GAME>/) to build -- first needed once a second one
-# (game/flare_reactor, docs/rfc/0001-flare-reactor-pipeline-experiment.md) existed alongside
-# game/sandbox. Deliberately does NOT change PROJECT_NAME/the actual linked target below --
-# switching GAME just changes what $(PROJECT_BUILD_PATH)/$(PROJECT_NAME) contains, same relink-
-# detection reasoning as GAME_MARKER/check_game further down. build.sh additionally copies that
-# binary to $(PROJECT_BUILD_PATH)/$(GAME) after linking, purely for local-dev convenience (so two
-# different builds -- e.g. sandbox and flare_reactor -- can sit side by side under build/desktop/
-# under their own names); that copy step lives in build.sh, not here, so it never touches the
-# release CI workflows, which call this Makefile directly and only ever reference $(PROJECT_NAME).
+# (game/camera_fps, docs/adr/0017; game/flare_reactor, docs/rfc/0001-flare-reactor-pipeline-
+# experiment.md) existed alongside game/sandbox. Deliberately does NOT change PROJECT_NAME/the
+# actual linked target below -- switching GAME just changes what
+# $(PROJECT_BUILD_PATH)/$(PROJECT_NAME) contains, same relink-detection reasoning as GAME_MARKER/
+# check_game further down. build.sh additionally copies that binary to
+# $(PROJECT_BUILD_PATH)/$(GAME) after linking, purely for local-dev convenience (so multiple builds
+# -- e.g. sandbox, camera_fps, and flare_reactor -- can sit side by side under build/desktop/ under
+# their own names); that copy step lives in build.sh, not here, so it never touches the release CI
+# workflows, which call this Makefile directly and only ever reference $(PROJECT_NAME).
 GAME                  ?= sandbox
 
 # Web build artifacts (.html/.js/.wasm/.data) land in build/web/ instead of src/, so
@@ -70,9 +71,14 @@ PROJECT_SOURCE_FILES  ?=
 # entity_file_parser_yaml.cpp (docs/adr/0008) and engine_config.cpp (docs/adr/0011) are here
 # because Engine::Init() now actually calls LoadOrCreateEngineConfig() -> YamlEntityFileParser ->
 # mini-yaml. level_loader.cpp and base_game_logic.cpp (docs/adr/0010) join them for the same
-# reason: both game/sandbox and game/flare_reactor call into BaseGameLogic/LevelLoader/
-# EntityFactory directly, not just their own unit tests. input_bindings.cpp (docs/adr/0013) joins
+# reason: game/sandbox/screen_gameplay.cpp's InitGameplayScreen() and game/flare_reactor's
+# FlareReactorGameLogic are both real callers of BaseGameLogic/LevelLoader/EntityFactory, not just
+# their own unit tests -- game/camera_fps doesn't call into either, but they're cheap enough to
+# always link in rather than making them conditional too. input_bindings.cpp (docs/adr/0013) joins
 # them once game/flare_reactor's FlareReactorView became its first real caller.
+# app/view/human_view_base.cpp (docs/adr/0016, promoted out of game/sandbox/human_view in
+# docs/adr/0017) is the generic half of every concrete "human" IGameView -- all three game modules
+# below subclass it.
 PROJECT_SOURCE_FILES_CPP ?= \
     app/core/engine.cpp \
     app/process/process_manager.cpp \
@@ -81,6 +87,7 @@ PROJECT_SOURCE_FILES_CPP ?= \
     app/core/engine_config.cpp \
     app/entity/level_loader.cpp \
     app/view/base_game_logic.cpp \
+    app/view/human_view_base.cpp \
     app/input/input_bindings.cpp
 
 # game/sandbox (docs/adr/0014): the migrated raylib template, with a Logo/Title/Options/Gameplay/
@@ -100,12 +107,25 @@ PROJECT_SOURCE_FILES_CPP += \
     game/sandbox/game_config.cpp
 endif
 
+# game/camera_fps (docs/adr/0017): raylib's own examples/core/core_3d_camera_fps.c ported in as
+# the second concrete game module -- a single Engine-driven scene, no screens.h state machine, no
+# GameConfig (no assets to point at). Its level/entities (player + 4 towers) ARE data-driven
+# (assets/levels/camera_fps.yaml). game_logic.cpp's CameraFpsLogic (a real BaseGameLogic subclass)
+# owns the FPS movement simulation; human_view.cpp's CameraFpsView only reads input and renders.
+ifeq ($(GAME),camera_fps)
+PROJECT_SOURCE_FILES_CPP += \
+    game/camera_fps/main.cpp \
+    game/camera_fps/game_logic.cpp \
+    game/camera_fps/human_view.cpp
+endif
+
 # game/flare_reactor (docs/rfc/0001-flare-reactor-pipeline-experiment.md): the end-to-end pipeline
 # experiment -- a single Engine-driven scene, no screens.h state machine, no GameConfig (no
 # game-specific settings needed yet). Phase 1 ("esqueleto"): three data-driven entities
 # (player/reactor/sentinel) rendered via app/scene/renderable.h's Renderable. Phase 3 ("evento +
 # validação") adds game_logic.cpp -- FlareReactorGameLogic, this module's first BaseGameLogic
-# subclass.
+# subclass. Phase 6 ("AI") adds ai_view.h -- AIView, one per SentinelTag actor; header-only, same
+# shape as app/scene/renderable.h, so it needs no entry of its own here.
 ifeq ($(GAME),flare_reactor)
 PROJECT_SOURCE_FILES_CPP += \
     game/flare_reactor/main.cpp \
