@@ -65,6 +65,7 @@ namespace {
         void VOnUpdate(float dt) override {
             (void)dt;
             if (input_.IsPressed(InputAction::Interact)) {
+                TraceLog(LOG_INFO, "PlayerInteractElement: Interact pressed -- emitting EvtData_ActivateBeacon");
                 events_.Emit(EvtData_ActivateBeacon{player_});
             }
         }
@@ -105,6 +106,8 @@ FlareReactorView::FlareReactorView(entt::registry &registry, EventManager &event
 }
 
 void FlareReactorView::OnBeaconTriggered(const EvtData_BeaconTriggered &event) {
+    TraceLog(LOG_INFO, "FlareReactorView: EvtData_BeaconTriggered received");
+
     if (!beaconSound_) return;
 
     // Approximate "3D" audio, computed once at trigger time from camera_ vs. the event's position
@@ -123,6 +126,8 @@ void FlareReactorView::OnBeaconTriggered(const EvtData_BeaconTriggered &event) {
     SetSoundVolume(*beaconSound_, volume);
     SetSoundPan(*beaconSound_, pan);
     PlaySound(*beaconSound_);
+
+    TraceLog(LOG_INFO, "FlareReactorView: playing beacon sound (volume %.2f, pan %.2f)", volume, pan);
 }
 
 void FlareReactorView::VOnAttach(GameViewId id, std::optional<entt::entity> actorId) {

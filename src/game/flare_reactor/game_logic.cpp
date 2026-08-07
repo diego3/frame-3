@@ -3,8 +3,9 @@
 // get a tests/-local object; the test build never links -lraylib. The validation math itself
 // (Vector3Distance, the active-flag check) is pure and would be easy to unit test in isolation,
 // but splitting it into a separate raylib-free header just to make that possible is disproportionate
-// for one TraceLog call proving Phase 3's flow, per the RFC ("um TraceLog prova o fluxo"). Revisit
-// if this grows real branching logic worth testing on its own.
+// for the handful of TraceLog calls tracing each branch of this flow (received/out-of-range/
+// already-active/granted), per the RFC ("um TraceLog prova o fluxo"). Revisit if this grows real
+// branching logic worth testing on its own.
 #include "game_logic.h"
 
 #include <memory>
@@ -35,17 +36,35 @@ FlareReactorGameLogic::FlareReactorGameLogic(entt::registry &registry, EventMana
 }
 
 void FlareReactorGameLogic::OnActivateBeacon(const EvtData_ActivateBeacon &event) {
-    if (!registry_.valid(event.actorId)) return;
+    TraceLog(LOG_INFO, "FlareReactorGameLogic: EvtData_ActivateBeacon received");
+
+    if (!registry_.valid(event.actorId)) {
+        TraceLog(LOG_WARNING, "FlareReactorGameLogic: actorId is not a valid entity -- ignoring");
+        return;
+    }
 
     Vector3 actorPos = WorldPosition(registry_, event.actorId);
 
     auto reactors = registry_.view<Reactor, WorldTransform>();
+    bool foundAny = false;
     for (auto entity : reactors) {
+        foundAny = true;
         auto &reactor = reactors.get<Reactor>(entity);
-        if (reactor.active) continue;   // already triggered -- Phase 4's BeaconPulseProcess resets it
-
         Vector3 reactorPos = WorldPosition(registry_, entity);
-        if (Vector3Distance(actorPos, reactorPos) > kInteractRadius) continue;
+        float distance = Vector3Distance(actorPos, reactorPos);
+
+        if (reactor.active) {
+            // already triggered -- Phase 4's BeaconPulseProcess resets it once its pulse finishes
+            TraceLog(LOG_INFO, "FlareReactorGameLogic: reactor already active -- ignoring (distance %.2f)",
+                     distance);
+            continue;
+        }
+        if (distance > kInteractRadius) {
+            TraceLog(LOG_INFO, "FlareReactorGameLogic: reactor out of range (distance %.2f > radius %.2f) "
+                                "-- move closer and press Interact again",
+                     distance, kInteractRadius);
+            continue;
+        }
 
         reactor.active = true;
         processes_.Attach(std::make_unique<BeaconPulseProcess>(registry_, entity));
@@ -57,5 +76,9 @@ void FlareReactorGameLogic::OnActivateBeacon(const EvtData_ActivateBeacon &event
         TraceLog(LOG_INFO, "FlareReactorGameLogic: reactor activated (BeaconPulseProcess attached, "
                             "EvtData_BeaconTriggered queued)");
         return;   // only one reactor in this scenario -- stop once it's handled
+    }
+
+    if (!foundAny) {
+        TraceLog(LOG_WARNING, "FlareReactorGameLogic: no Reactor entity found in the registry");
     }
 }
