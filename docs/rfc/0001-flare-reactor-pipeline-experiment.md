@@ -254,48 +254,39 @@ Sem `TraceLog` de instrumentação de fluxo separado como o §1 tinha — o pró
 `OnActivateBeacon` já prova o fluxo completo (view emite → lógica valida → lógica emite), a mesma
 "prova via log" que a Fase 3 original pedia.
 
-### 5. `ProcessManager` — `BeaconPulseProcess`
+### 5. `ProcessManager` — `BeaconPulseProcess` — implementado (2026-08-07)
 
-```cpp
-class BeaconPulseProcess : public Process {
-public:
-    BeaconPulseProcess(entt::registry &registry, entt::entity reactor)
-        : registry_(registry), reactor_(reactor) {}
+`src/game/flare_reactor/beacon_pulse_process.h` — este projeto's primeiro `Process` concreto de
+verdade (`engine-architecture` §2 só tinha o exemplo hipotético `CameraShakeProcess`). Dois desvios
+do sketch original, ambos por segurança de link do build de teste (mesma disciplina de
+`app/input/input_bindings.h`'s split `IsDown`/`IsPressed`):
 
-    void Update(float dt) override {
-        elapsed_ += dt;
-        float t = std::min(elapsed_ / kDurationSeconds, 1.0f);
+- `ColorLerp` do raylib é `RLAPI` (símbolo linkado de verdade), não `RMAPI`/header-only como as
+  funções do `raymath.h` — trocado por um lerp manual por canal de byte (`LerpColor`).
+- `EaseOutQuad` não existe no raylib vendorizado (só em `examples/`, fora do include path) —
+  escrita inline (`1 - (1-t)²`) em vez de vendorizar `reasings.h` por uma linha de matemática.
 
-        auto &local = registry_.get<LocalTransform>(reactor_);
-        local.scale = Vector3Lerp(kBaseScale, kPulsedScale, EaseOutQuad(t));   // expansão ease-out
-        local.rotation = QuaternionFromAxisAngle(Vector3{0, 1, 0}, elapsed_ * kSpinSpeed);
+Resultado: o header inteiro ficou livre de qualquer símbolo linkado do raylib, então virou testável
+de verdade (`src/tests/beacon_pulse_process_test.cpp`, 2 casos) — diferente de
+`FlareReactorGameLogic`/`FlareReactorView`, que chamam `TraceLog` e por isso não podem.
 
-        auto &renderable = registry_.get<Renderable>(reactor_);
-        renderable.color = ColorLerp(GRAY, RED, t);
-
-        if (t >= 1.0f) Succeed();
-    }
-
-private:
-    entt::registry &registry_;
-    entt::entity reactor_;
-    float elapsed_ = 0.0f;
-};
-```
+Terceiro desvio: `Update` também zera `Reactor::active` de volta para `false` assim que `t >= 1.0f`,
+logo antes do `Succeed()` — não estava no sketch original, mas é exatamente a peça que a Fase 3
+(§4) já vinha citando como "a Fase 4's `BeaconPulseProcess` reseta" sem ainda existir.
 
 Atrelado ao `entt::entity`, não a um "ator" com campos próprios — é exatamente o caso que
 `engine-architecture` §2 descreve (comportamento multi-frame que não é dono de seu próprio
 estado; aqui a entidade ECS não tem *nenhum* estado próprio fora de componentes, então o `Process`
 é o lugar natural para a animação, não um adendo). Anexado via `processes_.Attach(...)` dentro do
-mesmo handler do passo 4, logo após validar. Ao contrário do GCC4 original (que o cenário-fonte
-cita com `OnSuccess()`), `Process` neste projeto não tem esse hook — o próprio `Update` faz o
-trabalho de "ao terminar" inline antes de chamar `Succeed()` (ver `app/process/process.h`); não há
-callback separado a implementar.
+próprio `FlareReactorGameLogic::OnActivateBeacon` (§4), logo após validar e marcar `active = true`.
+Ao contrário do GCC4 original (que o cenário-fonte cita com `OnSuccess()`), `Process` neste projeto
+não tem esse hook — o próprio `Update` faz o trabalho de "ao terminar" inline antes de chamar
+`Succeed()` (ver `app/process/process.h`); não há callback separado a implementar.
 
 Note a separação deliberada: o passo 4 (`GameLogic`) decide *se* a ativação é válida e vira o
-estado lógico (`Reactor::active`); o `Process` anima *como isso aparece* (escala, cor, rotação).
-Mesmo split Logic/View que o resto do projeto já aplica, só que dentro de uma única `Process` em
-vez de entre `BaseGameLogic`/`IGameView`.
+estado lógico (`Reactor::active`) para `true`; o `Process` anima *como isso aparece* (escala, cor,
+rotação) e, ao terminar, devolve `active` para `false`. Mesmo split Logic/View que o resto do
+projeto já aplica, só que dentro de uma única `Process` em vez de entre `BaseGameLogic`/`IGameView`.
 
 ### 6. Render
 
@@ -478,7 +469,7 @@ sequenceDiagram
 | `EventManager` | ✅ completo, agora com um consumidor real (`FlareReactorGameLogic`, implementado 2026-08-07) | `EvtData_ActivateBeacon`, `EvtData_BeaconTriggered` |
 | Componente `Reactor`/tags | ✅ implementado 2026-08-07 | `Reactor` (só `active`, sem tag própria), `PlayerTag` |
 | `BaseGameLogic` subclass | Não (só a classe base, sem consumidor específico) | `FlareReactorGameLogic`, implementado 2026-08-07 |
-| `ProcessManager` | Sim, completo, sem consumidor real | `BeaconPulseProcess` |
+| `ProcessManager` | ✅ completo, agora com um consumidor real (implementado 2026-08-07) | `BeaconPulseProcess` |
 | Render por dado | Não (hardcoded `DrawCubeWires`) | `Renderable` (app/), `DrawRenderables` |
 | Áudio | Sim (`ResourceCache<Sound>`, `PlaySound`) | cálculo de pan/volume por distância |
 | IA | Nenhuma (projeto não tem IA nenhuma ainda) | `SentinelAI`, `Patrol`, `UpdateSentinel`, percepção via evento |
@@ -506,10 +497,12 @@ pausa até decidirmos, na hora, se a resposta é uma ADR pequena ou implementaç
    emite → lógica valida → lógica emite `EvtData_BeaconTriggered`). Toca a lacuna
    "Colisão/proximidade real" (checagem por distância, sem física) — não bloqueou esta fase, mas
    segue registrada na tabela em vez de silenciada.
-4. **`ProcessManager`**: `BeaconPulseProcess` ligado ao passo 3 — primeiro payoff visual real
-   (escala/rotação/cor). Não inclui emissão/partículas — essa parte do pedido original fica
-   pausada nas lacunas "Sistema de partículas"/"Material/shader por entidade" até uma ADR decidir
-   o caminho.
+4. ✅ **`ProcessManager`** (implementada, 2026-08-07): `BeaconPulseProcess`, anexado dentro do
+   próprio handler da Fase 3 — primeiro payoff visual real (escala/rotação/cor, ~2s, ease-out).
+   Testável de verdade (`beacon_pulse_process_test.cpp`) por evitar todo símbolo linkado do
+   raylib — ver §5. Não inclui emissão/partículas — essa parte do pedido original segue pausada
+   nas lacunas "Sistema de partículas"/"Material/shader por entidade" até uma ADR decidir o
+   caminho.
 5. **Áudio**: assinatura em `HumanView`, cálculo de pan/volume — teto real da lacuna "Áudio 3D
    real", não uma etapa intermediária rumo a algo melhor sem mudar de biblioteca.
 6. **IA**: `SentinelAI`/`Patrol`, percepção via evento, `Seek`. Fase mais isolada — pode ser

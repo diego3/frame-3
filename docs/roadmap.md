@@ -13,7 +13,7 @@ the chapter reference and full reasoning.
 ## Shipped
 
 - [x] Event Manager, typed dispatch (`Subscribe`/`Emit`) — [ADR-0003](adr/0003-event-manager-and-process-manager-game-loop.md)
-- [x] Process Manager — [ADR-0003](adr/0003-event-manager-and-process-manager-game-loop.md)
+- [x] Process Manager — [ADR-0003](adr/0003-event-manager-and-process-manager-game-loop.md) — first real `Process` subclass landed via [RFC-0001](rfc/0001-flare-reactor-pipeline-experiment.md) Phase 4: `game/flare_reactor`'s `BeaconPulseProcess`
 - [x] Application layer / main loop (`Engine`) — [ADR-0001](adr/0001-ecs-via-entt-and-cpp-engine-init.md) Decision 2
 - [x] Actors/Components → ECS via EnTT — [ADR-0001](adr/0001-ecs-via-entt-and-cpp-engine-init.md) Decision 1
 - [x] Resource cache (`ResourceCache<T>`: Font/Sound/Model/Texture2D/Shader) — [ADR-0004](adr/0004-resource-cache-thin-vs-full-book-rescache.md)

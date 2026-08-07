@@ -7,9 +7,12 @@
 // if this grows real branching logic worth testing on its own.
 #include "game_logic.h"
 
+#include <memory>
+
 #include <raymath.h>
 
 #include "app/scene/transform.h"
+#include "beacon_pulse_process.h"
 #include "reactor.h"
 
 namespace {
@@ -45,12 +48,14 @@ void FlareReactorGameLogic::OnActivateBeacon(const EvtData_ActivateBeacon &event
         if (Vector3Distance(actorPos, reactorPos) > kInteractRadius) continue;
 
         reactor.active = true;
+        processes_.Attach(std::make_unique<BeaconPulseProcess>(registry_, entity));
         // Queue, not Emit -- ADR-0005's reentrancy protection for "one event, several decoupled
         // subscribers" (RFC-0001 §3), even though no planned subscriber re-emits this same type
         // today.
         events_.Queue(EvtData_BeaconTriggered{entity, reactorPos});
 
-        TraceLog(LOG_INFO, "FlareReactorGameLogic: reactor activated (EvtData_BeaconTriggered queued)");
+        TraceLog(LOG_INFO, "FlareReactorGameLogic: reactor activated (BeaconPulseProcess attached, "
+                            "EvtData_BeaconTriggered queued)");
         return;   // only one reactor in this scenario -- stop once it's handled
     }
 }

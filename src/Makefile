@@ -516,6 +516,10 @@ mini_yaml.o:
 # read/write round trip. input_bindings_test.cpp needs raylib's headers too (KEY_* constants,
 # InputAction's default bindings) but never calls IsKeyDown/IsKeyPressed themselves (those aren't
 # exercised by a test -- same raylib-runtime-vs-headers-only split as hierarchy_test.cpp).
+# beacon_pulse_process_test.cpp (docs/rfc/0001 Phase 4) tests game/flare_reactor/
+# beacon_pulse_process.h directly -- header-only, same reasoning as hierarchy.h, so it needs no
+# tests/-local object rule below; it deliberately avoids raylib's own ColorLerp (a real linked
+# symbol) for exactly this reason (see that header's own comment).
 TEST_SOURCE_FILES_CPP ?= \
     tests/main_test.cpp \
     tests/event_manager_test.cpp \
@@ -533,7 +537,8 @@ TEST_SOURCE_FILES_CPP ?= \
     tests/engine_config_test.cpp \
     tests/game_config_test.cpp \
     tests/base_game_logic_test.cpp \
-    tests/input_bindings_test.cpp
+    tests/input_bindings_test.cpp \
+    tests/beacon_pulse_process_test.cpp
 
 TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH) -I$(RAYLIB_INCLUDE_PATH) -I$(ENTT_INCLUDE_PATH) -I$(MINI_YAML_INCLUDE_PATH)
 

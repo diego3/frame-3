@@ -141,10 +141,17 @@ for a single entity's own cooldown; that's just a member variable on the entity.
 **Current state**: `Process`/`ProcessManager` exist and `Engine::Processes()` (`src/app/core/engine.h`)
 owns the one `ProcessManager` instance, ticked once per frame from `Engine::Run` (both the desktop
 `while` loop and the `PLATFORM_WEB` `emscripten_set_main_loop` path go through the same
-`TickAndUpdateDraw` trampoline in `engine.cpp`, so process ticking isn't duplicated per-platform)
-— but nothing attaches a `Process` yet. No concrete `Process` subclass exists yet either; write one
-per timed behavior as it's needed (e.g. a future `CameraShakeProcess`), don't pre-build a library
-of process types speculatively.
+`TickAndUpdateDraw` trampoline in `engine.cpp`, so process ticking isn't duplicated per-platform).
+The first real, non-hypothetical `Process` subclass now exists:
+`game/flare_reactor/beacon_pulse_process.h`'s `BeaconPulseProcess` (RFC-0001 Phase 4), attached via
+`processes_.Attach(...)` from `FlareReactorGameLogic::OnActivateBeacon` once a reactor activation
+is validated -- animates scale/rotation/color over a fixed duration, then flips a game-specific
+`Reactor::active` flag back off and calls `Succeed()`. Deliberately avoids any raylib symbol that
+isn't header-only (writes its own byte-lerp `Color` helper instead of raylib's linked `ColorLerp`)
+so it stays unit-testable (`tests/beacon_pulse_process_test.cpp`) the same way
+`app/input/input_bindings.h`'s `IsDown`/`IsPressed` split does. Write one concrete `Process` per
+timed behavior as it's needed (e.g. a future engine-level `CameraShakeProcess`), don't pre-build a
+library of process types speculatively.
 
 ### 3. Prototype / archetype spawning (Ch. 6-7) — ECS via EnTT, decided
 
