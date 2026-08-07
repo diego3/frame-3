@@ -53,6 +53,9 @@ bus".
 // Sketch — matches src/app/events/event_manager.h; adjust here if that file's shape changes.
 class EventManager {
 public:
+    using RawHandler = std::function<void(const void*)>;    // type-erased, one per subscriber
+    using PendingAction = std::function<void()>;             // a Queue<T>'d Emit<T>, replayed later
+
     template <typename T>
     void Subscribe(std::function<void(const T&)> handler) {
         handlers_[std::type_index(typeid(T))].push_back(
@@ -67,7 +70,8 @@ public:
     }
 
 private:
-    std::unordered_map<std::type_index, std::vector<std::function<void(const void*)>>> handlers_;
+    std::unordered_map<std::type_index, std::vector<RawHandler>> handlers_;
+    std::vector<PendingAction> pending_;
 };
 ```
 
@@ -550,6 +554,19 @@ convenience base, no console, no modal input priority (`VOnMsgProc`'s reverse-or
 dropped) -- see the ADR's own Tradeoffs. A generic `HumanView` base promoted to `app/` (with a
 `VLoadGameDelegate`-style hook) is still explicitly deferred, gated on a second game/consumer per
 ADR-0015 -- this section's stack is the prerequisite for that, not the promotion itself.
+
+## Conventions
+
+- **Alias a dense or repeated `std::function`/container type as a `using` inside the class that
+  owns it**, instead of inlining the raw type at every member/parameter site. Every system sketched
+  above that stores one already does this: `ResourceCache<T>::Loader`/`Unloader` (§4),
+  `EntityDefNode::List`/`Map` (§6), `EntityFactory::ComponentLoader` (§6), `LevelLoader::FileReader`
+  (§7), `EventManager::RawHandler`/`PendingAction` (§1), `EventTypeRegistry::Factory` (§1's
+  serialization path), `InputBindings::BindingMap` (ADR-0013, `src/app/input/input_bindings.h`).
+  Apply it once a type is used more than once (especially across a header/`.cpp` pair, e.g.
+  `BindingMap` shared by `InputBindings` and `input_bindings.cpp`'s free functions) or its inline
+  form makes a declaration hard to scan at a glance — not for a type spelled out exactly once with
+  a short signature.
 
 ## Decisions Made
 

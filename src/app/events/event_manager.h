@@ -12,6 +12,13 @@
 
 class EventManager {
 public:
+    // Type-erased handler stored per std::type_index -- Subscribe<T> wraps the caller's
+    // std::function<void(const T &)> in one of these so handlers_ can hold every T's handlers in
+    // a single map.
+    using RawHandler = std::function<void(const void *)>;
+    // A deferred Emit<T> call captured by Queue<T>, replayed as-is by DispatchQueued().
+    using PendingAction = std::function<void()>;
+
     // Registers a handler for events of type T. Multiple handlers may subscribe to the same T;
     // all of them run, in subscription order, on the next Emit<T>.
     template <typename T>
@@ -45,15 +52,15 @@ public:
     // another) lands in the now-empty pending_ and runs on the *next* DispatchQueued() call, not
     // this one -- avoids iterating a vector that's still being appended to mid-loop.
     void DispatchQueued() {
-        std::vector<std::function<void()>> active;
+        std::vector<PendingAction> active;
         std::swap(active, pending_);
 
         for (auto &dispatch : active) dispatch();
     }
 
 private:
-    std::unordered_map<std::type_index, std::vector<std::function<void(const void *)>>> handlers_;
-    std::vector<std::function<void()>> pending_;
+    std::unordered_map<std::type_index, std::vector<RawHandler>> handlers_;
+    std::vector<PendingAction> pending_;
 };
 
 #endif // EVENT_MANAGER_H

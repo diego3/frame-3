@@ -17,6 +17,8 @@
 
 class EventTypeRegistry {
 public:
+    using Factory = std::function<std::unique_ptr<ISerializableEvent>()>;
+
     // Registers a factory for T under T::kTypeId. T is expected to derive from
     // ISerializableEvent and expose `static constexpr uint32_t kTypeId`, matching the shape
     // ADR-0005 Sec 2's example (EvtData_Destroy_Actor) uses.
@@ -34,7 +36,7 @@ public:
     }
 
 private:
-    std::unordered_map<uint32_t, std::function<std::unique_ptr<ISerializableEvent>()>> factories_;
+    std::unordered_map<uint32_t, Factory> factories_;
 };
 
 #endif // EVENT_TYPE_REGISTRY_H

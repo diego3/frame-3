@@ -26,6 +26,9 @@ enum class InputAction {
 
 class InputBindings {
 public:
+    using BindingMap = std::unordered_map<InputAction, int>;
+
+
     // Level-triggered (raylib IsKeyDown) -- true every frame the bound key is held. Right fit for
     // movement. Defined inline (not in input_bindings.cpp) deliberately: that .cpp is also
     // compiled into the test build (tests/input_bindings_test.cpp exercises the
@@ -58,7 +61,7 @@ public:
     int KeyFor(InputAction action) const;
 
 private:
-    std::unordered_map<InputAction, int> keys_;
+    BindingMap keys_;
     friend InputBindings LoadOrCreateInputBindings(const std::string &path);
 };
 

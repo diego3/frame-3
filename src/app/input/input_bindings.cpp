@@ -26,7 +26,7 @@ namespace {
     // Matches HumanView's/FlareReactorView's pre-existing hardcoded arrow-key scheme (and the
     // KEY_E this project's RFC-0001 already settled on for Interact) exactly, so adopting
     // InputBindings doesn't silently change behavior on first run.
-    std::unordered_map<InputAction, int> DefaultBindings() {
+    InputBindings::BindingMap DefaultBindings() {
         return {
             {InputAction::MoveForward, KEY_UP},
             {InputAction::MoveBackward, KEY_DOWN},
@@ -39,7 +39,7 @@ namespace {
     // Minimal, hand-written emitter, same shape as engine_config.cpp's SerializeEngineConfig --
     // one "ActionName: <int>" line per binding, raw raylib key codes (ADR-0013's own Tradeoffs:
     // human-readable names are deferred until a rebinding UI actually needs to display one).
-    std::string SerializeBindings(const std::unordered_map<InputAction, int> &keys) {
+    std::string SerializeBindings(const InputBindings::BindingMap &keys) {
         std::ostringstream out;
         for (const ActionName &entry : kActionNames) {
             auto it = keys.find(entry.action);
