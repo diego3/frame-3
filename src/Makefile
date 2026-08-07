@@ -34,9 +34,10 @@ PROJECT_VERSION       ?= 1.0
 # Local desktop dev default: keeps every build artifact (objects, the linked binary, staged
 # resources, config/, the GAME_MARKER) out of src/ entirely, in a sibling build/ directory --
 # nothing but source is left next to the .cpp/.h files. Release CI workflows
-# (build_linux/macos/webassembly.yml) explicitly override this back to PROJECT_BUILD_PATH=. (i.e.
-# src/ itself, cwd at the point they call make) for their own packaging steps -- this default only
-# changes local/CI-sanity behavior, not what those workflows produce.
+# (build_linux/macos/webassembly.yml) override this to a sibling build/release/ instead (their own
+# packaging steps need a stable path to `cp`/`copy` the final artifact from) -- same "nothing but
+# source in src/" property, just a different directory name; never back to PROJECT_BUILD_PATH=.
+# (src/ itself) anymore, which this Makefile's own `clean:` target used to special-case for.
 PROJECT_BUILD_PATH    ?= ../build/desktop
 
 # Which concrete game module (src/game/<GAME>/) to build -- first needed once a second one
@@ -505,9 +506,9 @@ check_game:
 # NOTE: Linked with $(CXX), not $(CC) -- OBJS includes C++ object files (see
 # PROJECT_SOURCE_FILES_CPP), and linking those requires the C++ standard library, which the C
 # compiler driver doesn't pull in automatically. Target is $(PROJECT_BUILD_PATH)/$(PROJECT_NAME),
-# not the bare $(PROJECT_NAME) this used to be -- needed once PROJECT_BUILD_PATH stopped
-# defaulting to "." (the CI release workflows still pass PROJECT_BUILD_PATH=. explicitly, so their
-# own $(PROJECT_NAME)-named output is unaffected).
+# not the bare $(PROJECT_NAME) this used to be -- needed once PROJECT_BUILD_PATH stopped defaulting
+# to "." (the CI release workflows pass their own explicit PROJECT_BUILD_PATH=../build/release now
+# too, so their $(PROJECT_NAME)-named output just lands one directory over, same as local dev's).
 $(PROJECT_BUILD_PATH)/$(PROJECT_NAME)$(EXT): $(OBJS) resources $(GAME_MARKER)
 	@mkdir -p $(PROJECT_BUILD_PATH)
 	$(CXX) -o $@ $(OBJS) $(CFLAGS) $(INCLUDE_PATHS) $(LDFLAGS) $(LDLIBS) -D$(PLATFORM)
@@ -673,29 +674,18 @@ $(TEST_OBJ_DIR)/tests/%.o: tests/%.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
 # Clean everything
-# NOTE: the find/del/rm lines below predate PROJECT_BUILD_PATH defaulting away from "." -- kept
-# exactly as-is, scoped to cwd, since the release CI workflows (build_linux/macos/webassembly.yml)
-# still call `make clean` with PROJECT_BUILD_PATH=. (cwd already src/ by the time they call it) and
-# depend on this exact behavior for their own multi-arch build/clean/build cycles (see
-# build_macos.yml, which calls this between its x86_64 and arm64 passes). The lines below the
-# ifeq/endif block are purely additive: they remove the *new* default local build tree
-# ($(OBJ_DIR), the linked binaries, GAME_MARKER) by exact path, which is empty/inert for those CI
-# workflows (PROJECT_BUILD_PATH=. means $(OBJ_DIR) etc. resolve under a directory that's already
-# fully covered by the find-based deletion above) and harmless if the resolved path doesn't exist.
+# NOTE: used to also carry a WINDOWS/LINUX/OSX find-and-delete-relative-to-cwd block here, predating
+# PROJECT_BUILD_PATH defaulting away from "." -- kept only because the release CI workflows
+# (build_linux/macos/webassembly.yml) used to call `make` with PROJECT_BUILD_PATH=. (cwd already
+# src/ by the time they call it), so build output landed directly in cwd and only cwd-scoped find/rm
+# could clean it up (see build_macos.yml's intermediate `make clean` between its x86_64/arm64
+# passes). Those workflows now pass an explicit, non-"." PROJECT_BUILD_PATH (build/release/,
+# consistent with local dev's build/desktop/ and ci_sanity.yml's own default) -- the path-aware
+# lines below already clean that up correctly wherever PROJECT_BUILD_PATH points, no cwd-scoped
+# fallback needed anymore. PLATFORM_DRM's block is unrelated (never had a PROJECT_BUILD_PATH-based
+# alternative to begin with -- DRM builds were never routed through the release workflows' path
+# convention), kept as-is.
 clean:
-ifeq ($(PLATFORM),PLATFORM_DESKTOP)
-    ifeq ($(PLATFORM_OS),WINDOWS)
-	del *.o *.exe /s
-    endif
-    ifeq ($(PLATFORM_OS),LINUX)
-	find . -type f -executable -delete
-	find . -name "*.o" -delete
-    endif
-    ifeq ($(PLATFORM_OS),OSX)
-	find . -name "*.o" -delete
-	rm -f $(PROJECT_NAME) $(GAME)
-    endif
-endif
 ifeq ($(PLATFORM),PLATFORM_DRM)
 	find . -type f -executable -delete
 	find . -name "*.o" -delete
