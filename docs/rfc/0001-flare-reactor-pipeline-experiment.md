@@ -16,6 +16,96 @@ a comentário antes de virar uma sequência de PRs. Cada peça nova que este doc
 ganhar sua própria ADR pequena ou pelo menos uma entrada no `docs/roadmap.md` — esta RFC é o mapa,
 não o registro de decisão de cada parada.
 
+## Pedido original (verbatim)
+
+Documentado aqui por completo porque é a referência de "fidelidade total" contra a qual a seção
+**Mindset deste experimento** (abaixo) e a seção **Lacunas de infraestrutura conhecidas** são
+avaliadas — cada simplificação registrada neste documento existe *em relação a este texto*, não
+como uma reinterpretação livre do escopo:
+
+> 💡 Cenário Recomendado: "O Sinalizador de Alerta / Reator" (The Flare Reactor)
+>
+> Neste cenário existe apenas um Jogador (ou Câmara), um Cubo Reator (Objeto Interativo) no centro
+> e um NPC Inimigo (Esfera) a patrulhar por perto.
+>
+> O Fluxo de Execução Passo a Passo:
+>
+> **InputManager (Captação de Hardware)**
+> Detecta que a tecla E ou ESPAÇO foi pressionada via `IsKeyPressed(KEY_E)` da Raylib. Converte a
+> tecla no evento/ação abstrata `ACTION_INTERACT`.
+>
+> **PlayerController / HumanView**
+> Processa `ACTION_INTERACT` e lança um evento no barramento: `EvtData_ActivateBeacon(actorId)`.
+>
+> **EventManager (Barramento Decoplado)**
+> Roteia a mensagem `EvtData_ActivateBeacon` para todos os subsistemas registados como ouvintes
+> (Listeners).
+>
+> **GameLogic (Validação e Estado Global)**
+> Recebe o evento e verifica se o jogo permite a ação (ex: "O reator não está em cooldown?"). Se
+> for válido, altera o estado global (ex: `reactorState = ACTIVE`) e dispara o evento de broadcast
+> `EvtData_BeaconTriggered`.
+>
+> **ProcessManager (Processo Assíncrono / Animação Lógica)**
+> Regista um novo `BeaconPulseProcess` (derivado de `Process`). Durante os próximos 2.0 segundos,
+> no `Update(deltaTime)` (usando `GetFrameTime()` da Raylib), o processo interpola a escala do
+> objeto (efeito Ease-Out de expansão) e calcula a rotação do reator. Quando o tempo termina, o
+> processo encerra-se e chama o seu `OnSuccess()`.
+>
+> **Render System / Graphics (Visual)**
+> O `RenderComponent` do reator altera a cor da malha (de cinzento para vermelho brilhante) e
+> ativa um efeito visual em tempo real (ex: emissão de luz ou partículas desenhadas com
+> `DrawCubeWires`/shaders customizados da Raylib).
+>
+> **Audio Subsystem / ResourceManager**
+> O ouvinte de áudio captura o evento e pede ao `ResourceManager` o som predefinido. Dispara um som
+> 3D espacializado (`PlaySoundSound3D`/Raylib Audio) na posição exata da coordenada $(X, Y, Z)$ do
+> reator.
+>
+> **AI Subsystem / Perception (Reação da IA)**
+> O `PerceptionSystem` do NPC inimigo (ou o seu `ScriptComponent`/`FSMComponent`) ouve o evento de
+> ruído/alerta no mapa. A IA transita instantaneamente do estado `PATROL` para `INVESTIGATE`. O
+> algoritmo de `SteeringBehavior` (ou A*/NavMesh) recalcula a rota do NPC em direção às
+> coordenadas do reator.
+
+## Mindset deste experimento
+
+**O objetivo é chegar na arquitetura descrita no pedido original acima, com fidelidade real — não
+numa versão permanentemente reduzida dela.** As primeiras passagens deste documento (e a Fase 1 já
+implementada) simplificaram várias peças para ter algo rodando rápido; isso deixou de ser a
+postura padrão a partir daqui.
+
+**Regra de trabalho**: sempre que a implementação esbarrar numa peça que frame-3 genuinamente não
+tem — não "não escrevi ainda", mas "não existe infraestrutura nenhuma pra isso" (um sistema de
+partículas, material/shader por entidade, áudio posicional real, geometria de nível navegável) —
+a resposta não é substituir silenciosamente por uma aproximação e seguir em frente. A resposta é
+**parar e avisar**, para decidirmos juntos, naquele momento, se o caminho é escrever uma ADR
+pequena primeiro ou partir direto pra implementação. A tabela de **Lacunas de infraestrutura
+conhecidas** abaixo é o registro vivo dessas paradas — cada linha marcada como pendente é um ponto
+onde isso já aconteceu ou vai acontecer.
+
+O que continua sendo um não-objetivo de verdade (não uma lacuna a resolver, um limite deliberado
+de escopo do experimento em si):
+
+- **Não é um jogo jogável.** Sem menu, sem condição de vitória/derrota, sem progressão — isso não
+  está no pedido original e não faz parte do que este experimento tenta provar.
+
+## Lacunas de infraestrutura conhecidas
+
+Cada linha é uma peça que o pedido original pede e que frame-3 não tem hoje — nem como código já
+escrito, nem como um sistema equivalente adaptável. "Bloqueia" descreve o que fica permanentemente
+simplificado enquanto a lacuna não for resolvida.
+
+| Lacuna | Onde aparece no pedido original | Bloqueia hoje | Próximo passo |
+|---|---|---|---|
+| **Ação de input abstrata** (`ACTION_INTERACT`, tecla→ação rebindável) | InputManager | `PlayerInteractElement` lê `KEY_E` direto, igual o movimento já faz — nenhuma camada de ação nomeada | Retomar ADR-0013 (`Proposed`, nunca implementado) |
+| **Colisão/proximidade real** | implícito em "jogador perto do reator" | checagem via `Vector3Distance` puro, sem `IGamePhysics`/colisão de verdade | Retomar ADR-0012 (`Proposed`, nunca implementado) — prioridade menor, o pedido original não exige física de corpo rígido, só proximidade |
+| **Sistema de partículas** | "efeito visual em tempo real... partículas" | nenhum efeito de partícula existe ou é possível hoje — não há `ParticleEmitter`, nem sistema algum | Nova ADR — infraestrutura inteira a desenhar |
+| **Material/shader por entidade (emissão)** | "ativa um efeito visual... emissão de luz" | `Renderable.color` é a única aparência possível hoje (cor lida, desenho imediato); não existe conceito de material/shader amarrado a uma entidade, só `ResourceCache<Shader>` cacheando por path | Nova ADR — provavelmente junto com o item de partículas acima (ambos tocam "como uma entidade é desenhada") |
+| **Áudio 3D real** | "som 3D espacializado (`PlaySoundSound3D`)" | raylib não tem API de áudio posicional (`vendor/raylib/src/raylib.h:1684-1691` só expõe `SetSoundVolume`/`SetSoundPitch`/`SetSoundPan`) — teto real da biblioteca, não do projeto | Sem solução limpa sem trocar/estender o backend de áudio; aproximação por pan/volume (§7 abaixo) é o teto enquanto isso não for revisitado |
+| **Geometria de nível navegável** | pré-requisito implícito de "A*/NavMesh" | `DrawGrid` é só decorativo, não há chão/obstáculo real para uma malha de navegação referenciar | Nova ADR — provavelmente a primeira peça de física real (colisão) tem que existir antes disso fazer sentido |
+| **Pathfinding real (A*/NavMesh)** | "SteeringBehavior (ou A*/NavMesh)" | só steering (`Seek`) — coerente com `engine-ai-behavior` §5, mas não é o que o pedido original também admite como alternativa | Depende do item de geometria navegável acima primeiro |
+
 ## Resumo
 
 Um cenário minúsculo — três entidades, sem condição de vitória/derrota — construído
@@ -36,24 +126,6 @@ também observa e reage com um comportamento próprio (FSM + steering). Este é 
 "segundo/terceiro consumidor real" que este projeto já usa repetidamente (ADR-0015/0016/0017)
 para decidir o que generalizar — só que aplicado à pilha inteira de uma vez, não a um sistema por
 vez.
-
-## Não-objetivos
-
-- **Não é um jogo jogável.** Sem menu, sem condição de vitória/derrota, sem progressão.
-- **Não resolve pathfinding.** Só steering (Seek), por `engine-ai-behavior` §5 — não há geometria
-  de nível para um grid/navmesh navegar ainda.
-- **Não constrói física real.** ADR-0012 (`IGamePhysics`) continua `Proposed`, intocada. A
-  detecção "jogador perto do reator" é uma checagem de distância simples
-  (`Vector3Distance`), não colisão.
-- **Não constrói o sistema de key-binding completo.** ADR-0013 continua `Proposed`. A tecla `E` é
-  lida diretamente, como o `HumanView` de hoje já faz para as setas — ver Questão em Aberto
-  abaixo sobre quando isso deixa de ser sustentável.
-- **Não implementa áudio 3D real.** raylib não tem uma API de áudio posicional
-  (`vendor/raylib/src/raylib.h` só expõe `SetSoundVolume`/`SetSoundPitch`/`SetSoundPan` — sem
-  equivalente a um `PlaySound3D`). O efeito é aproximado por atenuação de volume + pan estéreo,
-  calculado uma vez no momento do disparo. Ver §5 abaixo — isto corrige uma imprecisão do
-  cenário original (`PlaySoundSound3D` não existe na API real do raylib).
-- **Não usa NavMesh/A\*.**
 
 ## Cenário
 
@@ -80,8 +152,8 @@ seu objetivo.
 sem nenhuma camada de tradução — decisão explícita do ADR-0010 (raylib já entrega input por
 polling, não há fila de mensagens Win32 para traduzir). **Proposto**: mesmo padrão, uma linha a
 mais — `IsKeyPressed(KEY_E)` (borda de subida, não nível, porque interagir é uma ação
-discreta, não contínua como mover). Nenhum `ACTION_INTERACT` abstrato ainda — ver Questão em
-Aberto sobre ADR-0013.
+discreta, não contínua como mover). Nenhum `ACTION_INTERACT` abstrato ainda — lacuna registrada em
+**Lacunas de infraestrutura conhecidas** acima (linha "Ação de input abstrata"), não permanente.
 
 ### 2. Intent → Evento
 
@@ -95,7 +167,7 @@ struct EvtData_BeaconTriggered { entt::entity reactorId; Vector3 position; };
 
 Uma `PlayerInteractElement` (novo `IScreenElement`, ao lado de `GameplayScene`/`GameplayHud`)
 lê a tecla em `VOnUpdate` e, se o jogador estiver a menos de `kInteractRadius` do reator
-(`Vector3Distance`, sem física real — não-objetivo já listado), chama
+(`Vector3Distance`, sem física real — lacuna "Colisão/proximidade real" na tabela acima), chama
 `events_.Emit(EvtData_ActivateBeacon{playerActor})`. `Emit` (síncrono), não `Queue`, porque este é
 o disparo de origem — nada mais está no meio de despachar este mesmo tipo de evento neste
 instante.
@@ -217,13 +289,21 @@ uma segunda forma do mesmo componente.)
 `DrawRenderables(registry_)` dentro do seu `BeginMode3D`/`EndMode3D`, em vez de hardcodar a
 geometria.
 
+`Renderable.color` (mudança de cinza pra vermelho, animada pelo `BeaconPulseProcess` do passo 5)
+é o teto do que dá pra fazer com o que existe hoje. "Emissão de luz" e "partículas" — as duas
+outras partes do pedido original pra este passo — são as lacunas "Sistema de partículas" e
+"Material/shader por entidade (emissão)" na tabela acima: não são simplificações permanentes,
+são paradas explícitas aguardando uma ADR nova antes de serem implementadas.
+
 ### 7. Áudio
 
 **Correção em relação ao cenário original**: raylib não expõe áudio 3D/posicional
 (`PlaySound3D`/`PlaySoundSound3D` não existem — conferido em
 `vendor/raylib/src/raylib.h:1684-1691`). O que existe: `PlaySound`, `SetSoundVolume`,
-`SetSoundPitch`, `SetSoundPan` (mono pan -1..1). O efeito "3D" é aproximado, calculado uma vez no
-momento do gatilho, a partir da posição da câmera (`HumanView::camera_`) e da posição do evento:
+`SetSoundPitch`, `SetSoundPan` (mono pan -1..1). Isto é a lacuna "Áudio 3D real" da tabela acima —
+teto real da biblioteca, não uma escolha deste projeto. O efeito "3D" é aproximado, calculado uma
+vez no momento do gatilho, a partir da posição da câmera (`HumanView::camera_`) e da posição do
+evento:
 
 ```cpp
 // No handler de EvtData_BeaconTriggered, dentro de HumanView (que já guarda camera_ e sounds_):
@@ -314,6 +394,11 @@ skill (§1) só recomenda uma FSM explícita a partir de 3 estados. Mantido como
 propósito: o objetivo desta RFC é provar a forma FSM+percepção+steering deliberadamente, não
 minimizar linhas de código de um único NPC.
 
+O pedido original admite `SteeringBehavior` **ou** `A*/NavMesh` — `Seek` sozinho cobre a primeira
+opção. A segunda é a lacuna "Pathfinding real (A*/NavMesh)" da tabela acima, hoje sem geometria de
+nível pra navegar contra (lacuna "Geometria de nível navegável", também na tabela) — não é uma
+substituição definitiva, é a ordem em que as peças ficam desbloqueadas.
+
 ## Diagrama de sequência
 
 ```mermaid
@@ -361,18 +446,30 @@ sequenceDiagram
 
 ## Fases propostas (uma PR por fase, cada uma demonstrável sozinha)
 
-1. **Esqueleto**: módulo `flare_reactor`, `flare_reactor.yaml`, `PlayerTag`/`ReactorTag`,
-   `Renderable`/`DrawRenderables` em `app/`. Sem interação ainda — só prova que três entidades com
-   formas/cores distintas renderizam a partir de dados.
+Por causa do **Mindset deste experimento** acima, esta lista não é mais um caminho fechado —
+qualquer fase pode parar no meio se esbarrar numa lacuna da tabela acima que ainda não tem uma
+ADR. Quando isso acontece, a fase não continua com uma aproximação nova e não documentada; ela
+pausa até decidirmos, na hora, se a resposta é uma ADR pequena ou implementação direta.
+
+1. ✅ **Esqueleto** (implementada): módulo `flare_reactor`, `flare_reactor.yaml`,
+   `PlayerTag`/`ReactorTag`, `Renderable`/`DrawRenderables` em `app/`. Sem interação ainda — só
+   prova que três entidades com formas/cores distintas renderizam a partir de dados.
 2. **Evento + validação**: `PlayerInteractElement`, `EvtData_ActivateBeacon`/`BeaconTriggered`,
    handler de `GameLogic` com cooldown. Sem efeito visual/sonoro ainda — um `TraceLog` prova o
-   fluxo.
-3. **`ProcessManager`**: `BeaconPulseProcess` ligado ao passo 2 — primeiro payoff visual real.
-4. **Áudio**: assinatura em `HumanView`, cálculo de pan/volume.
+   fluxo. Toca a lacuna "Colisão/proximidade real" (checagem por distância, sem física) e "Ação de
+   input abstrata" (tecla lida direto) — nenhuma das duas bloqueia esta fase, mas ambas ficam
+   registradas na tabela em vez de silenciadas.
+3. **`ProcessManager`**: `BeaconPulseProcess` ligado ao passo 2 — primeiro payoff visual real
+   (escala/rotação/cor). Não inclui emissão/partículas — essa parte do pedido original fica
+   pausada nas lacunas "Sistema de partículas"/"Material/shader por entidade" até uma ADR decidir
+   o caminho.
+4. **Áudio**: assinatura em `HumanView`, cálculo de pan/volume — teto real da lacuna "Áudio 3D
+   real", não uma etapa intermediária rumo a algo melhor sem mudar de biblioteca.
 5. **IA**: `SentinelAI`/`Patrol`, percepção via evento, `Seek`. Fase mais isolada — pode ser
    desenvolvida em paralelo às fases 2-4 uma vez que a fase 1 exista, já que só depende de
    `EvtData_BeaconTriggered` existir como tipo (não do handler completo da fase 2 estar
-   terminado).
+   terminado). Cobre só a metade "SteeringBehavior" do pedido original — a metade "A*/NavMesh"
+   fica pausada nas lacunas "Geometria de nível navegável"/"Pathfinding real".
 
 ## Questões em aberto
 
@@ -419,8 +516,9 @@ sequenceDiagram
   [ADR-0016](../adr/0016-screen-element-stack.md) — `BaseGameLogic`/`IGameView`/`IScreenElement`,
   base da estrutura do novo módulo.
 - [ADR-0012](../adr/0012-physics-thin-raylib-collision-layer.md),
-  [ADR-0013](../adr/0013-input-key-binding-system.md) — ambas `Proposed`, deliberadamente não
-  usadas por esta RFC (ver Não-objetivos).
+  [ADR-0013](../adr/0013-input-key-binding-system.md) — ambas `Proposed`, nunca implementadas;
+  são exatamente duas das linhas da tabela **Lacunas de infraestrutura conhecidas** acima, não
+  descartadas — retomar quando chegar a vez delas.
 - [ADR-0014](../adr/0014-game-module-boundary-and-template-migration.md) — fronteira `app/` vs.
   `src/game/<id>/`, usada para decidir onde cada peça nova mora.
 - `vendor/raylib/src/raylib.h:1668-1691` — API real de áudio do raylib, base da correção no passo 7.
