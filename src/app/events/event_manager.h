@@ -23,14 +23,14 @@ public:
     // all of them run, in subscription order, on the next Emit<T>.
     template <typename T>
     void Subscribe(std::function<void(const T &)> handler) {
-        handlers_[std::type_index(typeid(T))].push_back(
+        handlers_[KeyFor<T>()].push_back(
             [handler](const void *event) { handler(*static_cast<const T *>(event)); });
     }
 
     // Dispatches event to every handler subscribed to T, synchronously, in the calling frame.
     template <typename T>
     void Emit(const T &event) {
-        auto it = handlers_.find(std::type_index(typeid(T)));
+        auto it = handlers_.find(KeyFor<T>());
         if (it == handlers_.end()) return;
 
         for (auto &handler : it->second) handler(&event);
@@ -59,6 +59,14 @@ public:
     }
 
 private:
+    // handlers_'s key for T -- std::type_info itself isn't copyable/hashable, so every lookup
+    // needs the std::type_index wrapper; factored out so Subscribe/Emit don't each spell out
+    // std::type_index(typeid(T)) themselves.
+    template <typename T>
+    static std::type_index KeyFor() {
+        return std::type_index(typeid(T));
+    }
+
     std::unordered_map<std::type_index, std::vector<RawHandler>> handlers_;
     std::vector<PendingAction> pending_;
 };
