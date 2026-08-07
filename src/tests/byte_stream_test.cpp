@@ -1,6 +1,6 @@
 #include "doctest/doctest.h"
 
-#include "app/byte_stream.h"
+#include "app/events/byte_stream.h"
 
 TEST_CASE("ByteReader reads back what ByteWriter wrote, in write order") {
     ByteWriter writer;

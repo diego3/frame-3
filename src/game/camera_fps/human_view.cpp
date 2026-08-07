@@ -9,9 +9,9 @@
 #include <raylib.h>
 #include <raymath.h>
 
-#include "app/debug_overlay_screen_element.h"
-#include "app/scene_renderer.h"
-#include "app/transform.h"
+#include "app/view/debug_overlay_screen_element.h"
+#include "app/scene/scene_renderer.h"
+#include "app/scene/transform.h"
 #include "components.h"
 
 namespace {
@@ -166,7 +166,7 @@ namespace {
     // pass. Holds registry_ + a reference to CameraFpsView's possessedActor_ (stable for the
     // view's whole lifetime, same reasoning FpsHud already used) and re-fetches
     // FirstPersonCameraRig every VOnRender call -- never caches a pointer into it (see
-    // components.h). The towers themselves are drawn by app/scene_renderer.h's
+    // components.h). The towers themselves are drawn by app/scene/scene_renderer.h's
     // DrawBoxRenderables -- a generic, scene-graph-driven step shared with any other view that
     // wants it, not hand-rolled here.
     class FpsScene : public IScreenElement {
@@ -243,7 +243,7 @@ namespace {
     };
 }
 
-// DebugOverlayScreenElement's zOrder_ (200, app/debug_overlay_screen_element.h) sits above
+// DebugOverlayScreenElement's zOrder_ (200, app/view/debug_overlay_screen_element.h) sits above
 // FpsHud's (100), preserving the draw-last-on-top order game/sandbox/main.cpp's own
 // UpdateDrawFrame already used (HUD, then debug overlay). PlayerMovementElement doesn't render
 // (VOnRender is a no-op), so its z-order is irrelevant.

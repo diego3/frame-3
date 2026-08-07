@@ -1,0 +1,17 @@
+# flare_reactor player entity (docs/rfc/0001-flare-reactor-pipeline-experiment.md). Position here
+# is a fallback -- assets/levels/flare_reactor.yaml supplies the real per-instance position via
+# LevelLoader's override (docs/adr/0009). Block style only (mini-yaml limitation, docs/adr/0008).
+components:
+  Position:
+    x: 0
+    y: 0
+    z: 0
+  PlayerTag: true
+  Renderable:
+    shape: box
+    color: blue
+    wireframe: true
+    size:
+      x: 1
+      y: 1
+      z: 1

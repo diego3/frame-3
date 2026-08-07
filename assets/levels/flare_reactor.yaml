@@ -1,0 +1,19 @@
+# Flare Reactor experiment level (docs/rfc/0001-flare-reactor-pipeline-experiment.md): the three-
+# entity scenario -- player, reactor, sentinel -- placed via LevelLoader (docs/adr/0009), same
+# "resource" + per-instance "position" override shape assets/levels/level_01.yaml already uses.
+actors:
+  - resource: resources/entities/flare_reactor/player.yaml
+    position:
+      x: 0
+      y: 0
+      z: 8
+  - resource: resources/entities/flare_reactor/reactor.yaml
+    position:
+      x: 0
+      y: 0
+      z: 0
+  - resource: resources/entities/flare_reactor/sentinel.yaml
+    position:
+      x: 6
+      y: 0
+      z: 6

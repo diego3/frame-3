@@ -21,7 +21,7 @@
 #
 #**************************************************************************************************
 
-.PHONY: all clean tests test-run
+.PHONY: all clean tests test-run resources check_game
 
 # Define required environment variables
 #------------------------------------------------------------------------------------------------
@@ -31,19 +31,33 @@ PLATFORM              ?= PLATFORM_DESKTOP
 # Define project variables
 PROJECT_NAME          ?= raylib_game
 PROJECT_VERSION       ?= 1.0
-PROJECT_BUILD_PATH    ?= .
+# Local desktop dev default: keeps every build artifact (objects, the linked binary, staged
+# resources, config/, the GAME_MARKER) out of src/ entirely, in a sibling build/ directory --
+# nothing but source is left next to the .cpp/.h files. Release CI workflows
+# (build_linux/macos/webassembly.yml) explicitly override this back to PROJECT_BUILD_PATH=. (i.e.
+# src/ itself, cwd at the point they call make) for their own packaging steps -- this default only
+# changes local/CI-sanity behavior, not what those workflows produce.
+PROJECT_BUILD_PATH    ?= ../build/desktop
 
 # Which concrete game module (src/game/<GAME>/) to build -- first needed once a second one
-# (game/camera_fps) existed alongside game/sandbox (docs/adr/0017). Deliberately does NOT change
-# PROJECT_NAME/the output binary name below -- switching GAME just changes what src/raylib_game
-# contains, same as switching branches already did before this existed, so run.sh/.gitignore/
-# README.md's existing assumptions about that path stay valid either way.
+# (game/camera_fps, docs/adr/0017; game/flare_reactor, docs/rfc/0001-flare-reactor-pipeline-
+# experiment.md) existed alongside game/sandbox. Deliberately does NOT change PROJECT_NAME/the
+# actual linked target below -- switching GAME just changes what
+# $(PROJECT_BUILD_PATH)/$(PROJECT_NAME) contains, same relink-detection reasoning as GAME_MARKER/
+# check_game further down. build.sh additionally copies that binary to
+# $(PROJECT_BUILD_PATH)/$(GAME) after linking, purely for local-dev convenience (so multiple builds
+# -- e.g. sandbox, camera_fps, and flare_reactor -- can sit side by side under build/desktop/ under
+# their own names); that copy step lives in build.sh, not here, so it never touches the release CI
+# workflows, which call this Makefile directly and only ever reference $(PROJECT_NAME).
 GAME                  ?= sandbox
 
 # Web build artifacts (.html/.js/.wasm/.data) land in build/web/ instead of src/, so
 # `make clean` and .gitignore only have to deal with one build output location
 ifeq ($(PLATFORM),PLATFORM_WEB)
     PROJECT_BUILD_PATH := ../build/web
+endif
+ifeq ($(PLATFORM),PLATFORM_DRM)
+    PROJECT_BUILD_PATH := ../build/drm
 endif
 
 # No plain-C sources remain (docs/adr/0014): the raylib template's screen_*.c files converted to
@@ -57,21 +71,24 @@ PROJECT_SOURCE_FILES  ?=
 # entity_file_parser_yaml.cpp (docs/adr/0008) and engine_config.cpp (docs/adr/0011) are here
 # because Engine::Init() now actually calls LoadOrCreateEngineConfig() -> YamlEntityFileParser ->
 # mini-yaml. level_loader.cpp and base_game_logic.cpp (docs/adr/0010) join them for the same
-# reason: game/sandbox/screen_gameplay.cpp's InitGameplayScreen() is the first real caller of
-# BaseGameLogic/LevelLoader/EntityFactory, not just their own unit tests -- game/camera_fps
-# doesn't call into either, but they're cheap enough to always link in rather than making them
-# conditional too. app/human_view_base.cpp (docs/adr/0016, promoted out of game/sandbox/human_view
-# in docs/adr/0017) is the generic half of every concrete "human" IGameView -- both game modules
+# reason: game/sandbox/screen_gameplay.cpp's InitGameplayScreen() and game/flare_reactor's
+# FlareReactorGameLogic are both real callers of BaseGameLogic/LevelLoader/EntityFactory, not just
+# their own unit tests -- game/camera_fps doesn't call into either, but they're cheap enough to
+# always link in rather than making them conditional too. input_bindings.cpp (docs/adr/0013) joins
+# them once game/flare_reactor's FlareReactorView became its first real caller.
+# app/view/human_view_base.cpp (docs/adr/0016, promoted out of game/sandbox/human_view in
+# docs/adr/0017) is the generic half of every concrete "human" IGameView -- all three game modules
 # below subclass it.
 PROJECT_SOURCE_FILES_CPP ?= \
-    app/engine.cpp \
-    app/process_manager.cpp \
-    app/debug_overlay.cpp \
-    app/entity_file_parser_yaml.cpp \
-    app/engine_config.cpp \
-    app/level_loader.cpp \
-    app/base_game_logic.cpp \
-    app/human_view_base.cpp
+    app/core/engine.cpp \
+    app/process/process_manager.cpp \
+    app/view/debug_overlay.cpp \
+    app/entity/entity_file_parser_yaml.cpp \
+    app/core/engine_config.cpp \
+    app/entity/level_loader.cpp \
+    app/view/base_game_logic.cpp \
+    app/view/human_view_base.cpp \
+    app/input/input_bindings.cpp
 
 # game/sandbox (docs/adr/0014): the migrated raylib template, with a Logo/Title/Options/Gameplay/
 # Ending screen state machine and data-driven (YAML) level content. game_config.cpp is
@@ -100,6 +117,20 @@ PROJECT_SOURCE_FILES_CPP += \
     game/camera_fps/main.cpp \
     game/camera_fps/game_logic.cpp \
     game/camera_fps/human_view.cpp
+endif
+
+# game/flare_reactor (docs/rfc/0001-flare-reactor-pipeline-experiment.md): the end-to-end pipeline
+# experiment -- a single Engine-driven scene, no screens.h state machine, no GameConfig (no
+# game-specific settings needed yet). Phase 1 ("esqueleto"): three data-driven entities
+# (player/reactor/sentinel) rendered via app/scene/renderable.h's Renderable. Phase 3 ("evento +
+# validação") adds game_logic.cpp -- FlareReactorGameLogic, this module's first BaseGameLogic
+# subclass. Phase 6 ("AI") adds ai_view.h -- AIView, one per SentinelTag actor; header-only, same
+# shape as app/scene/renderable.h, so it needs no entry of its own here.
+ifeq ($(GAME),flare_reactor)
+PROJECT_SOURCE_FILES_CPP += \
+    game/flare_reactor/main.cpp \
+    game/flare_reactor/human_view.cpp \
+    game/flare_reactor/game_logic.cpp
 endif
 
 # Source location of game content, staged into ./resources before linking (see 'resources' target)
@@ -430,10 +461,14 @@ endif
 
 # Define all object files from source files
 #------------------------------------------------------------------------------------------------
-# mini_yaml.o: mini-yaml (docs/adr/0008) lives outside src/ (vendored, like raylib/EnTT), so it
-# can't go through PROJECT_SOURCE_FILES_CPP's %.o:%.cpp pattern the way in-tree sources do -- gets
-# its own object + rule below, same as tests/mini_yaml.o does for the test build.
-OBJS = $(patsubst %.c, %.o, $(PROJECT_SOURCE_FILES)) $(patsubst %.cpp, %.o, $(PROJECT_SOURCE_FILES_CPP)) mini_yaml.o
+# Every object lands under $(OBJ_DIR), mirroring its source path (e.g. app/core/engine.cpp ->
+# $(OBJ_DIR)/app/core/engine.o) -- keeps src/ itself free of build artifacts, so an editor's file
+# tree or `git status` isn't cluttered with .o files sitting right next to the .cpp that produced
+# them. mini_yaml.o: mini-yaml (docs/adr/0008) lives outside src/ (vendored, like raylib/EnTT), so
+# it can't go through PROJECT_SOURCE_FILES_CPP's pattern rule the way in-tree sources do -- gets
+# its own object + rule below, same as the test build's mini_yaml.o does.
+OBJ_DIR = $(PROJECT_BUILD_PATH)/obj
+OBJS = $(patsubst %.c, $(OBJ_DIR)/%.o, $(PROJECT_SOURCE_FILES)) $(patsubst %.cpp, $(OBJ_DIR)/%.o, $(PROJECT_SOURCE_FILES_CPP)) $(OBJ_DIR)/mini_yaml.o
 
 # Define processes to execute
 #------------------------------------------------------------------------------------------------
@@ -443,40 +478,70 @@ ifeq ($(PLATFORM),PLATFORM_ANDROID)
     export PROJECT_NAME
     export PROJECT_SOURCE_FILES
 else
-    MAKEFILE_TARGET = $(PROJECT_NAME)
+    MAKEFILE_TARGET = $(PROJECT_BUILD_PATH)/$(PROJECT_NAME)$(EXT)
 endif
 
 # Default target entry
 all:
 	$(MAKE) $(MAKEFILE_TARGET)
 
+# Marker tracking which GAME the current $(PROJECT_NAME) binary was actually built for. Without
+# this, switching GAME (e.g. sandbox -> flare_reactor) can silently relink nothing: each GAME's own
+# game/<GAME>/*.o may already be individually up to date (left over from an earlier build of that
+# same GAME), so if $(PROJECT_NAME) itself happens to be newer than every file in the *new* GAME's
+# $(OBJS) list too (e.g. because some *other* GAME was linked more recently), `make` considers
+# $(PROJECT_NAME) already up to date and does nothing -- leaving the *previous* GAME's binary in
+# place with no error or warning. Reproduced for real switching sandbox -> flare_reactor mid-
+# session. check_game (always phony, so its recipe always runs) only rewrites this file -- and
+# therefore only bumps its mtime -- when GAME actually differs from the last build, forcing exactly
+# one extra relink per GAME switch and no relink otherwise.
+GAME_MARKER = $(PROJECT_BUILD_PATH)/.built_game
+check_game:
+	@if [ ! -f $(GAME_MARKER) ] || [ "$$(cat $(GAME_MARKER) 2>/dev/null)" != "$(GAME)" ]; then \
+		echo "$(GAME)" > $(GAME_MARKER); \
+	fi
+
 # Project target defined by PROJECT_NAME
 # NOTE: Linked with $(CXX), not $(CC) -- OBJS includes C++ object files (see
 # PROJECT_SOURCE_FILES_CPP), and linking those requires the C++ standard library, which the C
-# compiler driver doesn't pull in automatically.
-$(PROJECT_NAME): $(OBJS) resources
-	$(CXX) -o $(PROJECT_BUILD_PATH)/$(PROJECT_NAME)$(EXT) $(OBJS) $(CFLAGS) $(INCLUDE_PATHS) $(LDFLAGS) $(LDLIBS) -D$(PLATFORM)
+# compiler driver doesn't pull in automatically. Target is $(PROJECT_BUILD_PATH)/$(PROJECT_NAME),
+# not the bare $(PROJECT_NAME) this used to be -- needed once PROJECT_BUILD_PATH stopped
+# defaulting to "." (the CI release workflows still pass PROJECT_BUILD_PATH=. explicitly, so their
+# own $(PROJECT_NAME)-named output is unaffected).
+$(PROJECT_BUILD_PATH)/$(PROJECT_NAME)$(EXT): $(OBJS) resources $(GAME_MARKER)
+	@mkdir -p $(PROJECT_BUILD_PATH)
+	$(CXX) -o $@ $(OBJS) $(CFLAGS) $(INCLUDE_PATHS) $(LDFLAGS) $(LDLIBS) -D$(PLATFORM)
 
-# Stage game content next to the built executable
-# NOTE: Content now lives at PROJECT_RESOURCES_PATH (../assets by default), outside src/
+$(GAME_MARKER): check_game
+
+# Stage game content next to the built executable (docs/adr's own asset staging note). Always
+# phony -- assets/ can gain/change files (e.g. a new game module's entities/levels) between builds,
+# and cp -r is cheap enough at this project's asset-set size that unconditionally re-syncing every
+# build is simpler than tracking individual asset file staleness.
 resources:
 	@mkdir -p $(PROJECT_BUILD_PATH)/resources
 	@cp -r $(PROJECT_RESOURCES_PATH)/. $(PROJECT_BUILD_PATH)/resources
 
 # Compile source files
-# NOTE: This pattern will compile every module defined on $(OBJS)
-%.o: %.c
+# NOTE: This pattern will compile every module defined on $(OBJS). @mkdir -p $(dir $@) first --
+# unlike the old in-place %.o:%.cpp rule, the target's directory (e.g. $(OBJ_DIR)/app/core/)
+# doesn't already exist just because the source directory does.
+$(OBJ_DIR)/%.o: %.c
+	@mkdir -p $(dir $@)
 	$(CC) -c $< -o $@ $(CFLAGS) $(INCLUDE_PATHS) -D$(PLATFORM)
 
 # NOTE: PROJECT_SOURCE_FILES_CPP entries (EnTT-using code) compile through this pattern instead,
 # with the C++ standard (CXXFLAGS) and the C++ compiler driver (CXX).
-%.o: %.cpp
+$(OBJ_DIR)/%.o: %.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) -c $< -o $@ $(CXXFLAGS) $(INCLUDE_PATHS) -D$(PLATFORM)
 
-# NOTE: deliberately no prerequisite on this rule's own line, same reason as tests/mini_yaml.o
-# below -- MINI_YAML_PATH's default placeholder is a Windows path ("C:\mini-yaml\mini-yaml"), and
-# a colon inside a prerequisite makes GNU Make misparse the line as a static pattern rule.
-mini_yaml.o:
+# NOTE: deliberately no prerequisite on this rule's own line, same reason as the test build's
+# mini_yaml.o rule below -- MINI_YAML_PATH's default placeholder is a Windows path
+# ("C:\mini-yaml\mini-yaml"), and a colon inside a prerequisite makes GNU Make misparse the line as
+# a static pattern rule.
+$(OBJ_DIR)/mini_yaml.o:
+	@mkdir -p $(dir $@)
 	$(CXX) -c $(MINI_YAML_PATH)/yaml/Yaml.cpp -o $@ $(CXXFLAGS) $(INCLUDE_PATHS) -D$(PLATFORM)
 
 # Unit tests (doctest, see docs/adr/0006-doctest-for-unit-tests.md)
@@ -494,8 +559,17 @@ mini_yaml.o:
 # entity_file_parser_yaml_test.cpp needs mini-yaml, which is genuinely compiled (not header-only) --
 # see the tests/entity_file_parser_yaml.o rule below. level_loader_test.cpp (docs/adr/0009) needs
 # entt::registry + mini-yaml too, for the same reasons. engine_config_test.cpp/file_io_test.cpp/
-# game_config_test.cpp (docs/adr/0011) do real file I/O against a gitignored scratch directory
-# (test_scratch/), not fakes -- their whole job is that read/write round trip.
+# game_config_test.cpp/input_bindings_test.cpp (docs/adr/0011, docs/adr/0013) do real file I/O
+# against a gitignored scratch directory (test_scratch/), not fakes -- their whole job is that
+# read/write round trip. input_bindings_test.cpp needs raylib's headers too (KEY_* constants,
+# InputAction's default bindings) but never calls IsKeyDown/IsKeyPressed themselves (those aren't
+# exercised by a test -- same raylib-runtime-vs-headers-only split as hierarchy_test.cpp).
+# beacon_pulse_process_test.cpp (docs/rfc/0001 Phase 4) tests game/flare_reactor/
+# beacon_pulse_process.h directly -- header-only, same reasoning as hierarchy.h, so it needs no
+# tests/-local object rule below; it deliberately avoids raylib's own ColorLerp (a real linked
+# symbol) for exactly this reason (see that header's own comment). sentinel_ai_test.cpp
+# (docs/rfc/0001 Phase 6) tests game/flare_reactor/sentinel_ai.h the same way -- also header-only,
+# also no linked raylib symbols, also no tests/-local object rule needed.
 TEST_SOURCE_FILES_CPP ?= \
     tests/main_test.cpp \
     tests/event_manager_test.cpp \
@@ -512,51 +586,75 @@ TEST_SOURCE_FILES_CPP ?= \
     tests/file_io_test.cpp \
     tests/engine_config_test.cpp \
     tests/game_config_test.cpp \
-    tests/base_game_logic_test.cpp
+    tests/base_game_logic_test.cpp \
+    tests/input_bindings_test.cpp \
+    tests/beacon_pulse_process_test.cpp \
+    tests/sentinel_ai_test.cpp
 
 TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH) -I$(RAYLIB_INCLUDE_PATH) -I$(ENTT_INCLUDE_PATH) -I$(MINI_YAML_INCLUDE_PATH)
 
-# ProcessManager's implementation lives in app/process_manager.cpp (EventManager is header-only,
-# needs no object of its own). Built into a tests/-local object, never app/process_manager.o, so
-# it can't collide with the object the main product target above produces from the same source
-# with different flags. entity_file_parser_yaml.cpp/engine_config.cpp/level_loader.cpp/
-# base_game_logic.cpp/game/sandbox/game_config.cpp (all now also in PROJECT_SOURCE_FILES_CPP,
-# docs/adr/0008/0009/0010/0011) get the same tests/-local treatment, so the test build's flags
-# (TEST_CXXFLAGS) never collide with the main product's (CXXFLAGS). game/sandbox/human_view.cpp
-# and game/sandbox/screen_gameplay.cpp
-# (docs/adr/0010, docs/adr/0014) deliberately do NOT get a tests/-local object -- both call real
-# raylib runtime functions (IsKeyDown, DrawCubeWires, BeginMode3D, ...), and the test build never
-# links -lraylib (see TEST_CXXFLAGS above: raylib's *headers* are on the include path for types
-# like Camera3D, but nothing links its library), so either would fail at link time.
+# Test build artifacts get their own build/ tree, sibling to the product's (../build/desktop/obj
+# above) -- same reason (keep tests/ itself free of .o files), plus they genuinely can't share
+# objects with the product build even for identical sources (TEST_CXXFLAGS omits -D$(PLATFORM) and
+# adds doctest's include path; see the comment below on why e.g. process_manager.cpp gets compiled
+# twice, once per flag set).
+TEST_BUILD_PATH ?= ../build/test
+TEST_OBJ_DIR = $(TEST_BUILD_PATH)/obj
+
+# ProcessManager's implementation lives in app/process/process_manager.cpp (EventManager is
+# header-only, needs no object of its own). Built into a $(TEST_OBJ_DIR)-local object, never
+# $(OBJ_DIR)/app/process/process_manager.o, so it can't collide with the object the main product
+# target above produces from the same source with different flags. entity_file_parser_yaml.cpp/
+# engine_config.cpp/level_loader.cpp/base_game_logic.cpp/game/sandbox/game_config.cpp (all now also
+# in PROJECT_SOURCE_FILES_CPP, docs/adr/0008/0009/0010/0011) get the same treatment, so the test
+# build's flags (TEST_CXXFLAGS) never collide with the main product's (CXXFLAGS).
+# game/sandbox/human_view.cpp and game/sandbox/screen_gameplay.cpp
+# (docs/adr/0010, docs/adr/0014) deliberately get no such object -- both call real raylib runtime
+# functions (IsKeyDown, DrawCubeWires, BeginMode3D, ...), and the test build never links -lraylib
+# (see TEST_CXXFLAGS above: raylib's *headers* are on the include path for types like Camera3D, but
+# nothing links its library), so either would fail at link time.
 # base_game_logic.cpp has no such dependency (only entt::registry,
 # EventManager, ProcessManager, LevelLoader -- none of them touch raylib), so it's tested the same
 # way level_loader.cpp already is, with a FakeView standing in for HumanView. mini-yaml isn't
 # header-only either, so its own yaml/Yaml.cpp needs compiling into the test binary too
-# (tests/mini_yaml.o below).
-TEST_OBJS = $(patsubst tests/%.cpp, tests/%.o, $(TEST_SOURCE_FILES_CPP)) tests/process_manager.o tests/entity_file_parser_yaml.o tests/engine_config.o tests/level_loader.o tests/base_game_logic.o tests/game_config.o tests/mini_yaml.o
+# ($(TEST_OBJ_DIR)/mini_yaml.o below). Paths below reflect app/'s topic-subfolder split
+# (core/events/process/scene/entity/view/input/resource/io) -- same reasoning as always, just
+# relocated.
+TEST_OBJS = $(patsubst tests/%.cpp, $(TEST_OBJ_DIR)/tests/%.o, $(TEST_SOURCE_FILES_CPP)) $(TEST_OBJ_DIR)/app/process/process_manager.o $(TEST_OBJ_DIR)/app/entity/entity_file_parser_yaml.o $(TEST_OBJ_DIR)/app/core/engine_config.o $(TEST_OBJ_DIR)/app/entity/level_loader.o $(TEST_OBJ_DIR)/app/view/base_game_logic.o $(TEST_OBJ_DIR)/game/sandbox/game_config.o $(TEST_OBJ_DIR)/app/input/input_bindings.o $(TEST_OBJ_DIR)/mini_yaml.o
 
 tests: $(TEST_OBJS)
-	$(CXX) -o tests_runner $(TEST_OBJS) $(TEST_CXXFLAGS)
+	@mkdir -p $(TEST_BUILD_PATH)
+	$(CXX) -o $(TEST_BUILD_PATH)/tests_runner $(TEST_OBJS) $(TEST_CXXFLAGS)
 
 test-run: tests
-	./tests_runner
+	$(TEST_BUILD_PATH)/tests_runner
 
-tests/process_manager.o: app/process_manager.cpp
+$(TEST_OBJ_DIR)/app/process/process_manager.o: app/process/process_manager.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
-tests/entity_file_parser_yaml.o: app/entity_file_parser_yaml.cpp
+$(TEST_OBJ_DIR)/app/entity/entity_file_parser_yaml.o: app/entity/entity_file_parser_yaml.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
-tests/engine_config.o: app/engine_config.cpp
+$(TEST_OBJ_DIR)/app/core/engine_config.o: app/core/engine_config.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
-tests/level_loader.o: app/level_loader.cpp
+$(TEST_OBJ_DIR)/app/entity/level_loader.o: app/entity/level_loader.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
-tests/base_game_logic.o: app/base_game_logic.cpp
+$(TEST_OBJ_DIR)/app/view/base_game_logic.o: app/view/base_game_logic.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
-tests/game_config.o: game/sandbox/game_config.cpp
+$(TEST_OBJ_DIR)/game/sandbox/game_config.o: game/sandbox/game_config.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
+
+$(TEST_OBJ_DIR)/app/input/input_bindings.o: app/input/input_bindings.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
 # NOTE: deliberately no prerequisite on this rule's own line (unlike process_manager.o/
@@ -566,13 +664,24 @@ tests/game_config.o: game/sandbox/game_config.cpp
 # hit this rule's recipe. Referencing $(MINI_YAML_PATH) only inside the recipe body sidesteps that
 # parse-time failure; the tradeoff is Make can't tell if Yaml.cpp itself changed and needs a
 # rebuild, which is fine for a pinned, never-locally-edited vendored file.
-tests/mini_yaml.o:
+$(TEST_OBJ_DIR)/mini_yaml.o:
+	@mkdir -p $(dir $@)
 	$(CXX) -c $(MINI_YAML_PATH)/yaml/Yaml.cpp -o $@ $(TEST_CXXFLAGS)
 
-tests/%.o: tests/%.cpp
+$(TEST_OBJ_DIR)/tests/%.o: tests/%.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
 # Clean everything
+# NOTE: the find/del/rm lines below predate PROJECT_BUILD_PATH defaulting away from "." -- kept
+# exactly as-is, scoped to cwd, since the release CI workflows (build_linux/macos/webassembly.yml)
+# still call `make clean` with PROJECT_BUILD_PATH=. (cwd already src/ by the time they call it) and
+# depend on this exact behavior for their own multi-arch build/clean/build cycles (see
+# build_macos.yml, which calls this between its x86_64 and arm64 passes). The lines below the
+# ifeq/endif block are purely additive: they remove the *new* default local build tree
+# ($(OBJ_DIR), the linked binaries, GAME_MARKER) by exact path, which is empty/inert for those CI
+# workflows (PROJECT_BUILD_PATH=. means $(OBJ_DIR) etc. resolve under a directory that's already
+# fully covered by the find-based deletion above) and harmless if the resolved path doesn't exist.
 clean:
 ifeq ($(PLATFORM),PLATFORM_DESKTOP)
     ifeq ($(PLATFORM_OS),WINDOWS)
@@ -584,7 +693,7 @@ ifeq ($(PLATFORM),PLATFORM_DESKTOP)
     endif
     ifeq ($(PLATFORM_OS),OSX)
 	find . -name "*.o" -delete
-	rm -f $(PROJECT_NAME)
+	rm -f $(PROJECT_NAME) $(GAME)
     endif
 endif
 ifeq ($(PLATFORM),PLATFORM_DRM)
@@ -595,5 +704,8 @@ ifeq ($(PLATFORM),PLATFORM_WEB)
 	find . -name "*.o" -delete
 	rm -rf $(PROJECT_BUILD_PATH)
 endif
+	@rm -rf $(OBJ_DIR) $(TEST_OBJ_DIR)
+	@rm -f $(PROJECT_BUILD_PATH)/$(PROJECT_NAME)$(EXT) $(PROJECT_BUILD_PATH)/$(GAME)$(EXT) $(GAME_MARKER)
+	@rm -f $(TEST_BUILD_PATH)/tests_runner
 	@echo Cleaning done
 

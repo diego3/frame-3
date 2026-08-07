@@ -4,8 +4,8 @@
 
 #include <entt/entt.hpp>
 
-#include "app/entity_file_parser_yaml.h"
-#include "app/level_loader.h"
+#include "app/entity/entity_file_parser_yaml.h"
+#include "app/entity/level_loader.h"
 
 namespace {
     struct FakePosition {

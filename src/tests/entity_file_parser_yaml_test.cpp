@@ -1,6 +1,6 @@
 #include "doctest/doctest.h"
 
-#include "app/entity_file_parser_yaml.h"
+#include "app/entity/entity_file_parser_yaml.h"
 
 // NOTE: block-style YAML (newline + indentation) only -- this mini-yaml checkout doesn't parse
 // flow-style maps/sequences ("{ x: 1 }", "[a, b]"); see entity_file_parser_yaml.cpp's header

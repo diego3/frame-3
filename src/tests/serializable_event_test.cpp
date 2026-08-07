@@ -1,8 +1,8 @@
 #include "doctest/doctest.h"
 
-#include "app/event_type_id.h"
-#include "app/event_type_registry.h"
-#include "app/serializable_event.h"
+#include "app/events/event_type_id.h"
+#include "app/events/event_type_registry.h"
+#include "app/events/serializable_event.h"
 
 namespace {
     // Mirrors ADR-0005 Sec 2's own EvtData_Destroy_Actor example: a stand-in for "some event that

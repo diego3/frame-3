@@ -116,11 +116,14 @@ jobs:
         run: make -C src PLATFORM=PLATFORM_DESKTOP RAYLIB_PATH=../raylib ENTT_PATH=../entt MINI_YAML_PATH=../mini-yaml PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=catch-value"
 
       - name: Build project's second game module (GAME=camera_fps, see docs/adr/0017)
-        # Same build, just re-run against the other src/game/<GAME>/ module the Makefile's GAME
-        # selector can now pick -- proves both concrete game modules actually compile clean, not
+        # Same build, just re-run against another src/game/<GAME>/ module the Makefile's GAME
+        # selector can now pick -- proves every concrete game module actually compiles clean, not
         # just the default (sandbox) one above. Not run through the platform release workflows
         # (build_linux/macos/windows/webassembly.yml), which build only the shipped product.
         run: make -C src PLATFORM=PLATFORM_DESKTOP GAME=camera_fps RAYLIB_PATH=../raylib ENTT_PATH=../entt MINI_YAML_PATH=../mini-yaml PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=catch-value"
+
+      - name: Build project's third game module (GAME=flare_reactor, see docs/rfc/0001-flare-reactor-pipeline-experiment.md)
+        run: make -C src PLATFORM=PLATFORM_DESKTOP GAME=flare_reactor RAYLIB_PATH=../raylib ENTT_PATH=../entt MINI_YAML_PATH=../mini-yaml PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=catch-value"
 
       - name: Build and run unit tests (see docs/adr/0006-doctest-for-unit-tests.md)
         # Most tests under test (EventManager, ProcessManager, ResourceCache) are pure logic and
@@ -136,4 +139,4 @@ jobs:
         # file_io_test.cpp/game_config_test.cpp do real file I/O against a gitignored scratch dir.
         run: |
           make -C src tests DOCTEST_PATH=../doctest RAYLIB_PATH=../raylib ENTT_PATH=../entt MINI_YAML_PATH=../mini-yaml PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=catch-value"
-          src/tests_runner
+          build/test/tests_runner

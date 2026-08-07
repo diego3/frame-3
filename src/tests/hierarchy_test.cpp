@@ -2,8 +2,8 @@
 
 #include <entt/entt.hpp>
 
-#include "app/hierarchy.h"
-#include "app/transform.h"
+#include "app/scene/hierarchy.h"
+#include "app/scene/transform.h"
 
 namespace {
     // Reads the world-space position PropagateTransforms computed for `entity` by transforming

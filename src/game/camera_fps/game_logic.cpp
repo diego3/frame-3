@@ -4,7 +4,7 @@
 #include <raylib.h>
 #include <raymath.h>
 
-#include "app/transform.h"
+#include "app/scene/transform.h"
 #include "components.h"
 
 namespace {

@@ -1,6 +1,6 @@
 #include "doctest/doctest.h"
 
-#include "app/resource_cache.h"
+#include "app/resource/resource_cache.h"
 
 // ResourceCache<T> is a template over any loader/unloader pair, so it's exercised here with a
 // plain int standing in for a raylib resource type (Texture2D, Font, Sound, ...) -- no raylib

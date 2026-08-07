@@ -16,13 +16,13 @@
 #include <optional>
 #include <vector>
 
-#include "app/engine.h"
-#include "app/engine_config.h"
-#include "app/entity_factory.h"
-#include "app/entity_file_parser_yaml.h"
-#include "app/level_loader.h"
-#include "app/render_components.h"
-#include "app/transform.h"
+#include "app/core/engine.h"
+#include "app/core/engine_config.h"
+#include "app/entity/entity_factory.h"
+#include "app/entity/entity_file_parser_yaml.h"
+#include "app/entity/level_loader.h"
+#include "app/scene/render_components.h"
+#include "app/scene/transform.h"
 #include "components.h"
 #include "game_logic.h"
 #include "human_view.h"
@@ -58,7 +58,7 @@ namespace {
     }
 
     // DebugOverlay (F3 HUD) isn't called from here at all anymore -- CameraFpsView pushes
-    // app/debug_overlay_screen_element.h's DebugOverlayScreenElement instead, ticked/rendered
+    // app/view/debug_overlay_screen_element.h's DebugOverlayScreenElement instead, ticked/rendered
     // through the same IScreenElement stack as everything else this view owns. Unlike
     // game/sandbox/main.cpp, which still calls
     // UpdateDebugOverlay/DrawDebugOverlay directly (ADR-0016 keeps it outside any one HumanView's

@@ -7,8 +7,8 @@
 
 #include <entt/entt.hpp>
 
-#include "app/base_game_logic.h"
-#include "app/entity_file_parser_yaml.h"
+#include "app/view/base_game_logic.h"
+#include "app/entity/entity_file_parser_yaml.h"
 
 // BaseGameLogic itself touches no raylib -- only entt::registry, EventManager, ProcessManager,
 // LevelLoader, all of which are raylib-free too. Tested here with a FakeView standing in for

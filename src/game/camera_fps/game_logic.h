@@ -8,12 +8,12 @@
 
 #include <entt/entt.hpp>
 
-#include "app/base_game_logic.h"
+#include "app/view/base_game_logic.h"
 
 // Fired whenever the physics step below triggers a jump. The ported example's own UpdateBody()
 // had a commented-out "Sound can be played at this moment" hook (SetSoundPitch/PlaySound) at
 // exactly this point in the original raylib example -- this is that hook, done the way this
-// project's own precedent already does it (app/level_loader.h's EvtData_EntitySpawned, ADR-0009's
+// project's own precedent already does it (app/entity/level_loader.h's EvtData_EntitySpawned, ADR-0009's
 // "View-plurality seam, kept on purpose"): queued via EventManager (docs/adr/0005) even though
 // nothing subscribes yet, so CameraFpsLogic never has to change once a future View/audio system
 // wants to react to it.

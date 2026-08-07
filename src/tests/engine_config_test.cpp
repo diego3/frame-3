@@ -2,8 +2,8 @@
 
 #include <filesystem>
 
-#include "app/engine_config.h"
-#include "app/file_io.h"
+#include "app/core/engine_config.h"
+#include "app/io/file_io.h"
 
 namespace {
     // Isolated from the real config/ a running game would use (see .gitignore's

@@ -2,11 +2,11 @@
 // file-local `Body` struct (docs/adr/0017) into a real ECS component instead of view-local state,
 // so the player is an actual actor (spawned via LevelLoader, like game/sandbox's) and
 // HumanViewBase's possessedActor_ means something here too. Position itself is NOT duplicated
-// here -- it lives in the entity's own LocalTransform/WorldTransform (app/transform.h), the same
-// spatial component every other entity in this project uses.
+// here -- it lives in the entity's own LocalTransform/WorldTransform (app/scene/transform.h), the
+// same spatial component every other entity in this project uses.
 //
 // Kept as a game/camera_fps/-local component, not promoted to app/, unlike BoxRenderable
-// (app/render_components.h): the fields and the algorithm that drives them (gravity, friction,
+// (app/scene/render_components.h): the fields and the algorithm that drives them (gravity, friction,
 // air drag, acceleration curve -- see human_view.cpp) are tuned specifically to this FPS movement
 // scheme, not a generic "physics body" app/ has any other consumer for yet. That's ADR-0012's
 // (still-Proposed) job to design, once a second game actually needs its own movement scheme too --
@@ -58,8 +58,9 @@ struct FirstPersonCameraRig {
 // direction relative to it" -- a fact about the actor, not the rendering camera -- even though its
 // only current source happens to be FirstPersonCameraRig.lookRotation.x (deliberately copied here
 // rather than CameraFpsLogic reaching into that presentation-only component to read it directly).
-// Not the same thing as ADR-0013's (still-Proposed) InputAction/InputBindings -- that's
-// raw-key-to-action *mapping*; this is one already-resolved movement intent for one frame.
+// Not the same thing as ADR-0013's InputAction/InputBindings (game/flare_reactor's own edge-key
+// binding layer) -- that's raw-key-to-action *mapping*; this is one already-resolved movement
+// intent for one frame.
 struct MovementIntent {
     float facingYaw = 0.0f;   // radians -- which way the actor is currently facing
     char side = 0;            // -1/0/1, A/D

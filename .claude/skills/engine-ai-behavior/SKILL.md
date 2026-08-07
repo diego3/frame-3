@@ -1,16 +1,21 @@
 ---
 name: engine-ai-behavior
-description: Design guidance for enemy/actor AI and behavior in frame-3 — finite state machines, decision/utility scoring, steering behaviors, perception, and pathfinding — based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 11-13, adapted to raylib's Vector3/raymath.h and C++. Use this skill whenever an enemy or NPC needs more than one behavior, needs to move naturally (approach, flee, avoid) instead of teleporting/snapping toward a target, needs to choose between competing actions, or needs to react only within some sensing range instead of always knowing where the player is. This is forward-looking design guidance, not a description of existing code — frame-3 has no entities, no gameplay, and no AI of any kind yet.
+description: Design guidance for enemy/actor AI and behavior in frame-3 — finite state machines, decision/utility scoring, steering behaviors, perception, and pathfinding — based on "Game Coding Complete, 4th Edition" (McShaffry & Graham) Ch. 11-13, adapted to raylib's Vector3/raymath.h and C++. Use this skill whenever an enemy or NPC needs more than one behavior, needs to move naturally (approach, flee, avoid) instead of teleporting/snapping toward a target, needs to choose between competing actions, or needs to react only within some sensing range instead of always knowing where the player is. First real code landed via docs/rfc/0001-flare-reactor-pipeline-experiment.md Phase 6: game/flare_reactor's SentinelAI/Patrol/UpdateSentinel/ApplyBeaconPerception (§§1/3/4 below), ticked via a real AIView (app/view/game_view.h's GameViewType::AI, named since ADR-0010) rather than any bespoke hook on BaseGameLogic.
 ---
 
 # Engine AI & Behavior (Game Coding Complete Ch. 11-13, adapted to raylib/C++)
 
-frame-3 has no enemies, no NPCs, not even a settled entity model (Actor vs. ECS is still an open
-question — see `engine-architecture`'s Open Questions) at the time this skill was written. Nothing
-here describes existing code. It exists so that when the first enemy/NPC actually gets built, it
-reaches for the right Game Coding Complete Ch. 11-13 pattern instead of a pile of booleans in an
-`Update()` — and so the patterns are grounded in raylib's actual 3D math API from day one instead
-of translated awkwardly later.
+**Current state**: the first real AI in this project is `game/flare_reactor/sentinel_ai.h`
+(RFC-0001 Phase 6) -- a single-behavior FSM (`SentinelState::Patrol`/`Investigate`, §1), Seek
+steering (§3), and hearing-range-gated perception (§4). Ticked from a real `AIView`
+(`game/flare_reactor/ai_view.h`), one per sentinel entity, attached the same way `HumanView`
+possesses the player (`BaseGameLogic::AttachView`) -- `AIView` itself stays deliberately thin,
+mirroring GameCode4's own `AITeapotView` (a near-empty stub; the real brain lives per-actor in Lua
+state machines, not the C++ view). No utility/decision scoring (§2) or pathfinding (§5) yet -- the
+sentinel only ever has one candidate action at a time, and there's no navigable level geometry to
+path against. Everything below this point is still forward-looking guidance for whatever comes
+next (a second enemy type, a real chase behavior, ...), not a description of what already exists
+beyond that one case.
 
 Unlike the book (which assumes a full 3D engine with navmeshes and a general-purpose scene graph)
 and unlike a hypothetical from-scratch vector library, **raylib already ships the 3D math this

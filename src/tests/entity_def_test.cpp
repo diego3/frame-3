@@ -1,6 +1,6 @@
 #include "doctest/doctest.h"
 
-#include "app/entity_def.h"
+#include "app/entity/entity_def.h"
 
 TEST_CASE("A scalar node returns its value via AsString") {
     EntityDefNode node(std::string("hello"));

@@ -14,7 +14,7 @@
 
 #include <entt/entt.hpp>
 
-#include "app/human_view_base.h"
+#include "app/view/human_view_base.h"
 
 class CameraFpsView : public HumanViewBase {
 public:

@@ -1,6 +1,6 @@
 #include "doctest/doctest.h"
 
-#include "app/event_type_id.h"
+#include "app/events/event_type_id.h"
 
 namespace {
     // Compile-time checks: Fnv1aHash is genuinely constexpr, and two distinct names never
