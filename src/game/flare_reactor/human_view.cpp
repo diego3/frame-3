@@ -8,8 +8,6 @@
 #include "app/transform.h"
 
 namespace {
-    // Same placeholder input scheme as game/sandbox/human_view.cpp -- raw key/gesture -> action
-    // mapping is still an open question (ADR-0010, ADR-0013 Proposed), not this RFC's concern.
     constexpr float kMoveUnitsPerSecond = 4.0f;
 
     // The one real IScreenElement so far: renders every Renderable via app/renderable.h instead of
@@ -43,7 +41,8 @@ namespace {
     };
 }
 
-FlareReactorView::FlareReactorView(entt::registry &registry) : registry_(registry) {
+FlareReactorView::FlareReactorView(entt::registry &registry)
+    : registry_(registry), input_(LoadOrCreateInputBindings()) {
     camera_.position = Vector3{0.0f, 12.0f, 12.0f};
     camera_.target = Vector3{0.0f, 0.0f, 0.0f};
     camera_.up = Vector3{0.0f, 1.0f, 0.0f};
@@ -66,16 +65,26 @@ void FlareReactorView::VOnUpdate(float dt) {
     LocalTransform *transform = registry_.try_get<LocalTransform>(*possessedActor_);
     if (transform == nullptr) return;
 
+    // ADR-0013's InputManager, not raw IsKeyDown -- input_ is loaded once from
+    // config/keybindings.yaml (or written with defaults on first run), rebindable without a
+    // recompile. Axis mapping matches ADR-0013 §4's own sketch exactly.
     Vector3 move{0.0f, 0.0f, 0.0f};
-    if (IsKeyDown(KEY_RIGHT)) move.x += 1.0f;
-    if (IsKeyDown(KEY_LEFT))  move.x -= 1.0f;
-    if (IsKeyDown(KEY_DOWN))  move.z += 1.0f;
-    if (IsKeyDown(KEY_UP))    move.z -= 1.0f;
+    if (input_.IsDown(InputAction::MoveForward))  move.z -= 1.0f;
+    if (input_.IsDown(InputAction::MoveBackward)) move.z += 1.0f;
+    if (input_.IsDown(InputAction::MoveLeft))     move.x -= 1.0f;
+    if (input_.IsDown(InputAction::MoveRight))    move.x += 1.0f;
 
     transform->position = Vector3Add(transform->position, Vector3Scale(move, kMoveUnitsPerSecond * dt));
 
     camera_.target = transform->position;
     camera_.position = Vector3Add(transform->position, Vector3{0.0f, 12.0f, 12.0f});
+
+    // Edge-triggered, not IsDown -- Interact is a discrete action, not held movement (docs/rfc/
+    // 0001 step 1). Doesn't do anything beyond proving the InputManager works end to end yet --
+    // EvtData_ActivateBeacon/GameLogic validation is Phase 2, not built here.
+    if (input_.IsPressed(InputAction::Interact)) {
+        TraceLog(LOG_INFO, "FlareReactorView: Interact pressed (ACTION_INTERACT) -- no GameLogic handler yet");
+    }
 }
 
 void FlareReactorView::VOnRender(float dt) {

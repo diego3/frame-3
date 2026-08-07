@@ -98,7 +98,7 @@ simplificado enquanto a lacuna não for resolvida.
 
 | Lacuna | Onde aparece no pedido original | Bloqueia hoje | Próximo passo |
 |---|---|---|---|
-| **Ação de input abstrata** (`ACTION_INTERACT`, tecla→ação rebindável) | InputManager | `PlayerInteractElement` lê `KEY_E` direto, igual o movimento já faz — nenhuma camada de ação nomeada | Retomar ADR-0013 (`Proposed`, nunca implementado) |
+| ~~**Ação de input abstrata** (`ACTION_INTERACT`, tecla→ação rebindável)~~ **Resolvida (2026-08-06)** | InputManager | ~~nenhuma camada de ação nomeada~~ — `app/input_bindings.h`/`.cpp` implementa ADR-0013 (agora `Accepted`): `InputAction`/`InputBindings`, `config/keybindings.yaml` gerado no primeiro run. `FlareReactorView` usa `input_.IsDown(InputAction::MoveForward/...)` e `input_.IsPressed(InputAction::Interact)` em vez de `IsKeyDown`/`IsKeyPressed` direto | Nenhum — implementado. `InputAction::Interact` e `IsPressed` (borda) são extensões reais além do sketch original da ADR-0013 (só tinha `IsDown`/movimento) — ver a nota de implementação na própria ADR |
 | **Colisão/proximidade real** | implícito em "jogador perto do reator" | checagem via `Vector3Distance` puro, sem `IGamePhysics`/colisão de verdade | Retomar ADR-0012 (`Proposed`, nunca implementado) — prioridade menor, o pedido original não exige física de corpo rígido, só proximidade |
 | **Sistema de partículas** | "efeito visual em tempo real... partículas" | nenhum efeito de partícula existe ou é possível hoje — não há `ParticleEmitter`, nem sistema algum | Nova ADR — infraestrutura inteira a desenhar |
 | **Material/shader por entidade (emissão)** | "ativa um efeito visual... emissão de luz" | `Renderable.color` é a única aparência possível hoje (cor lida, desenho imediato); não existe conceito de material/shader amarrado a uma entidade, só `ResourceCache<Shader>` cacheando por path | Nova ADR — provavelmente junto com o item de partículas acima (ambos tocam "como uma entidade é desenhada") |
@@ -146,14 +146,31 @@ seu objetivo.
 
 ## Desenho, sistema por sistema
 
-### 1. Captação de input
+### 1. Captação de input — implementado (2026-08-06)
 
-**Hoje**: `HumanView::VOnUpdate` (`game/sandbox/human_view.cpp`) já lê `IsKeyDown` diretamente,
-sem nenhuma camada de tradução — decisão explícita do ADR-0010 (raylib já entrega input por
-polling, não há fila de mensagens Win32 para traduzir). **Proposto**: mesmo padrão, uma linha a
-mais — `IsKeyPressed(KEY_E)` (borda de subida, não nível, porque interagir é uma ação
-discreta, não contínua como mover). Nenhum `ACTION_INTERACT` abstrato ainda — lacuna registrada em
-**Lacunas de infraestrutura conhecidas** acima (linha "Ação de input abstrata"), não permanente.
+**Antes**: `HumanView::VOnUpdate` (`game/sandbox/human_view.cpp`) lê `IsKeyDown` diretamente, sem
+nenhuma camada de tradução — decisão explícita do ADR-0010 (raylib já entrega input por polling,
+não há fila de mensagens Win32 para traduzir). `FlareReactorView` começou exatamente igual.
+
+**Agora**: implementada a ADR-0013 completa (`InputAction`/`InputBindings`,
+`src/app/input_bindings.h`/`.cpp`), com duas extensões que o sketch original da ADR não cobria —
+ver a nota de implementação na própria ADR-0013 para o motivo de cada uma:
+
+- `InputAction::Interact` — a ADR original só tinha ações de movimento; `Interact` foi adicionado
+  agora que existe um consumidor real precisando dele (exatamente a pergunta que a própria ADR
+  deixava em aberto: "crescer o enum ahead-of-need ou só quando um jogo precisar" — decidido pela
+  segunda opção).
+- `InputBindings::IsPressed(action)` (borda, `IsKeyPressed`) ao lado de `IsDown(action)` (nível,
+  `IsKeyDown`) — `IsDown` sozinho dispararia `Interact` todo frame com a tecla segurada, errado
+  para uma ação discreta. Faltava no design original.
+
+`FlareReactorView` (`game/flare_reactor/human_view.cpp`) é o primeiro consumidor real:
+`input_.IsDown(InputAction::MoveForward/Backward/Left/Right)` no lugar dos quatro `IsKeyDown`
+diretos, e `input_.IsPressed(InputAction::Interact)` — hoje só com um `TraceLog`, sem
+`EvtData_ActivateBeacon` ainda (isso é o passo 2 abaixo). `config/keybindings.yaml` é gerado no
+primeiro run em `src/config/keybindings.yaml`, confirmado via smoke test headless.
+`game/sandbox/human_view.cpp` **não foi migrado** — continua com `IsKeyDown` direto; ADR-0013 já
+registra isso como follow-up, não escopo desta RFC.
 
 ### 2. Intent → Evento
 
@@ -435,7 +452,7 @@ sequenceDiagram
 
 | Sistema | Existe hoje em `main`? | Novo nesta RFC |
 |---|---|---|
-| Input polling | Sim (`HumanView::VOnUpdate`, setas) | `PlayerInteractElement`, `IsKeyPressed(KEY_E)` |
+| Input polling | ✅ `InputBindings`/`InputAction` (ADR-0013, implementado 2026-08-06) | `FlareReactorView` usa `input_.IsDown`/`IsPressed`; `InputAction::Interact` novo |
 | `EventManager` | Sim, completo | `EvtData_ActivateBeacon`, `EvtData_BeaconTriggered` |
 | Componente `Reactor`/tags | Não | `Reactor`, `ReactorTag`, `PlayerTag` |
 | `ProcessManager` | Sim, completo, sem consumidor real | `BeaconPulseProcess` |
@@ -454,20 +471,25 @@ pausa até decidirmos, na hora, se a resposta é uma ADR pequena ou implementaç
 1. ✅ **Esqueleto** (implementada): módulo `flare_reactor`, `flare_reactor.yaml`,
    `PlayerTag`/`ReactorTag`, `Renderable`/`DrawRenderables` em `app/`. Sem interação ainda — só
    prova que três entidades com formas/cores distintas renderizam a partir de dados.
-2. **Evento + validação**: `PlayerInteractElement`, `EvtData_ActivateBeacon`/`BeaconTriggered`,
+2. ✅ **InputManager** (implementada, 2026-08-06): ADR-0013 completa (`InputAction`/
+   `InputBindings`, `config/keybindings.yaml`), com `InputAction::Interact` e `IsPressed` como
+   extensões reais além do sketch original da ADR. `FlareReactorView` usa `input_.IsDown`/
+   `IsPressed` no lugar de `IsKeyDown`/`IsKeyPressed` direto. Resolve a lacuna "Ação de input
+   abstrata" por completo — ver §1 acima e a nota de implementação em `docs/adr/0013`.
+3. **Evento + validação**: `PlayerInteractElement`, `EvtData_ActivateBeacon`/`BeaconTriggered`,
    handler de `GameLogic` com cooldown. Sem efeito visual/sonoro ainda — um `TraceLog` prova o
-   fluxo. Toca a lacuna "Colisão/proximidade real" (checagem por distância, sem física) e "Ação de
-   input abstrata" (tecla lida direto) — nenhuma das duas bloqueia esta fase, mas ambas ficam
-   registradas na tabela em vez de silenciadas.
-3. **`ProcessManager`**: `BeaconPulseProcess` ligado ao passo 2 — primeiro payoff visual real
+   fluxo (o `TraceLog` do passo 2 acima já prova a metade do input; falta a metade do evento).
+   Toca a lacuna "Colisão/proximidade real" (checagem por distância, sem física) — não bloqueia
+   esta fase, mas fica registrada na tabela em vez de silenciada.
+4. **`ProcessManager`**: `BeaconPulseProcess` ligado ao passo 3 — primeiro payoff visual real
    (escala/rotação/cor). Não inclui emissão/partículas — essa parte do pedido original fica
    pausada nas lacunas "Sistema de partículas"/"Material/shader por entidade" até uma ADR decidir
    o caminho.
-4. **Áudio**: assinatura em `HumanView`, cálculo de pan/volume — teto real da lacuna "Áudio 3D
+5. **Áudio**: assinatura em `HumanView`, cálculo de pan/volume — teto real da lacuna "Áudio 3D
    real", não uma etapa intermediária rumo a algo melhor sem mudar de biblioteca.
-5. **IA**: `SentinelAI`/`Patrol`, percepção via evento, `Seek`. Fase mais isolada — pode ser
-   desenvolvida em paralelo às fases 2-4 uma vez que a fase 1 exista, já que só depende de
-   `EvtData_BeaconTriggered` existir como tipo (não do handler completo da fase 2 estar
+6. **IA**: `SentinelAI`/`Patrol`, percepção via evento, `Seek`. Fase mais isolada — pode ser
+   desenvolvida em paralelo às fases 3-5 uma vez que a fase 1 exista, já que só depende de
+   `EvtData_BeaconTriggered` existir como tipo (não do handler completo da fase 3 estar
    terminado). Cobre só a metade "SteeringBehavior" do pedido original — a metade "A*/NavMesh"
    fica pausada nas lacunas "Geometria de nível navegável"/"Pathfinding real".
 
@@ -515,10 +537,12 @@ pausa até decidirmos, na hora, se a resposta é uma ADR pequena ou implementaç
 - [ADR-0010](../adr/0010-base-game-logic-and-igameview.md),
   [ADR-0016](../adr/0016-screen-element-stack.md) — `BaseGameLogic`/`IGameView`/`IScreenElement`,
   base da estrutura do novo módulo.
-- [ADR-0012](../adr/0012-physics-thin-raylib-collision-layer.md),
-  [ADR-0013](../adr/0013-input-key-binding-system.md) — ambas `Proposed`, nunca implementadas;
-  são exatamente duas das linhas da tabela **Lacunas de infraestrutura conhecidas** acima, não
-  descartadas — retomar quando chegar a vez delas.
+- [ADR-0012](../adr/0012-physics-thin-raylib-collision-layer.md) — `Proposed`, ainda não
+  implementada; uma das linhas da tabela **Lacunas de infraestrutura conhecidas** acima, não
+  descartada — retomar quando chegar a vez dela.
+- [ADR-0013](../adr/0013-input-key-binding-system.md) — `Accepted`, implementada (ver
+  Implementação status na própria ADR e §1 acima); a linha "Ação de input abstrata" da tabela de
+  lacunas está marcada resolvida.
 - [ADR-0014](../adr/0014-game-module-boundary-and-template-migration.md) — fronteira `app/` vs.
   `src/game/<id>/`, usada para decidir onde cada peça nova mora.
 - `vendor/raylib/src/raylib.h:1668-1691` — API real de áudio do raylib, base da correção no passo 7.

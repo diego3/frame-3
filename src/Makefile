@@ -57,7 +57,8 @@ PROJECT_SOURCE_FILES  ?=
 # because Engine::Init() now actually calls LoadOrCreateEngineConfig() -> YamlEntityFileParser ->
 # mini-yaml. level_loader.cpp and base_game_logic.cpp (docs/adr/0010) join them for the same
 # reason: both game/sandbox and game/flare_reactor call into BaseGameLogic/LevelLoader/
-# EntityFactory directly, not just their own unit tests.
+# EntityFactory directly, not just their own unit tests. input_bindings.cpp (docs/adr/0013) joins
+# them once game/flare_reactor's FlareReactorView became its first real caller.
 PROJECT_SOURCE_FILES_CPP ?= \
     app/engine.cpp \
     app/process_manager.cpp \
@@ -65,7 +66,8 @@ PROJECT_SOURCE_FILES_CPP ?= \
     app/entity_file_parser_yaml.cpp \
     app/engine_config.cpp \
     app/level_loader.cpp \
-    app/base_game_logic.cpp
+    app/base_game_logic.cpp \
+    app/input_bindings.cpp
 
 # game/sandbox (docs/adr/0014): the migrated raylib template, with a Logo/Title/Options/Gameplay/
 # Ending screen state machine and data-driven (YAML) level content. game_config.cpp is
@@ -506,8 +508,11 @@ mini_yaml.o:
 # entity_file_parser_yaml_test.cpp needs mini-yaml, which is genuinely compiled (not header-only) --
 # see the tests/entity_file_parser_yaml.o rule below. level_loader_test.cpp (docs/adr/0009) needs
 # entt::registry + mini-yaml too, for the same reasons. engine_config_test.cpp/file_io_test.cpp/
-# game_config_test.cpp (docs/adr/0011) do real file I/O against a gitignored scratch directory
-# (test_scratch/), not fakes -- their whole job is that read/write round trip.
+# game_config_test.cpp/input_bindings_test.cpp (docs/adr/0011, docs/adr/0013) do real file I/O
+# against a gitignored scratch directory (test_scratch/), not fakes -- their whole job is that
+# read/write round trip. input_bindings_test.cpp needs raylib's headers too (KEY_* constants,
+# InputAction's default bindings) but never calls IsKeyDown/IsKeyPressed themselves (those aren't
+# exercised by a test -- same raylib-runtime-vs-headers-only split as hierarchy_test.cpp).
 TEST_SOURCE_FILES_CPP ?= \
     tests/main_test.cpp \
     tests/event_manager_test.cpp \
@@ -524,7 +529,8 @@ TEST_SOURCE_FILES_CPP ?= \
     tests/file_io_test.cpp \
     tests/engine_config_test.cpp \
     tests/game_config_test.cpp \
-    tests/base_game_logic_test.cpp
+    tests/base_game_logic_test.cpp \
+    tests/input_bindings_test.cpp
 
 TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH) -I$(RAYLIB_INCLUDE_PATH) -I$(ENTT_INCLUDE_PATH) -I$(MINI_YAML_INCLUDE_PATH)
 
@@ -545,7 +551,7 @@ TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH) -I$(RAYLIB_INCLUDE_PAT
 # way level_loader.cpp already is, with a FakeView standing in for HumanView. mini-yaml isn't
 # header-only either, so its own yaml/Yaml.cpp needs compiling into the test binary too
 # (tests/mini_yaml.o below).
-TEST_OBJS = $(patsubst tests/%.cpp, tests/%.o, $(TEST_SOURCE_FILES_CPP)) tests/process_manager.o tests/entity_file_parser_yaml.o tests/engine_config.o tests/level_loader.o tests/base_game_logic.o tests/game_config.o tests/mini_yaml.o
+TEST_OBJS = $(patsubst tests/%.cpp, tests/%.o, $(TEST_SOURCE_FILES_CPP)) tests/process_manager.o tests/entity_file_parser_yaml.o tests/engine_config.o tests/level_loader.o tests/base_game_logic.o tests/game_config.o tests/input_bindings.o tests/mini_yaml.o
 
 tests: $(TEST_OBJS)
 	$(CXX) -o tests_runner $(TEST_OBJS) $(TEST_CXXFLAGS)
@@ -569,6 +575,9 @@ tests/base_game_logic.o: app/base_game_logic.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
 tests/game_config.o: game/sandbox/game_config.cpp
+	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
+
+tests/input_bindings.o: app/input_bindings.cpp
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
 
 # NOTE: deliberately no prerequisite on this rule's own line (unlike process_manager.o/

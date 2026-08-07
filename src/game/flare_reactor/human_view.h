@@ -1,8 +1,10 @@
 // FlareReactorView: the flare_reactor experiment's IGameView (docs/rfc/0001-flare-reactor-
-// pipeline-experiment.md). Phase 1 scope only: renders every entity's Renderable (app/renderable.h)
-// and moves the possessed (PlayerTag) actor with the same placeholder arrow-key scheme
-// game/sandbox/human_view.cpp already uses -- no interact key, no ProcessManager/audio/AI
-// reactions yet (later phases).
+// pipeline-experiment.md). Renders every entity's Renderable (app/renderable.h) and moves the
+// possessed (PlayerTag) actor -- now through InputBindings (docs/adr/0013), not a hardcoded
+// IsKeyDown scheme; this is the first real (non-test) caller of InputBindings in the product.
+// Interact (KEY_E by default) is read here too, edge-triggered via IsPressed, but doesn't do
+// anything yet beyond a TraceLog -- EvtData_ActivateBeacon/GameLogic validation is Phase 2, not
+// built here.
 //
 // Deliberately duplicates game/sandbox/HumanView's small IScreenElement-stack plumbing
 // (PushElement/RemoveElement, sorted VOnRender) rather than sharing it -- there is no
@@ -21,6 +23,7 @@
 #include <raylib.h>
 
 #include "app/game_view.h"
+#include "app/input_bindings.h"
 #include "app/screen_element.h"
 
 class FlareReactorView : public IGameView {
@@ -39,6 +42,7 @@ private:
     entt::registry &registry_;
     std::optional<entt::entity> possessedActor_;
     Camera3D camera_;
+    InputBindings input_;   // config/keybindings.yaml, loaded once here (ADR-0013 Decision 3)
 
     std::vector<std::pair<ScreenElementId, std::unique_ptr<IScreenElement>>> elements_;
     ScreenElementId nextElementId_ = 1;
