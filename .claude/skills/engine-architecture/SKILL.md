@@ -85,10 +85,16 @@ defining a new struct — the same win the book's Ch. 4 was actually chasing (av
 integer registry.
 
 **Current state**: `EventManager` (`src/app/events/event_manager.h`, header-only) exists and
-`Engine::Events()` (`src/app/core/engine.h`) owns the one instance — but nothing subscribes or emits
-yet. No event struct types exist yet either; define one per event kind as gameplay code needs to
-announce something (e.g. a future `EvtData_EnemyDied`), don't pre-build a taxonomy of events
-speculatively.
+`Engine::Events()` (`src/app/core/engine.h`) owns the one instance. `game/flare_reactor` (RFC-0001)
+is the first real subscriber/emitter, both directions: `FlareReactorView`'s
+`PlayerInteractElement` `Emit`s `EvtData_ActivateBeacon`, which `FlareReactorGameLogic` subscribes
+to (`OnActivateBeacon`, validates proximity/state) and, once valid, `Queue`s
+`EvtData_BeaconTriggered` — consumed by `FlareReactorView`'s own `OnBeaconTriggered` (pan/volume
+audio, §4/ADR-0004). `app/entity/level_loader.h`'s `EvtData_EntitySpawned` (ADR-0009) is queued by
+every `LevelLoader::Load` call but still has no subscriber. `game/camera_fps`'s
+`EvtData_ActorJumped` (ADR-0017 follow-up) is queued but also has no subscriber yet — define one
+struct per event kind as gameplay code needs to announce something, don't pre-build a taxonomy of
+events speculatively.
 
 Per [ADR-0005](../../../docs/adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md)
 (Partially Accepted), `EventManager` also has `Queue<T>`/`DispatchQueued()` — a deferred-dispatch
@@ -193,7 +199,7 @@ functions still don't exist — but the "small data table read by one generic fa
 mentioned above is now real (§6), and a few real component pairings have landed through it:
 `"Position"` → `LocalTransform`/`WorldTransform` (§9's `game/sandbox/screen_gameplay.cpp` and
 `game/camera_fps/main.cpp` both register this loader, identically), and `"BoxRenderable"` →
-`app/render_components.h`'s `BoxRenderable` (§10/ADR-0017, `game/camera_fps` only so far).
+`app/scene/render_components.h`'s `BoxRenderable` (§10/ADR-0017, `game/camera_fps` only so far).
 `Health`/`EnemyTag` and any other component beyond that still don't exist — write one per real
 need, same discipline as always. (The earlier `ecs_smoke_test.cpp` proof-of-build file has been
 deleted now that `Engine` gives EnTT a real, permanent home in the codebase.)
@@ -507,21 +513,28 @@ removed that indirection once the screen itself became a real C++ translation un
 `Engine`'s `registry_`/`eventManager_`/`processManager_` to construct one: a static accessor backed
 by the same de facto singleton the `Run()` emscripten trampoline already relied on internally.
 
-**Current state**: `IGameView`, `BaseGameLogic` (`src/app/`), `HumanView` (`src/game/sandbox/`) all
-exist and are wired directly into `game/sandbox/screen_gameplay.cpp` (no separate bridge file,
-per ADR-0014). `BaseGameLogic` gained `Pause()`/`Resume()` beyond the ADR's own sketch (freezes
-attached views' `VOnUpdate` only; `ProcessManager` keeps running regardless). `HumanView` no longer
-renders directly -- see §10 for the `IScreenElement` stack that now does -- and still drives
-whichever entity it's attached to via hardcoded arrow-key movement in its own `VOnUpdate` (no
-input/action-mapping layer exists either — an explicit Open Question). `HumanView` also takes a
-`ProcessManager&`/`ResourceCache<Sound>&` in its constructor -- the "human" half of
-`GCC4::HumanView`'s own dependencies (`UserInterface/HumanView.h`: `m_pProcessManager`,
-`InitAudio()`) -- held, same as `BaseGameLogic::processes_` already is, still not called into; no
-view-level process or sound-on-event exists to attach/play yet, even with §10's stack now real.
-`RemoteView`/`AIView` are named in `GameViewType` but not implemented, exactly as decided. Verified
-end-to-end under `xvfb-run`: `Engine::Init` → `InitGameplayScreen` (loads
-`assets/levels/level_01.yaml`, spawns one entity) → several `Update`/`Draw` cycles →
-`UnloadGameplayScreen` → `Engine::Shutdown`, no crash.
+**Current state**: `IGameView`, `BaseGameLogic` (`src/app/view/`) exist; three concrete `HumanView`-
+family views now subclass the shared `HumanViewBase` (`app/view/human_view_base.h`/`.cpp`, §10) --
+`game/sandbox/human_view.h`, `game/camera_fps/human_view.h` (ADR-0017), and
+`game/flare_reactor/human_view.h` (RFC-0001), the latter rebased onto `HumanViewBase` once ADR-0017
+merged, dropping its own until-then-duplicated copy of the same plumbing. `BaseGameLogic` gained
+`Pause()`/`Resume()` beyond the ADR's own sketch (freezes attached views' `VOnUpdate` only;
+`ProcessManager` keeps running regardless) and `VLoadLevel` is now `virtual`, returning every
+spawned entity in file order -- `game/camera_fps/game_logic.h`'s `CameraFpsLogic` is the first
+subclass, running its own physics step before calling `BaseGameLogic::VOnUpdate`.
+`game/sandbox/HumanView` still drives its possessed actor via hardcoded arrow-key movement in its
+own `VOnUpdate`; `game/flare_reactor/FlareReactorView` moved off that onto ADR-0013's
+`InputBindings` instead (`config/keybindings.yaml`, rebindable). The `ProcessManager&`/
+`ResourceCache<Sound>&` every `HumanView`-family constructor takes (the "human" half of
+`GCC4::HumanView`'s own dependencies) has a real caller now too: `FlareReactorView::
+OnBeaconTriggered` (subscribed to `EvtData_BeaconTriggered`, §1) computes pan/volume from
+distance/direction and plays a `ResourceCache<Sound>` handle -- `game/sandbox`'s own `HumanView`
+still doesn't call into either. `AIView` (`GameViewType::AI`) is implemented too now --
+`game/flare_reactor/ai_view.h`, one instance per sentinel actor (identified by a `SentinelAI`
+component, not a bare tag; see the `engine-ai-behavior` skill); `RemoteView` remains named, not
+built. Verified end-to-end under
+`xvfb-run`: `Engine::Init` → `InitGameplayScreen` (loads `assets/levels/level_01.yaml`, spawns one
+entity) → several `Update`/`Draw` cycles → `UnloadGameplayScreen` → `Engine::Shutdown`, no crash.
 
 ### 10. `IScreenElement` stack (Ch. 10) — `HumanView` composes layered elements, via ADR-0016
 
@@ -558,7 +571,7 @@ as `IGameView` -- ADR-0014). The stack plumbing itself -- `PushElement`/`RemoveE
 book's `list<shared_ptr<...>>`, because `IScreenElement` unlike `IGameView` has no attach step to
 hang a self-known id on, and nothing here needs shared ownership), `VOnRender`'s `stable_sort`-by-
 `VGetZOrder()`-then-dispatch (mirroring the book's own `m_ScreenElements.sort()` pass), and
-`VOnAttach` -- now lives in `app/human_view_base.h`/`.cpp`'s `HumanViewBase` (**not** `HumanView`
+`VOnAttach` -- now lives in `app/view/human_view_base.h`/`.cpp`'s `HumanViewBase` (**not** `HumanView`
 itself), promoted there once a second concrete `IGameView` needed the exact same plumbing (see
 below and [ADR-0017](../../../docs/adr/0017-camera-fps-second-game-module.md)). Two real elements
 exist in `game/sandbox/human_view.cpp`: `GameplayScene` (the 3D camera/entity render pass that used
@@ -589,7 +602,7 @@ game-local since its tuning is specific to this movement scheme, not a generic p
 ADR-0012 hasn't designed yet), `FirstPersonCameraRig` (the `Camera3D` itself plus its look/head-bob
 easing state -- seeded onto the actor by a `CameraFpsView::VOnAttach` override, since it's
 view/presentation setup, unlike `PlayerBody` which `main.cpp` emplaces as Logic-owned simulation
-state), and `BoxRenderable` (size/color -- `app/render_components.h`, the first real render
+state), and `BoxRenderable` (size/color -- `app/scene/render_components.h`, the first real render
 component, ADR-0010's own Open Questions flagged this as undecided; game-agnostic by nature but not
 yet applied to `game/sandbox`'s own hardcoded-cube `GameplayScene`). `CameraFpsView` itself holds
 **no** per-frame state at all now, not even the camera -- `UpdateBody`/`UpdateCameraFPS` became free
@@ -601,11 +614,11 @@ caching a pointer across frames.
 
 Two more pieces got pulled out of `game/camera_fps/human_view.cpp` into `app/`, both because
 wrapping an already-generic thing is itself generic, not because a second game needed them (unlike
-`HumanViewBase` above): `app/scene_renderer.h`'s `DrawBoxRenderables(registry)` -- a free function
+`HumanViewBase` above): `app/scene/scene_renderer.h`'s `DrawBoxRenderables(registry)` -- a free function
 that draws every `BoxRenderable` entity at its already-computed `WorldTransform` (the scene graph's
 own output, ADR-0002), so `FpsScene::VOnRender` doesn't hand-roll that loop itself; any view can
 call it from inside its own `BeginMode3D`/`EndMode3D` (it doesn't touch the camera, which differs
-per game). And `app/debug_overlay_screen_element.h`'s `DebugOverlayScreenElement`, an `IScreenElement`
+per game). And `app/view/debug_overlay_screen_element.h`'s `DebugOverlayScreenElement`, an `IScreenElement`
 wrapping `DebugOverlay` (F3 HUD) -- `camera_fps` folds it into its own stack (safe there because it
 has exactly one view alive for the whole run) unlike `game/sandbox`, where ADR-0016's reasoning for
 keeping `DebugOverlay` *outside* any view's stack (it must survive `LOGO`/`TITLE`/`OPTIONS`/
@@ -634,7 +647,7 @@ form of "`GameLogic` walks its actors, updating their components," no separate a
 by hand -- *then* calls the base class to tick views, so a view renders this frame's
 already-integrated position. It also queues a new `EvtData_ActorJumped` via `events_`
 (`EventManager`, §1) whenever the physics step triggers a jump -- the ported example's own
-commented-out "Sound can be played at this moment" hook, done the way `app/level_loader.h`'s
+commented-out "Sound can be played at this moment" hook, done the way `app/entity/level_loader.h`'s
 `EvtData_EntitySpawned` already established (fire it even with no subscriber yet).
 
 `MovementIntent` (`facingYaw`/`side`/`forward`/`jumpPressed`/`crouchHold`, not `PlayerInput`) is
