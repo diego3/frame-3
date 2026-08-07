@@ -25,5 +25,14 @@ if [ ! -x "$BIN" ]; then
     exit 1
 fi
 
+# NVIDIA=1 forces the run onto the discrete GPU on hybrid-graphics (Optimus) laptops via PRIME
+# render offload. Verified 2026-08-07: on this machine (prime-select mode "on-demand"), a bare
+# launch renders on the Intel iGPU (raylib's startup log prints "Vendor: Intel" and the process
+# never shows up in `nvidia-smi`); these two env vars are what put NVIDIA on both instead.
+if [ -n "${NVIDIA:-}" ]; then
+    export __NV_PRIME_RENDER_OFFLOAD=1
+    export __GLX_VENDOR_LIBRARY_NAME=nvidia
+fi
+
 cd "$BUILD_DIR"
 exec "./$GAME_TO_RUN"
