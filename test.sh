@@ -44,4 +44,4 @@ if [ ! -d "$MINI_YAML_PATH" ]; then
 fi
 
 make -C "$SCRIPT_DIR/src" tests DOCTEST_PATH="$DOCTEST_PATH" RAYLIB_PATH="$RAYLIB_PATH" ENTT_PATH="$ENTT_PATH" MINI_YAML_PATH="$MINI_YAML_PATH"
-"$SCRIPT_DIR/src/tests_runner"
+"$SCRIPT_DIR/build/test/tests_runner"

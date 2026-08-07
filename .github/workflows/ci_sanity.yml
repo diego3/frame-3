@@ -136,4 +136,4 @@ jobs:
         # file_io_test.cpp/game_config_test.cpp do real file I/O against a gitignored scratch dir.
         run: |
           make -C src tests DOCTEST_PATH=../doctest RAYLIB_PATH=../raylib ENTT_PATH=../entt MINI_YAML_PATH=../mini-yaml PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=catch-value"
-          src/tests_runner
+          build/test/tests_runner

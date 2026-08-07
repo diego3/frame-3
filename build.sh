@@ -41,3 +41,13 @@ fi
 GAME="${GAME:-sandbox}"
 
 make -C "$SCRIPT_DIR/src" PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE GAME="$GAME" RAYLIB_PATH="$RAYLIB_PATH" ENTT_PATH="$ENTT_PATH" MINI_YAML_PATH="$MINI_YAML_PATH"
+
+# The Makefile always links build/desktop/raylib_game (its own GAME_MARKER/check_game relink-
+# detection logic is keyed on that one fixed name never changing across GAME switches -- see
+# src/Makefile's own comment on GAME). This copy, named after GAME, is purely a local-dev
+# convenience so build/desktop/ holds a same-named-as-GAME executable too -- run.sh reads
+# GAME_MARKER (written by the make invocation above) to know which one to launch. Lives here, not
+# in the Makefile, so it never touches the release CI workflows (build_linux/macos/webassembly.yml
+# call the Makefile directly and only ever reference $(PROJECT_NAME)).
+BUILD_DIR="$SCRIPT_DIR/build/desktop"
+cp -f "$BUILD_DIR/raylib_game" "$BUILD_DIR/$GAME"

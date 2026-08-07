@@ -64,10 +64,18 @@ dkms.conf
 .cache
 compile_commands.json
 
-# Build folder
+# Build folder -- src/Makefile's own default PROJECT_BUILD_PATH/TEST_BUILD_PATH (build/desktop/,
+# build/test/, build/web/) lands here; this one pattern covers all of it (objects, linked
+# binaries, staged resources/, generated config/, GAME_MARKER, tests_runner), at any depth.
 [Bb]uild
 
-# Resources staged into src/ at build time by the raw Makefile (source lives in assets/)
+# The entries below cover the *other* way this Makefile can be pointed -- PROJECT_BUILD_PATH=.
+# (i.e. straight into src/, cwd at the point make is invoked), which the release CI workflows
+# (build_linux/macos/webassembly.yml) still use for their own packaging steps, and which still
+# works locally too (`PROJECT_BUILD_PATH=. make -C src ...`). Kept even though local dev no longer
+# defaults here, so build output from that path never gets accidentally tracked either.
+
+# Resources staged into src/ when built this way (source lives in assets/)
 /src/resources/
 
 # Engine/game config, generated at runtime with defaults on first run -- see
@@ -75,20 +83,23 @@ compile_commands.json
 # struct defaults in engine_config.h/game_config.h *are* the shipped defaults.
 /src/config/
 
-# Desktop binary built by the raw Makefile (no file extension on Linux, so *.exe etc. miss it)
+# Desktop binary built this way (no file extension on Linux, so *.exe etc. miss it)
 /src/raylib_game
 
 # Marker tracking which GAME the current /src/raylib_game was built for (see src/Makefile's
 # check_game/GAME_MARKER) -- forces a relink when GAME changes between builds.
 /src/.built_game
 
-# Unit test binary built by `make tests` / test.sh (see docs/adr/0006-doctest-for-unit-tests.md)
+# Unit test binary built this way (see docs/adr/0006-doctest-for-unit-tests.md)
 /src/tests_runner
 
 # Real files engine_config_test.cpp/game_config_test.cpp/file_io_test.cpp read/write and clean up
 # around each test -- isolated from /src/config/ above so tests never collide with a real dev's
-# local config.
+# local config. test_scratch/'s own location follows whatever directory tests_runner is invoked
+# from (a plain relative path in the test sources, not derived from TEST_BUILD_PATH) -- test.sh/
+# ci_sanity.yml both run it from the repo root, landing it there; covered both places.
 /src/test_scratch/
+/test_scratch/
 
 # raylib checkout auto-vendored by build.sh
 /vendor/
