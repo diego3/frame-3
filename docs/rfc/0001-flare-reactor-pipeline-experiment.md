@@ -135,14 +135,16 @@ Três entidades, carregadas via `EntityFactory`/`LevelLoader` (ADR-0008/0009) a 
 | Entidade | Componentes (novos em **negrito**) |
 |---|---|
 | Jogador | `Position` → `LocalTransform`/`WorldTransform`, **`PlayerTag`**, **`Renderable`** (caixa) |
-| Reator | `Position`, **`ReactorTag`**, **`Reactor`** (cooldown/estado), **`Renderable`** (caixa cinza) |
+| Reator | `Position`, **`Reactor`** (estado `active`), **`Renderable`** (caixa cinza) |
 | Sentinela (NPC) | `Position`, **`SentinelAI`** (FSM + steering), **`Patrol`** (waypoints), **`Renderable`** (esfera) |
 
-`PlayerTag`/`ReactorTag` resolvem de propósito um ponto cego que já existe hoje em
+`PlayerTag` resolve de propósito um ponto cego que já existe hoje em
 `game/sandbox/screen_gameplay.cpp` ("primeira entidade no registry é o jogador, até existir mais
 de uma entidade" — comentário já presente no código): com três entidades reais, essa heurística
 quebra, e uma tag explícita é a correção óbvia — pequena, mas incidental a este experimento, não o
-seu objetivo.
+seu objetivo. O reator originalmente também tinha uma `ReactorTag` própria (Fase 1); removida na
+Fase 3 quando `Reactor` virou um componente de verdade — a própria presença do componente já
+resolve a identidade, uma tag ao lado dele seria redundante (ver §4).
 
 ## Desenho, sistema por sistema
 
@@ -172,9 +174,9 @@ primeiro run em `src/config/keybindings.yaml`, confirmado via smoke test headles
 `game/sandbox/human_view.cpp` **não foi migrado** — continua com `IsKeyDown` direto; ADR-0013 já
 registra isso como follow-up, não escopo desta RFC.
 
-### 2. Intent → Evento
+### 2. Intent → Evento — implementado (2026-08-07)
 
-Dois tipos de evento novos, específicos deste jogo (`src/game/flare_reactor/events.h` — eventos de
+Dois tipos de evento, específicos deste jogo (`src/game/flare_reactor/events.h` — eventos de
 domínio ficam no módulo do jogo, não em `app/`, mesma fronteira do ADR-0014):
 
 ```cpp
@@ -182,55 +184,75 @@ struct EvtData_ActivateBeacon { entt::entity actorId; };
 struct EvtData_BeaconTriggered { entt::entity reactorId; Vector3 position; };
 ```
 
-Uma `PlayerInteractElement` (novo `IScreenElement`, ao lado de `GameplayScene`/`GameplayHud`)
-lê a tecla em `VOnUpdate` e, se o jogador estiver a menos de `kInteractRadius` do reator
-(`Vector3Distance`, sem física real — lacuna "Colisão/proximidade real" na tabela acima), chama
-`events_.Emit(EvtData_ActivateBeacon{playerActor})`. `Emit` (síncrono), não `Queue`, porque este é
-o disparo de origem — nada mais está no meio de despachar este mesmo tipo de evento neste
-instante.
+Desvio do sketch original: `PlayerInteractElement` (novo `IScreenElement`, pushado por
+`FlareReactorView::VOnAttach` assim que o ator possuído é conhecido) **não** faz a checagem de
+proximidade. Ela só traduz a tecla em `events_.Emit(EvtData_ActivateBeacon{playerActor})` —
+`Emit` (síncrono), não `Queue`, porque este é o disparo de origem, nada mais está despachando este
+mesmo tipo de evento neste instante. A checagem de `kInteractRadius` (`Vector3Distance`, sem
+física real — lacuna "Colisão/proximidade real" na tabela acima) foi movida para dentro de
+`FlareReactorGameLogic::OnActivateBeacon` (ver §4) — mesma separação que `TeapotController.cpp`
+tem no livro: a view traduz tecla→evento, nunca decide se a ação é *válida*; quem decide é a
+`GameLogic`. Essa foi uma correção deliberada em relação ao sketch original desta seção, feita
+durante a conversa de design sobre "onde mora o `GameLogic`" antes da implementação.
 
-### 3. `EventManager` — nenhum código novo
+### 3. `EventManager` — nenhum código novo, confirmado (2026-08-07)
 
-`Subscribe`/`Emit`/`Queue`/`DispatchQueued` (`app/events/event_manager.h`, ADR-0003/0005) já bastam. Uso
-proposto: `EvtData_ActivateBeacon` via `Emit` (hop único, síncrono); o broadcast de saída da
-`GameLogic`, `EvtData_BeaconTriggered`, via `Queue` — não estritamente necessário hoje (nenhum dos
-três assinantes plancjados re-emite o mesmo tipo), mas é a mesma proteção contra reentrância que
-ADR-0005 já desenhou para exatamente este formato de "um evento com vários assinantes
-desacoplados"; custa uma chamada, evita uma categoria de bug se um assinante futuro reagir emitindo
-outro evento do mesmo tipo.
+`Subscribe`/`Emit`/`Queue`/`DispatchQueued` (`app/events/event_manager.h`, ADR-0003/0005) bastaram, como
+previsto. `EvtData_ActivateBeacon` via `Emit` (hop único, síncrono); `EvtData_BeaconTriggered` via
+`Queue` — não estritamente necessário hoje (nenhum assinante atual re-emite o mesmo tipo), mas a
+mesma proteção contra reentrância que ADR-0005 já desenhou para "um evento com vários assinantes
+desacoplados"; custa uma chamada, evita uma categoria de bug se um assinante futuro (Fase 6's
+`SentinelAI`) reagir emitindo outro evento do mesmo tipo.
 
-### 4. GameLogic — validação e estado
+### 4. GameLogic — validação e estado — implementado (2026-08-07)
 
-Novo componente ECS (dado puro, não uma classe de sistema):
+Componente ECS (dado puro, não uma classe de sistema) — mais simples que o sketch original: sem
+`cooldownRemaining`. A Fase 4's `BeaconPulseProcess` vai zerar `active` sozinha, ao terminar seu
+próprio timer, em vez de precisar de um sistema de decremento por frame à parte:
 
 ```cpp
 struct Reactor {
-    float cooldownRemaining = 0.0f;
     bool active = false;
 };
 ```
 
-Um assinante — registrado uma vez, no setup do módulo do jogo, ao lado de
-`RegisterComponentLoaders` (mesmo lugar/padrão já usado em `screen_gameplay.cpp`) — resolve a
-única entidade com `ReactorTag` e valida:
+Também sem `ReactorTag` — a presença do próprio componente `Reactor` já é a identidade da entidade
+(não existe entidade com `Reactor` que não seja "o reator"); ver a nota de `reactor.h` e a conversa
+de design sobre o campo `type` do `Actor` do livro que motivou essa simplificação.
+
+Segundo desvio do sketch original: o `Subscribe` não é uma lambda solta capturando `registry` por
+referência — é o construtor de `FlareReactorGameLogic : public BaseGameLogic`, o primeiro subclasse
+game-specific de `BaseGameLogic` deste projeto (resolve a Questão em Aberto abaixo). A validação
+(proximidade + "não já ativo") mora inteira em `OnActivateBeacon`, não espalhada entre view e
+lógica:
 
 ```cpp
-events_.Subscribe<EvtData_ActivateBeacon>([&registry](const EvtData_ActivateBeacon &) {
-    auto reactorView = registry.view<ReactorTag, Reactor, LocalTransform>();
-    for (auto entity : reactorView) {
-        auto &reactor = reactorView.get<Reactor>(entity);
-        if (reactor.active || reactor.cooldownRemaining > 0.0f) return;  // inválido, ignora
+FlareReactorGameLogic::FlareReactorGameLogic(entt::registry &registry, EventManager &events,
+                                              ProcessManager &processes, LevelLoader &levelLoader)
+    : BaseGameLogic(registry, events, processes, levelLoader) {
+    events_.Subscribe<EvtData_ActivateBeacon>(
+        [this](const EvtData_ActivateBeacon &event) { OnActivateBeacon(event); });
+}
+
+void FlareReactorGameLogic::OnActivateBeacon(const EvtData_ActivateBeacon &event) {
+    Vector3 actorPos = WorldPosition(registry_, event.actorId);
+    for (auto entity : registry_.view<Reactor, WorldTransform>()) {
+        auto &reactor = registry_.get<Reactor>(entity);
+        if (reactor.active) continue;                                   // já ativado
+
+        Vector3 reactorPos = WorldPosition(registry_, entity);
+        if (Vector3Distance(actorPos, reactorPos) > kInteractRadius) continue;  // fora de alcance
 
         reactor.active = true;
-        reactor.cooldownRemaining = kReactorCooldownSeconds;
-        events_.Queue(EvtData_BeaconTriggered{entity, reactorView.get<LocalTransform>(entity).position});
+        events_.Queue(EvtData_BeaconTriggered{entity, reactorPos});
+        return;
     }
-});
+}
 ```
 
-Dado puro (`Reactor`) + uma lambda livre — não uma nova "classe de subsistema de GameLogic". Ver
-Questão em Aberto sobre onde exatamente esse `Subscribe` deveria morar (`BaseGameLogic` em si, ou
-um arquivo de setup do jogo).
+Sem `TraceLog` de instrumentação de fluxo separado como o §1 tinha — o próprio `TraceLog` dentro de
+`OnActivateBeacon` já prova o fluxo completo (view emite → lógica valida → lógica emite), a mesma
+"prova via log" que a Fase 3 original pedia.
 
 ### 5. `ProcessManager` — `BeaconPulseProcess`
 
@@ -429,10 +451,10 @@ sequenceDiagram
     participant HV as HumanView (áudio)
     participant AI as SentinelAI (percepção + steering)
 
-    Input->>PIE: KEY_E pressionada, jogador perto do reator
+    Input->>PIE: KEY_E pressionada
     PIE->>EM: Emit(EvtData_ActivateBeacon)
     EM->>GL: dispatch síncrono
-    GL->>GL: valida cooldown/estado
+    GL->>GL: valida proximidade/estado (active)
     GL->>PM: Attach(BeaconPulseProcess)
     GL->>EM: Queue(EvtData_BeaconTriggered)
     EM-->>Scene: DispatchQueued (próximo frame)
@@ -453,8 +475,9 @@ sequenceDiagram
 | Sistema | Existe hoje em `main`? | Novo nesta RFC |
 |---|---|---|
 | Input polling | ✅ `InputBindings`/`InputAction` (ADR-0013, implementado 2026-08-06) | `FlareReactorView` usa `input_.IsDown`/`IsPressed`; `InputAction::Interact` novo |
-| `EventManager` | Sim, completo | `EvtData_ActivateBeacon`, `EvtData_BeaconTriggered` |
-| Componente `Reactor`/tags | Não | `Reactor`, `ReactorTag`, `PlayerTag` |
+| `EventManager` | ✅ completo, agora com um consumidor real (`FlareReactorGameLogic`, implementado 2026-08-07) | `EvtData_ActivateBeacon`, `EvtData_BeaconTriggered` |
+| Componente `Reactor`/tags | ✅ implementado 2026-08-07 | `Reactor` (só `active`, sem tag própria), `PlayerTag` |
+| `BaseGameLogic` subclass | Não (só a classe base, sem consumidor específico) | `FlareReactorGameLogic`, implementado 2026-08-07 |
 | `ProcessManager` | Sim, completo, sem consumidor real | `BeaconPulseProcess` |
 | Render por dado | Não (hardcoded `DrawCubeWires`) | `Renderable` (app/), `DrawRenderables` |
 | Áudio | Sim (`ResourceCache<Sound>`, `PlaySound`) | cálculo de pan/volume por distância |
@@ -476,11 +499,13 @@ pausa até decidirmos, na hora, se a resposta é uma ADR pequena ou implementaç
    extensões reais além do sketch original da ADR. `FlareReactorView` usa `input_.IsDown`/
    `IsPressed` no lugar de `IsKeyDown`/`IsKeyPressed` direto. Resolve a lacuna "Ação de input
    abstrata" por completo — ver §1 acima e a nota de implementação em `docs/adr/0013`.
-3. **Evento + validação**: `PlayerInteractElement`, `EvtData_ActivateBeacon`/`BeaconTriggered`,
-   handler de `GameLogic` com cooldown. Sem efeito visual/sonoro ainda — um `TraceLog` prova o
-   fluxo (o `TraceLog` do passo 2 acima já prova a metade do input; falta a metade do evento).
-   Toca a lacuna "Colisão/proximidade real" (checagem por distância, sem física) — não bloqueia
-   esta fase, mas fica registrada na tabela em vez de silenciada.
+3. ✅ **Evento + validação** (implementada, 2026-08-07): `PlayerInteractElement`,
+   `EvtData_ActivateBeacon`/`BeaconTriggered`, `FlareReactorGameLogic::OnActivateBeacon` valida
+   proximidade (`kInteractRadius`) e estado (`Reactor::active`) — sem cooldown numérico, ver §4.
+   Sem efeito visual/sonoro ainda — o `TraceLog` dentro do handler prova o fluxo completo (view
+   emite → lógica valida → lógica emite `EvtData_BeaconTriggered`). Toca a lacuna
+   "Colisão/proximidade real" (checagem por distância, sem física) — não bloqueou esta fase, mas
+   segue registrada na tabela em vez de silenciada.
 4. **`ProcessManager`**: `BeaconPulseProcess` ligado ao passo 3 — primeiro payoff visual real
    (escala/rotação/cor). Não inclui emissão/partículas — essa parte do pedido original fica
    pausada nas lacunas "Sistema de partículas"/"Material/shader por entidade" até uma ADR decidir
@@ -495,15 +520,14 @@ pausa até decidirmos, na hora, se a resposta é uma ADR pequena ou implementaç
 
 ## Questões em aberto
 
-- **Onde mora o `Subscribe` de `GameLogic` (passo 4)?** `BaseGameLogic::VOnUpdate` não é
-  `virtual` hoje (`app/view/base_game_logic.h`) — só `VLoadLevel` é. Não há um hook de "tick de
-  gameplay específico do jogo" para uma futura `FlareReactorGameLogic : BaseGameLogic` sobrescrever.
-  Duas saídas: (a) registrar o `Subscribe`/tickar `UpdateSentinel` diretamente do
-  `UpdateGameplayScreen`-equivalente do novo módulo (mesmo lugar onde `HumanView`'s movimento do
-  jogador já roda hoje — não é um padrão novo, é o mesmo ponto cego já existente); (b) tornar
-  `VOnUpdate` virtual/acrescentar um hook protegido. **Recomendação**: (a) por agora — não mexer
-  em `BaseGameLogic` por um único consumidor; revisitar (b) só se um terceiro jogo precisar do
-  mesmo hook (mesma disciplina do ADR-0015).
+- ~~**Onde mora o `Subscribe` de `GameLogic`?**~~ **Resolvida (2026-08-07)** — nem (a) nem (b): o
+  `Subscribe` em si não precisa de nenhum hook de tick. `FlareReactorGameLogic : public
+  BaseGameLogic` existe e faz o `Subscribe<EvtData_ActivateBeacon>` direto no próprio construtor
+  (roda uma vez, antes do loop principal começar) — `BaseGameLogic::VOnUpdate` segue não-`virtual`,
+  intocado, porque a Fase 3 não precisa de nenhum trabalho por frame, só reagir a evento. **Isso
+  não fecha a questão para a Fase 6**: `SentinelAI`'s patrulha/steering aí sim precisa de um tick
+  por frame de verdade (não só reagir a evento), e vai bater na mesma lacuna que motivou esta
+  pergunta — revisitar (a)/(b) então, não antes.
 - **ADR-0013 (input binding) vale a pena construir agora?** Esta RFC adiciona uma segunda tecla
   discreta (`E`) além das quatro de movimento já hardcoded. Ainda não é o "segundo consumidor
   real" que justificaria ADR-0013 por si só (mesmo módulo, mesmo `HumanView`) — mas se este

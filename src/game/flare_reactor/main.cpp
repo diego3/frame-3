@@ -27,7 +27,9 @@
 #include "app/entity/level_loader.h"
 #include "app/scene/renderable.h"
 #include "app/scene/transform.h"
+#include "game_logic.h"
 #include "human_view.h"
+#include "reactor.h"
 #include "tags.h"
 
 namespace {
@@ -59,13 +61,17 @@ namespace {
                                                           const EntityDefNode &) {
             registry.emplace<PlayerTag>(entity);
         });
-        factory.RegisterComponentLoader("ReactorTag", [](entt::registry &registry, entt::entity entity,
-                                                           const EntityDefNode &) {
-            registry.emplace<ReactorTag>(entity);
-        });
         factory.RegisterComponentLoader("SentinelTag", [](entt::registry &registry, entt::entity entity,
                                                             const EntityDefNode &) {
             registry.emplace<SentinelTag>(entity);
+        });
+        // Reactor (Phase 3): replaces the old ReactorTag marker -- component presence is now this
+        // entity's identity (see reactor.h). Value is a bare bool in YAML ("Reactor: false"), same
+        // shape as PlayerTag/SentinelTag's "Tag: true", just not discarded here since Reactor
+        // actually carries state.
+        factory.RegisterComponentLoader("Reactor", [](entt::registry &registry, entt::entity entity,
+                                                        const EntityDefNode &node) {
+            registry.emplace<Reactor>(entity, Reactor{node.AsBool(false)});
         });
 
         factory.RegisterComponentLoader("Renderable", [](entt::registry &registry, entt::entity entity,
@@ -118,10 +124,14 @@ int main() {
     RegisterComponentLoaders(*g_entityFactory);
 
     g_levelLoader = std::make_unique<LevelLoader>(*g_entityFactory, g_parser);
-    g_logic = std::make_unique<BaseGameLogic>(engine.Registry(), engine.Events(), engine.Processes(), *g_levelLoader);
+    // FlareReactorGameLogic (Phase 3), not plain BaseGameLogic -- its constructor subscribes the
+    // EvtData_ActivateBeacon validation handler. g_logic's declared type stays BaseGameLogic*
+    // (below) since main.cpp itself never needs anything FlareReactorGameLogic-specific.
+    g_logic = std::make_unique<FlareReactorGameLogic>(engine.Registry(), engine.Events(),
+                                                        engine.Processes(), *g_levelLoader);
     g_logic->VLoadLevel("resources/levels/flare_reactor.yaml");
 
-    auto view = std::make_unique<FlareReactorView>(engine.Registry());
+    auto view = std::make_unique<FlareReactorView>(engine.Registry(), engine.Events());
     g_view = view.get();
 
     // PlayerTag resolves this explicitly instead of game/sandbox's "first entity in the registry"

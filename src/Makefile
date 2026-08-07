@@ -88,12 +88,15 @@ endif
 
 # game/flare_reactor (docs/rfc/0001-flare-reactor-pipeline-experiment.md): the end-to-end pipeline
 # experiment -- a single Engine-driven scene, no screens.h state machine, no GameConfig (no
-# game-specific settings needed yet). Phase 1 ("esqueleto") only: three data-driven entities
-# (player/reactor/sentinel) rendered via app/renderable.h's Renderable.
+# game-specific settings needed yet). Phase 1 ("esqueleto"): three data-driven entities
+# (player/reactor/sentinel) rendered via app/scene/renderable.h's Renderable. Phase 3 ("evento +
+# validação") adds game_logic.cpp -- FlareReactorGameLogic, this module's first BaseGameLogic
+# subclass.
 ifeq ($(GAME),flare_reactor)
 PROJECT_SOURCE_FILES_CPP += \
     game/flare_reactor/main.cpp \
-    game/flare_reactor/human_view.cpp
+    game/flare_reactor/human_view.cpp \
+    game/flare_reactor/game_logic.cpp
 endif
 
 # Source location of game content, staged into ./resources before linking (see 'resources' target)

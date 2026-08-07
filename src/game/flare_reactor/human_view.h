@@ -1,10 +1,10 @@
 // FlareReactorView: the flare_reactor experiment's IGameView (docs/rfc/0001-flare-reactor-
-// pipeline-experiment.md). Renders every entity's Renderable (app/renderable.h) and moves the
-// possessed (PlayerTag) actor -- now through InputBindings (docs/adr/0013), not a hardcoded
+// pipeline-experiment.md). Renders every entity's Renderable (app/scene/renderable.h) and moves
+// the possessed (PlayerTag) actor -- through InputBindings (docs/adr/0013), not a hardcoded
 // IsKeyDown scheme; this is the first real (non-test) caller of InputBindings in the product.
-// Interact (KEY_E by default) is read here too, edge-triggered via IsPressed, but doesn't do
-// anything yet beyond a TraceLog -- EvtData_ActivateBeacon/GameLogic validation is Phase 2, not
-// built here.
+// Interact (KEY_E by default) is handled by PlayerInteractElement (human_view.cpp), pushed once
+// VOnAttach knows the possessed actor -- it only translates the key into EvtData_ActivateBeacon
+// (events.h), no validation of its own; FlareReactorGameLogic (Phase 3) owns that.
 //
 // Deliberately duplicates game/sandbox/HumanView's small IScreenElement-stack plumbing
 // (PushElement/RemoveElement, sorted VOnRender) rather than sharing it -- there is no
@@ -22,13 +22,14 @@
 #include <entt/entt.hpp>
 #include <raylib.h>
 
+#include "app/events/event_manager.h"
 #include "app/view/game_view.h"
 #include "app/input/input_bindings.h"
 #include "app/view/screen_element.h"
 
 class FlareReactorView : public IGameView {
 public:
-    explicit FlareReactorView(entt::registry &registry);
+    FlareReactorView(entt::registry &registry, EventManager &events);
 
     void VOnAttach(GameViewId id, std::optional<entt::entity> actorId) override;
     void VOnUpdate(float dt) override;
@@ -40,6 +41,7 @@ public:
 
 private:
     entt::registry &registry_;
+    EventManager &events_;
     std::optional<entt::entity> possessedActor_;
     Camera3D camera_;
     InputBindings input_;   // config/keybindings.yaml, loaded once here (ADR-0013 Decision 3)

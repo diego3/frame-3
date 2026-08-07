@@ -1,12 +1,13 @@
-# flare_reactor reactor entity (docs/rfc/0001-flare-reactor-pipeline-experiment.md). Phase 1: just
-# a gray solid box -- the Reactor component (cooldown/active state) and its color-flip-to-red-on-
-# trigger behavior land in a later phase, per the RFC's "Fases propostas".
+# flare_reactor reactor entity (docs/rfc/0001-flare-reactor-pipeline-experiment.md). Phase 3 gave
+# it a real Reactor component (active state, validated via EvtData_ActivateBeacon/GameLogic) --
+# still just a gray solid box visually; the color-flip-to-red-on-trigger pulse is Phase 4
+# (BeaconPulseProcess), per the RFC's "Fases propostas".
 components:
   Position:
     x: 0
     y: 0
     z: 0
-  ReactorTag: true
+  Reactor: false
   Renderable:
     shape: box
     color: gray

@@ -6,12 +6,14 @@
 
 #include "app/scene/renderable.h"
 #include "app/scene/transform.h"
+#include "events.h"
 
 namespace {
     constexpr float kMoveUnitsPerSecond = 4.0f;
 
-    // The one real IScreenElement so far: renders every Renderable via app/renderable.h instead of
-    // hardcoding geometry per entity (contrast game/sandbox's GameplayScene, which still does).
+    // The one real IScreenElement so far: renders every Renderable via app/scene/renderable.h
+    // instead of hardcoding geometry per entity (contrast game/sandbox's GameplayScene, which
+    // still does).
     class FlareReactorScene : public IScreenElement {
     public:
         FlareReactorScene(entt::registry &registry, const Camera3D &camera)
@@ -39,10 +41,43 @@ namespace {
         int zOrder_ = 0;
         bool visible_ = true;
     };
+
+    // Translates ACTION_INTERACT into EvtData_ActivateBeacon -- nothing more. Deliberately does no
+    // proximity/state validation of its own (see events.h's header comment): the view's job is
+    // "what did the player ask for", not "is that legal right now" -- same division
+    // TeapotController.cpp has in the book. FlareReactorGameLogic::OnActivateBeacon is where that
+    // gets decided. Only pushed once VOnAttach knows which actor this view possesses (see below) --
+    // an observer-only view with no possessed actor never gets one.
+    class PlayerInteractElement : public IScreenElement {
+    public:
+        PlayerInteractElement(EventManager &events, InputBindings &input, entt::entity player)
+            : events_(events), input_(input), player_(player) {}
+
+        void VOnUpdate(float dt) override {
+            (void)dt;
+            if (input_.IsPressed(InputAction::Interact)) {
+                events_.Emit(EvtData_ActivateBeacon{player_});
+            }
+        }
+
+        void VOnRender(float dt) override { (void)dt; }
+
+        int VGetZOrder() const override { return zOrder_; }
+        void VSetZOrder(int zOrder) override { zOrder_ = zOrder; }
+        bool VIsVisible() const override { return visible_; }
+        void VSetVisible(bool visible) override { visible_ = visible; }
+
+    private:
+        EventManager &events_;
+        InputBindings &input_;
+        entt::entity player_;
+        int zOrder_ = 0;
+        bool visible_ = true;
+    };
 }
 
-FlareReactorView::FlareReactorView(entt::registry &registry)
-    : registry_(registry), input_(LoadOrCreateInputBindings()) {
+FlareReactorView::FlareReactorView(entt::registry &registry, EventManager &events)
+    : registry_(registry), events_(events), input_(LoadOrCreateInputBindings()) {
     camera_.position = Vector3{0.0f, 12.0f, 12.0f};
     camera_.target = Vector3{0.0f, 0.0f, 0.0f};
     camera_.up = Vector3{0.0f, 1.0f, 0.0f};
@@ -55,6 +90,10 @@ FlareReactorView::FlareReactorView(entt::registry &registry)
 void FlareReactorView::VOnAttach(GameViewId id, std::optional<entt::entity> actorId) {
     id_ = id;
     possessedActor_ = actorId;
+
+    if (actorId.has_value()) {
+        PushElement(std::make_unique<PlayerInteractElement>(events_, input_, *actorId));
+    }
 }
 
 void FlareReactorView::VOnUpdate(float dt) {
@@ -78,13 +117,6 @@ void FlareReactorView::VOnUpdate(float dt) {
 
     camera_.target = transform->position;
     camera_.position = Vector3Add(transform->position, Vector3{0.0f, 12.0f, 12.0f});
-
-    // Edge-triggered, not IsDown -- Interact is a discrete action, not held movement (docs/rfc/
-    // 0001 step 1). Doesn't do anything beyond proving the InputManager works end to end yet --
-    // EvtData_ActivateBeacon/GameLogic validation is Phase 2, not built here.
-    if (input_.IsPressed(InputAction::Interact)) {
-        TraceLog(LOG_INFO, "FlareReactorView: Interact pressed (ACTION_INTERACT) -- no GameLogic handler yet");
-    }
 }
 
 void FlareReactorView::VOnRender(float dt) {
