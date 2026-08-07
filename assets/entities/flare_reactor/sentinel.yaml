@@ -1,12 +1,28 @@
 # flare_reactor sentinel (patrolling NPC) entity (docs/rfc/0001-flare-reactor-pipeline-experiment.md).
-# Phase 1: just a wireframe sphere at a fixed spot -- Patrol/SentinelAI (waypoints, FSM, steering,
-# perception of EvtData_BeaconTriggered) land in Phase 5, per the RFC's "Fases propostas".
+# Phase 6: real SentinelAI (FSM + Seek steering, see sentinel_ai.h) and a Patrol loop around the
+# arena -- waypoints are world-space, not relative to Position below (assets/levels/
+# flare_reactor.yaml overrides this entity's actual spawn position; the loop still makes sense from
+# any of its corners since it's a closed square).
 components:
   Position:
     x: 5
     y: 0
     z: 5
-  SentinelTag: true
+  SentinelAI: true
+  Patrol:
+    waypoints:
+      - x: 6
+        y: 0
+        z: 6
+      - x: -6
+        y: 0
+        z: 6
+      - x: -6
+        y: 0
+        z: -6
+      - x: 6
+        y: 0
+        z: -6
   Renderable:
     shape: sphere
     color: darkgray

@@ -15,12 +15,18 @@
 #include "app/scene/transform.h"
 #include "beacon_pulse_process.h"
 #include "reactor.h"
+#include "sentinel_ai.h"
 
 namespace {
     // No physics/collision yet (RFC-0001's "Colisão/proximidade real" gap) -- a flat WorldTransform
     // distance check is this experiment's stand-in, same flat-plane assumption FlareReactorView's
     // own movement already makes.
     constexpr float kInteractRadius = 3.0f;
+
+    // How far a sentinel can "hear" the beacon going off (Phase 6, engine-ai-behavior skill §4) --
+    // generous relative to the level's own scale so any sentinel patrolling the arena reacts, not
+    // a tuned gameplay value.
+    constexpr float kHearingRadius = 10.0f;
 
     Vector3 WorldPosition(entt::registry &registry, entt::entity entity) {
         const WorldTransform &world = registry.get<WorldTransform>(entity);
@@ -33,6 +39,8 @@ FlareReactorGameLogic::FlareReactorGameLogic(entt::registry &registry, EventMana
     : BaseGameLogic(registry, events, processes, levelLoader) {
     events_.Subscribe<EvtData_ActivateBeacon>(
         [this](const EvtData_ActivateBeacon &event) { OnActivateBeacon(event); });
+    events_.Subscribe<EvtData_BeaconTriggered>(
+        [this](const EvtData_BeaconTriggered &event) { OnBeaconTriggered(event); });
 }
 
 void FlareReactorGameLogic::OnActivateBeacon(const EvtData_ActivateBeacon &event) {
@@ -81,4 +89,10 @@ void FlareReactorGameLogic::OnActivateBeacon(const EvtData_ActivateBeacon &event
     if (!foundAny) {
         TraceLog(LOG_WARNING, "FlareReactorGameLogic: no Reactor entity found in the registry");
     }
+}
+
+void FlareReactorGameLogic::OnBeaconTriggered(const EvtData_BeaconTriggered &event) {
+    ApplyBeaconPerception(registry_, event.position, kHearingRadius);
+    TraceLog(LOG_INFO, "FlareReactorGameLogic: beacon perception applied (sentinels within %.2f units "
+                        "start investigating)", kHearingRadius);
 }

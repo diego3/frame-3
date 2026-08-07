@@ -27,9 +27,11 @@
 #include "app/entity/level_loader.h"
 #include "app/scene/renderable.h"
 #include "app/scene/transform.h"
+#include "ai_view.h"
 #include "game_logic.h"
 #include "human_view.h"
 #include "reactor.h"
+#include "sentinel_ai.h"
 #include "tags.h"
 
 namespace {
@@ -61,17 +63,34 @@ namespace {
                                                           const EntityDefNode &) {
             registry.emplace<PlayerTag>(entity);
         });
-        factory.RegisterComponentLoader("SentinelTag", [](entt::registry &registry, entt::entity entity,
-                                                            const EntityDefNode &) {
-            registry.emplace<SentinelTag>(entity);
-        });
         // Reactor (Phase 3): replaces the old ReactorTag marker -- component presence is now this
         // entity's identity (see reactor.h). Value is a bare bool in YAML ("Reactor: false"), same
-        // shape as PlayerTag/SentinelTag's "Tag: true", just not discarded here since Reactor
-        // actually carries state.
+        // shape as PlayerTag's "Tag: true", just not discarded here since Reactor actually carries
+        // state.
         factory.RegisterComponentLoader("Reactor", [](entt::registry &registry, entt::entity entity,
                                                         const EntityDefNode &node) {
             registry.emplace<Reactor>(entity, Reactor{node.AsBool(false)});
+        });
+        // SentinelAI (Phase 6): replaces the old SentinelTag marker, same reasoning as Reactor
+        // above. YAML value is discarded -- initial state (Patrol, zero velocity) always comes
+        // from SentinelAI's own struct defaults, never authored per-instance.
+        factory.RegisterComponentLoader("SentinelAI", [](entt::registry &registry, entt::entity entity,
+                                                           const EntityDefNode &) {
+            registry.emplace<SentinelAI>(entity);
+        });
+        // Patrol (Phase 6): a list of world-space waypoints, block-style only (mini-yaml
+        // limitation, docs/adr/0008 -- same reason player.yaml's own Position is block-style).
+        factory.RegisterComponentLoader("Patrol", [](entt::registry &registry, entt::entity entity,
+                                                       const EntityDefNode &node) {
+            Patrol patrol;
+            if (const EntityDefNode *waypoints = node.TryGet("waypoints")) {
+                for (const EntityDefNode &waypoint : waypoints->AsList()) {
+                    patrol.waypoints.push_back(Vector3{waypoint.Get("x").AsFloat(),
+                                                        waypoint.Get("y").AsFloat(),
+                                                        waypoint.Get("z").AsFloat()});
+                }
+            }
+            registry.emplace<Patrol>(entity, patrol);
         });
 
         factory.RegisterComponentLoader("Renderable", [](entt::registry &registry, entt::entity entity,
@@ -141,6 +160,14 @@ int main() {
     if (players.begin() != players.end()) playerActor = *players.begin();
 
     g_logic->AttachView(std::move(view), playerActor);
+
+    // AIView (Phase 6): one per sentinel entity, resolved via SentinelAI's own presence (same
+    // component-is-identity reasoning as Reactor, see tags.h) -- not a separate tag lookup.
+    auto sentinels = engine.Registry().view<SentinelAI>();
+    if (sentinels.begin() != sentinels.end()) {
+        entt::entity sentinelActor = *sentinels.begin();
+        g_logic->AttachView(std::make_unique<AIView>(engine.Registry()), sentinelActor);
+    }
 
     engine.Run(UpdateDrawFrame);
 

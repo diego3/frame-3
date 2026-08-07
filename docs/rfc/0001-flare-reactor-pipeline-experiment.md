@@ -1,6 +1,8 @@
 # RFC 1: "O Sinalizador de Alerta" (Flare Reactor) — experimento de integração ponta-a-ponta
 
-- Status: Draft
+- Status: Implementado (todas as 6 fases propostas, 2026-08-06 a 2026-08-07) — ver "Fases
+  propostas" pra detalhe fase a fase; lacunas conhecidas (partículas, áudio 3D real, A*/NavMesh,
+  ...) seguem listadas na tabela "Lacunas de infraestrutura conhecidas" e no roadmap.
 - Date: 2026-08-06
 - Branch alvo sugerida: `claude/flare-reactor-experiment` (a partir de `main`)
 
@@ -362,9 +364,10 @@ chamando `GetHandle`/`PlaySound` a partir dele — `game/sandbox`'s `HumanView` 
 `ResourceCache<Sound>&` (`sounds_`) desde o ADR-0010, mas nunca o usa; `screens.h`'s
 `PlaySound(fxCoin)` chama uma global carregada direto em `main.cpp`, não pela view.
 
-### 8. IA — percepção, FSM, steering
+### 8. IA — percepção, FSM, steering — implementado (2026-08-07)
 
-Via `engine-ai-behavior` diretamente, primeiro uso real do skill neste projeto:
+Via `engine-ai-behavior` diretamente, primeiro uso real do skill neste projeto
+(`src/game/flare_reactor/sentinel_ai.h`):
 
 ```cpp
 enum class SentinelState { Patrol, Investigate };
@@ -381,48 +384,76 @@ struct Patrol {
 };
 ```
 
-**Percepção** (§4 do skill — "não deixe a IA trapacear"): a assinatura a
-`EvtData_BeaconTriggered` é um broadcast (todo o mapa "ouve" o evento), mas a *reação* ainda é
+**Desvio do sketch original, o mais importante desta fase**: em vez de um `Subscribe` solto e um
+`UpdateSentinel(registry, dt)` varrendo todo `registry.view<SentinelAI, Patrol, LocalTransform>()`,
+a implementação usa uma **`AIView : public IGameView`** — `GameViewType::AI`, nomeado desde a
+ADR-0010, nunca construído até agora. Uma `AIView` por sentinela (mesma cardinalidade 1:1 que o
+próprio GameCode4 usa em Teapot Wars — `AITeapotView` por ator, não uma só compartilhada), anexada
+via `g_logic->AttachView(std::make_unique<AIView>(registry), sentinelActor)`, exatamente como o
+player já é anexado à `FlareReactorView`. Isso resolve a Questão em Aberto abaixo sem precisar
+tocar em `BaseGameLogic`: o próprio `VOnUpdate` da base já tickeia toda view anexada
+(`for (auto &view : views_) view->VOnUpdate(dt);`), então uma `AIView` anexada já ganha seu tick
+por frame de graça.
+
+A `AIView` em si fica propositalmente fina — no livro, `AITeapotView` também é quase um stub
+(`VOnUpdate`/`VOnRender` vazios); o "cérebro" de verdade mora em máquinas de estado Lua por ator
+(`Assets/Scripts/ActorManager.lua`), não fundido na view C++. Este projeto não tem camada de
+scripting (ADR-0005 §7), então o cérebro vira uma função livre em C++ (`UpdateSentinel`, abaixo) —
+mas a separação é a mesma: a `AIView` só sabe *qual entidade*, quem decide o comportamento é uma
+função operando sobre os componentes daquela entidade, não a própria view.
+
+**Percepção** (§4 do skill — "não deixe a IA trapacear") não vive na `AIView` — vive em
+`FlareReactorGameLogic`, como um segundo `Subscribe<EvtData_BeaconTriggered>` (o primeiro, da Fase
+5, é da `FlareReactorView`, pro áudio; `EventManager` já suporta múltiplos assinantes pro mesmo
+tipo, sem conflito). A assinatura é um broadcast (todo o mapa "ouve" o evento), mas a *reação* é
 condicionada por uma checagem de alcance no lado do assinante, não pelo emissor:
 
 ```cpp
-events_.Subscribe<EvtData_BeaconTriggered>([&registry](const EvtData_BeaconTriggered &evt) {
-    for (auto entity : registry.view<SentinelAI, LocalTransform>()) {
-        auto &ai = registry.get<SentinelAI>(entity);
-        auto &transform = registry.get<LocalTransform>(entity);
-        if (Vector3Distance(transform.position, evt.position) > kHearingRadius) continue;
+inline void ApplyBeaconPerception(entt::registry &registry, Vector3 beaconPosition, float hearingRadius) {
+    auto view = registry.view<SentinelAI, LocalTransform>();
+    for (auto entity : view) {
+        auto &ai = view.get<SentinelAI>(entity);
+        auto &transform = view.get<LocalTransform>(entity);
+        if (Vector3Distance(transform.position, beaconPosition) > hearingRadius) continue;
 
         ai.state = SentinelState::Investigate;
-        ai.investigateTarget = evt.position;
+        ai.investigateTarget = beaconPosition;
     }
-});
+}
 ```
 
 Isto ainda é "onisciência sensorial" no sentido de que o evento carrega a posição exata sem
 oclusão/linha-de-visão — aceitável para "ouvir um alarme" (um som se propaga, não precisa de
-linha de visão), diferente de "ver o jogador", que exigiria o raycast do skill §4. Vale nomear
-essa distinção explicitamente no código quando implementado.
+linha de visão), diferente de "ver o jogador", que exigiria o raycast do skill §4.
 
-**FSM + steering** (§§1/3 do skill), tickado por frame — ver Questão em Aberto sobre *onde*:
+**FSM + steering** (§§1/3 do skill) — `UpdateSentinel(registry, entity, dt)`, chamado de dentro de
+`AIView::VOnUpdate` só pra sua própria entidade possuída (não uma varredura de todo o registry):
 
 ```cpp
-void UpdateSentinel(entt::registry &registry, float dt) {
-    for (auto entity : registry.view<SentinelAI, Patrol, LocalTransform>()) {
-        auto &ai = registry.get<SentinelAI>(entity);
-        auto &transform = registry.get<LocalTransform>(entity);
-        Vector3 target = (ai.state == SentinelState::Patrol)
-            ? registry.get<Patrol>(entity).waypoints[registry.get<Patrol>(entity).current]
-            : ai.investigateTarget;
+inline void UpdateSentinel(entt::registry &registry, entt::entity entity, float dt) {
+    SentinelAI *ai = registry.try_get<SentinelAI>(entity);
+    LocalTransform *transform = registry.try_get<LocalTransform>(entity);
+    if (ai == nullptr || transform == nullptr) return;
 
-        Vector3 desired = Seek(transform.position, target, kMaxSpeed, kArriveRadius);  // skill §3
-        Vector3 accel = Vector3Subtract(desired, ai.velocity);
-        if (Vector3Length(accel) > kMaxAccel) accel = Vector3Scale(Vector3Normalize(accel), kMaxAccel);
-        ai.velocity = Vector3Add(ai.velocity, Vector3Scale(accel, dt));
-        transform.position = Vector3Add(transform.position, Vector3Scale(ai.velocity, dt));
+    Vector3 target;
+    if (ai->state == SentinelState::Patrol) {
+        Patrol *patrol = registry.try_get<Patrol>(entity);
+        if (patrol == nullptr || patrol->waypoints.empty()) return;
+        target = patrol->waypoints[patrol->current];
+    } else {
+        target = ai->investigateTarget;
+    }
 
-        if (Vector3Distance(transform.position, target) < kArriveRadius) {
-            if (ai.state == SentinelState::Patrol) AdvanceWaypoint(registry, entity);
-            // Investigate: fica parada no alvo -- sem um terceiro estado "voltar à patrulha" ainda.
+    Vector3 desired = Seek(transform->position, target, kMaxSpeed, kArriveRadius);  // skill §3
+    Vector3 accel = Vector3Subtract(desired, ai->velocity);
+    if (Vector3Length(accel) > kMaxAccel) accel = Vector3Scale(Vector3Normalize(accel), kMaxAccel);
+    ai->velocity = Vector3Add(ai->velocity, Vector3Scale(accel, dt));
+    transform->position = Vector3Add(transform->position, Vector3Scale(ai->velocity, dt));
+
+    if (Vector3Distance(transform->position, target) < kArriveRadius && ai->state == SentinelState::Patrol) {
+        Patrol *patrol = registry.try_get<Patrol>(entity);
+        if (patrol != nullptr && !patrol->waypoints.empty()) {
+            patrol->current = (patrol->current + 1) % patrol->waypoints.size();
         }
     }
 }
@@ -432,6 +463,13 @@ Dois estados (`Patrol`/`Investigate`) tecnicamente caberiam num único `bool inv
 skill (§1) só recomenda uma FSM explícita a partir de 3 estados. Mantido como `enum class` aqui de
 propósito: o objetivo desta RFC é provar a forma FSM+percepção+steering deliberadamente, não
 minimizar linhas de código de um único NPC.
+
+`UpdateSentinel`/`ApplyBeaconPerception`/`Seek` ficam num header só (`sentinel_ai.h`),
+deliberadamente livre de qualquer símbolo linkado do raylib (mesma disciplina de
+`beacon_pulse_process.h`, Fase 4) — por isso são testáveis de verdade
+(`tests/sentinel_ai_test.cpp`, 4 casos), diferente de `AIView`/`FlareReactorGameLogic`, que não
+chamam `TraceLog` diretamente na `AIView` (fica fininha, sem log — só o `OnBeaconTriggered` da
+`GameLogic` loga).
 
 O pedido original admite `SteeringBehavior` **ou** `A*/NavMesh` — `Seek` sozinho cobre a primeira
 opção. A segunda é a lacuna "Pathfinding real (A*/NavMesh)" da tabela acima, hoje sem geometria de
@@ -481,7 +519,7 @@ sequenceDiagram
 | `ProcessManager` | ✅ completo, agora com um consumidor real (implementado 2026-08-07) | `BeaconPulseProcess` |
 | Render por dado | Não (hardcoded `DrawCubeWires`) | `Renderable` (app/), `DrawRenderables` |
 | Áudio | ✅ `ResourceCache<Sound>`/`PlaySound`, agora com um consumidor real de view (implementado 2026-08-07) | `FlareReactorView::OnBeaconTriggered`, cálculo de pan/volume por distância |
-| IA | Nenhuma (projeto não tem IA nenhuma ainda) | `SentinelAI`, `Patrol`, `UpdateSentinel`, percepção via evento |
+| IA | ✅ implementada 2026-08-07 (não existia nenhuma antes) | `SentinelAI`, `Patrol`, `UpdateSentinel`, `ApplyBeaconPerception`, `AIView` (primeiro `GameViewType::AI` real) |
 | Módulo de jogo | `sandbox`, `camera_fps` (branch separada) | `src/game/flare_reactor/` (novo, terceiro) |
 
 ## Fases propostas (uma PR por fase, cada uma demonstrável sozinha)
@@ -516,22 +554,25 @@ pausa até decidirmos, na hora, se a resposta é uma ADR pequena ou implementaç
    — teto real da lacuna "Áudio 3D real", não uma etapa intermediária rumo a algo melhor sem mudar
    de biblioteca. Reaproveita `assets/audio/fx/coin.wav` como placeholder (decisão do usuário) --
    não existe asset de áudio dedicado a este experimento.
-6. **IA**: `SentinelAI`/`Patrol`, percepção via evento, `Seek`. Fase mais isolada — pode ser
-   desenvolvida em paralelo às fases 3-5 uma vez que a fase 1 exista, já que só depende de
-   `EvtData_BeaconTriggered` existir como tipo (não do handler completo da fase 3 estar
-   terminado). Cobre só a metade "SteeringBehavior" do pedido original — a metade "A*/NavMesh"
-   fica pausada nas lacunas "Geometria de nível navegável"/"Pathfinding real".
+6. ✅ **IA** (implementada, 2026-08-07): `SentinelAI`/`Patrol`/`UpdateSentinel`/
+   `ApplyBeaconPerception` (`sentinel_ai.h`), tickados via uma `AIView` real (`GameViewType::AI`,
+   nomeada desde a ADR-0010) em vez do sketch original de `Subscribe` solto + varredura — ver §8.
+   Cobre só a metade "SteeringBehavior" do pedido original — a metade "A*/NavMesh" segue pausada
+   nas lacunas "Geometria de nível navegável"/"Pathfinding real". Com isso, todas as 6 fases
+   propostas estão implementadas.
 
 ## Questões em aberto
 
-- ~~**Onde mora o `Subscribe` de `GameLogic`?**~~ **Resolvida (2026-08-07)** — nem (a) nem (b): o
-  `Subscribe` em si não precisa de nenhum hook de tick. `FlareReactorGameLogic : public
-  BaseGameLogic` existe e faz o `Subscribe<EvtData_ActivateBeacon>` direto no próprio construtor
-  (roda uma vez, antes do loop principal começar) — `BaseGameLogic::VOnUpdate` segue não-`virtual`,
-  intocado, porque a Fase 3 não precisa de nenhum trabalho por frame, só reagir a evento. **Isso
-  não fecha a questão para a Fase 6**: `SentinelAI`'s patrulha/steering aí sim precisa de um tick
-  por frame de verdade (não só reagir a evento), e vai bater na mesma lacuna que motivou esta
-  pergunta — revisitar (a)/(b) então, não antes.
+- ~~**Onde mora o `Subscribe` de `GameLogic`? E o tick por frame da IA?**~~ **Resolvida
+  (2026-08-07)** — nem (a) nem (b) das duas opções cogitadas originalmente. `Subscribe` (Fase 3)
+  não precisava de tick nenhum (roda uma vez, no construtor). Já a Fase 6's `UpdateSentinel`
+  precisava mesmo de um tick por frame de verdade — resolvido por uma terceira opção (c), não
+  cogitada quando esta questão foi aberta: uma `AIView : public IGameView` real
+  (`GameViewType::AI`, nomeada desde a ADR-0010, nunca construída até agora), uma por sentinela,
+  anexada via `AttachView` exatamente como o player. `BaseGameLogic::VOnUpdate` já tickeia toda
+  view anexada (`for (auto &view : views_) view->VOnUpdate(dt);`) — então a `AIView` ganha seu tick
+  de graça, sem precisar tornar `VOnUpdate` `virtual` nem `main.cpp` saber que `UpdateSentinel`
+  existe. `BaseGameLogic` segue 100% intocado. Ver §8.
 - **ADR-0013 (input binding) vale a pena construir agora?** Esta RFC adiciona uma segunda tecla
   discreta (`E`) além das quatro de movimento já hardcoded. Ainda não é o "segundo consumidor
   real" que justificaria ADR-0013 por si só (mesmo módulo, mesmo `HumanView`) — mas se este
@@ -546,7 +587,8 @@ pausa até decidirmos, na hora, se a resposta é uma ADR pequena ou implementaç
   disparo?** Para um pulso curto, calcular uma vez é razoável; se a duração crescer ou a câmera se
   mover muito durante o som, isso fica perceptível. Não decidido — medir antes de complicar.
 - **Sentinela "esfriando" de volta a `Patrol` depois de investigar** — nenhum terceiro estado
-  (`Cooldown`/`Return`) desenhado aqui. Deixar como pendência explícita se a Fase 5 avançar.
+  (`Cooldown`/`Return`) implementado (§8) — o sentinela fica parado em `investigateTarget`
+  indefinidamente depois de investigar. Pendência explícita, não esquecimento.
 
 ## Referências
 
