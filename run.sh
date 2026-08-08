@@ -25,14 +25,17 @@ if [ ! -x "$BIN" ]; then
     exit 1
 fi
 
-# NVIDIA=1 forces the run onto the discrete GPU on hybrid-graphics (Optimus) laptops via PRIME
-# render offload. Verified 2026-08-07: on this machine (prime-select mode "on-demand"), a bare
-# launch renders on the Intel iGPU (raylib's startup log prints "Vendor: Intel" and the process
-# never shows up in `nvidia-smi`); these two env vars are what put NVIDIA on both instead.
-if [ -n "${NVIDIA:-}" ]; then
-    export __NV_PRIME_RENDER_OFFLOAD=1
-    export __GLX_VENDOR_LIBRARY_NAME=nvidia
-fi
+# Engine::Engine() (app/core/engine.cpp) now does this same PRIME-offload trick itself by default
+# on Linux desktop, whenever an NVIDIA glvnd vendor is actually installed -- so a bare run.sh (or
+# even the raw binary, run.sh or not) already lands on the discrete GPU on hybrid-graphics
+# (Optimus) machines. NVIDIA=1 here is now just an explicit, no-detection-needed way to force the
+# same thing; the one job this block still does that the engine can't is NVIDIA=0, an opt-out --
+# exporting __GLX_VENDOR_LIBRARY_NAME=mesa here wins over the engine's own default (it only sets
+# that var when unset) and forces the run back onto the iGPU, e.g. for power-constrained testing.
+case "${NVIDIA:-}" in
+    1) export __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia ;;
+    0) export __GLX_VENDOR_LIBRARY_NAME=mesa ;;
+esac
 
 cd "$BUILD_DIR"
 exec "./$GAME_TO_RUN"
