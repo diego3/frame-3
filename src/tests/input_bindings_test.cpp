@@ -60,3 +60,42 @@ TEST_CASE("LoadOrCreateInputBindings falls back to defaults for actions missing 
 
     std::filesystem::remove_all(kScratchDir);
 }
+
+TEST_CASE("LoadOrCreateInputBindings seeds first-run defaults from defaultsPath when present") {
+    std::filesystem::remove_all(kScratchDir);
+    const std::string defaultsPath = kScratchDir + "/shipped_defaults.yaml";
+    // Deliberately every binding different from DefaultBindings()'s own KEY_UP/DOWN/LEFT/RIGHT/E,
+    // so this can only pass if defaultsPath's values actually won -- not by coincidentally
+    // matching them.
+    WriteWholeFile(defaultsPath,
+        "MoveForward: 87\n"    // 'W'
+        "MoveBackward: 83\n"   // 'S'
+        "MoveLeft: 65\n"       // 'A'
+        "MoveRight: 68\n"      // 'D'
+        "Interact: 32\n");     // KEY_SPACE
+
+    InputBindings bindings = LoadOrCreateInputBindings(kBindingsPath, defaultsPath);
+
+    CHECK(bindings.KeyFor(InputAction::MoveForward) == 87);
+    CHECK(bindings.KeyFor(InputAction::MoveBackward) == 83);
+    CHECK(bindings.KeyFor(InputAction::MoveLeft) == 65);
+    CHECK(bindings.KeyFor(InputAction::MoveRight) == 68);
+    CHECK(bindings.KeyFor(InputAction::Interact) == KEY_SPACE);
+    CHECK(std::filesystem::exists(kBindingsPath));   // still written out, same as the no-defaultsPath case
+
+    std::filesystem::remove_all(kScratchDir);
+}
+
+TEST_CASE("LoadOrCreateInputBindings falls back to DefaultBindings() when defaultsPath is also missing") {
+    std::filesystem::remove_all(kScratchDir);
+
+    InputBindings bindings = LoadOrCreateInputBindings(kBindingsPath, kScratchDir + "/does_not_exist.yaml");
+
+    CHECK(bindings.KeyFor(InputAction::MoveForward) == KEY_UP);
+    CHECK(bindings.KeyFor(InputAction::MoveBackward) == KEY_DOWN);
+    CHECK(bindings.KeyFor(InputAction::MoveLeft) == KEY_LEFT);
+    CHECK(bindings.KeyFor(InputAction::MoveRight) == KEY_RIGHT);
+    CHECK(bindings.KeyFor(InputAction::Interact) == KEY_E);
+
+    std::filesystem::remove_all(kScratchDir);
+}

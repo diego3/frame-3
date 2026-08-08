@@ -43,6 +43,8 @@ namespace {
         if (name == "orange") return ORANGE;
         if (name == "maroon") return MAROON;
         if (name == "gray" || name == "grey") return GRAY;
+        if (name == "white") return WHITE;   // reactor.yaml's Model tint default -- no color skew
+                                              // over the mesh's own baked textures.
         return fallback;
     }
 
@@ -50,8 +52,9 @@ namespace {
     // EntityFactory API, same "one lambda per component name" pattern) -- not shared between the
     // two modules because "Position" is the only loader they'd actually have in common, and
     // duplicating one eight-line lambda is cheaper than a shared registration helper nobody else
-    // needs yet.
-    void RegisterComponentLoaders(EntityFactory &factory) {
+    // needs yet. Takes Engine& (not just EntityFactory&) now too -- the "Renderable" loader below
+    // needs engine.Models() to resolve a `model:` path into a cached handle when shape == model.
+    void RegisterComponentLoaders(EntityFactory &factory, Engine &engine) {
         factory.RegisterComponentLoader("Position", [](entt::registry &registry, entt::entity entity,
                                                          const EntityDefNode &node) {
             registry.emplace<LocalTransform>(
@@ -93,12 +96,19 @@ namespace {
             registry.emplace<Patrol>(entity, patrol);
         });
 
-        factory.RegisterComponentLoader("Renderable", [](entt::registry &registry, entt::entity entity,
-                                                           const EntityDefNode &node) {
+        factory.RegisterComponentLoader("Renderable", [&engine](entt::registry &registry, entt::entity entity,
+                                                                  const EntityDefNode &node) {
             Renderable renderable;
+            std::string shapeName = "box";
             if (const EntityDefNode *shape = node.TryGet("shape")) {
-                renderable.shape = (shape->AsString("box") == "sphere") ? Renderable::Shape::Sphere
-                                                                         : Renderable::Shape::Box;
+                shapeName = shape->AsString("box");
+            }
+            if (shapeName == "sphere") {
+                renderable.shape = Renderable::Shape::Sphere;
+            } else if (shapeName == "model") {
+                renderable.shape = Renderable::Shape::Model;
+            } else {
+                renderable.shape = Renderable::Shape::Box;
             }
             if (const EntityDefNode *size = node.TryGet("size")) {
                 renderable.size = Vector3{size->Get("x").AsFloat(1.0f), size->Get("y").AsFloat(1.0f),
@@ -109,6 +119,11 @@ namespace {
             }
             if (const EntityDefNode *wireframe = node.TryGet("wireframe")) {
                 renderable.wireframe = wireframe->AsBool(true);
+            }
+            if (renderable.shape == Renderable::Shape::Model) {
+                if (const EntityDefNode *model = node.TryGet("model")) {
+                    renderable.model = engine.Models().GetHandle(model->AsString(""));
+                }
             }
             registry.emplace<Renderable>(entity, renderable);
         });
@@ -140,7 +155,7 @@ int main() {
     g_entityFactory = std::make_unique<EntityFactory>([](const std::string &name) {
         TraceLog(LOG_WARNING, "Unknown component '%s' in entity definition, skipping", name.c_str());
     });
-    RegisterComponentLoaders(*g_entityFactory);
+    RegisterComponentLoaders(*g_entityFactory, engine);
 
     g_levelLoader = std::make_unique<LevelLoader>(*g_entityFactory, g_parser);
     // FlareReactorGameLogic (Phase 3), not plain BaseGameLogic -- its constructor subscribes the
@@ -166,7 +181,7 @@ int main() {
     auto sentinels = engine.Registry().view<SentinelAI>();
     if (sentinels.begin() != sentinels.end()) {
         entt::entity sentinelActor = *sentinels.begin();
-        g_logic->AttachView(std::make_unique<AIView>(engine.Registry()), sentinelActor);
+        g_logic->AttachView(std::make_unique<AIView>(engine.Registry(), engine.Sounds()), sentinelActor);
     }
 
     engine.Run(UpdateDrawFrame);

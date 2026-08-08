@@ -26,7 +26,7 @@ components:
   Renderable:
     shape: sphere
     color: darkgray
-    wireframe: true
+    wireframe: false
     size:
       x: 0.6
       y: 0.6

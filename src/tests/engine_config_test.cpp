@@ -59,3 +59,41 @@ TEST_CASE("LoadOrCreateEngineConfig falls back to defaults for fields missing fr
 
     std::filesystem::remove_all(kScratchDir);
 }
+
+TEST_CASE("LoadOrCreateEngineConfig seeds first-run defaults from defaultsPath when present") {
+    std::filesystem::remove_all(kScratchDir);
+    const std::string defaultsPath = kScratchDir + "/shipped_defaults.yaml";
+    // Deliberately every field different from EngineConfig{}'s own struct literals, so this can
+    // only pass if defaultsPath's values actually won -- not by coincidentally matching them.
+    WriteWholeFile(defaultsPath,
+        "screenWidth: 1280\n"
+        "screenHeight: 720\n"
+        "fullscreen: true\n"
+        "targetFps: 144\n"
+        "masterVolume: 0.75\n");
+
+    EngineConfig config = LoadOrCreateEngineConfig(kConfigPath, defaultsPath);
+
+    CHECK(config.screenWidth == 1280);
+    CHECK(config.screenHeight == 720);
+    CHECK(config.fullscreen);
+    CHECK(config.targetFps == 144);
+    CHECK(config.masterVolume == doctest::Approx(0.75f));
+    CHECK(std::filesystem::exists(kConfigPath));   // still written out, same as the no-defaultsPath case
+
+    std::filesystem::remove_all(kScratchDir);
+}
+
+TEST_CASE("LoadOrCreateEngineConfig falls back to EngineConfig{} when defaultsPath is also missing") {
+    std::filesystem::remove_all(kScratchDir);
+
+    EngineConfig config = LoadOrCreateEngineConfig(kConfigPath, kScratchDir + "/does_not_exist.yaml");
+
+    CHECK(config.screenWidth == 800);
+    CHECK(config.screenHeight == 450);
+    CHECK_FALSE(config.fullscreen);
+    CHECK(config.targetFps == 60);
+    CHECK(config.masterVolume == doctest::Approx(1.0f));
+
+    std::filesystem::remove_all(kScratchDir);
+}

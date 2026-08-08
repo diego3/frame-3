@@ -15,12 +15,15 @@ struct EngineConfig {
     float masterVolume = 1.0f;
 };
 
-// Reads path; if it doesn't exist yet (first run), returns EngineConfig{} (the defaults above)
-// and writes them out to that path, so the file exists and is human-editable for next time -- the
-// same "first run creates PlayerOptions.xml" pattern the book uses. A field missing from an
-// existing file (e.g. one written by an older build) keeps its struct default rather than failing
-// the whole load -- forward/backward-compatible, the same philosophy EntityFactory::Create uses
-// for an unrecognized component name.
-EngineConfig LoadOrCreateEngineConfig(const std::string &path = "config/engine.yaml");
+// Reads path; if it doesn't exist yet (first run), seeds it from defaultsPath instead of the bare
+// EngineConfig{} struct literal -- defaultsPath is a shipped, versioned file (assets/config/
+// engine.yaml, staged into resources/config/engine.yaml at build time), so a game-dev browsing the
+// repo can see/edit the actual shipped defaults without reading C++. Falls back to EngineConfig{}
+// only if even defaultsPath is missing (a malformed/incomplete build), so this never hard-fails.
+// A field missing from either file (e.g. one written by an older build) keeps its struct default
+// rather than failing the whole load -- forward/backward-compatible, the same philosophy
+// EntityFactory::Create uses for an unrecognized component name.
+EngineConfig LoadOrCreateEngineConfig(const std::string &path = "config/engine.yaml",
+                                       const std::string &defaultsPath = "resources/config/engine.yaml");
 
 #endif // ENGINE_CONFIG_H

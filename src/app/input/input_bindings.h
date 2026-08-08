@@ -62,14 +62,19 @@ public:
 
 private:
     BindingMap keys_;
-    friend InputBindings LoadOrCreateInputBindings(const std::string &path);
+    friend InputBindings LoadOrCreateInputBindings(const std::string &path, const std::string &defaultsPath);
 };
 
-// Reads path; if it doesn't exist yet (first run), returns the defaults (matching HumanView's/
-// FlareReactorView's pre-existing hardcoded scheme, so adopting this doesn't silently change
-// behavior) and writes them out to that path -- same "first run creates the file" pattern
-// LoadOrCreateEngineConfig (ADR-0011) already established. A binding missing from an existing file
-// (e.g. written by an older build before a new InputAction existed) keeps its default.
-InputBindings LoadOrCreateInputBindings(const std::string &path = "config/keybindings.yaml");
+// Reads path; if it doesn't exist yet (first run), seeds it from defaultsPath instead of the
+// hardcoded DefaultBindings() -- defaultsPath is a shipped, versioned file (assets/config/
+// keybindings.yaml, staged into resources/config/keybindings.yaml at build time), so a game-dev
+// browsing the repo can see/edit the actual shipped bindings without reading C++. Falls back to
+// DefaultBindings() (matching HumanView's/FlareReactorView's pre-existing hardcoded scheme, so
+// adopting this doesn't silently change behavior) only if even defaultsPath is missing. A binding
+// missing from either file (e.g. written by an older build before a new InputAction existed) keeps
+// its default -- same "first run creates the file" pattern LoadOrCreateEngineConfig (ADR-0011)
+// already established.
+InputBindings LoadOrCreateInputBindings(const std::string &path = "config/keybindings.yaml",
+                                         const std::string &defaultsPath = "resources/config/keybindings.yaml");
 
 #endif // INPUT_BINDINGS_H

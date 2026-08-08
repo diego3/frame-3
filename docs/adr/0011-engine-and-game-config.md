@@ -3,6 +3,35 @@
 - Status: Accepted
 - Date: 2026-08-04
 
+## Addendum: shipped, versioned defaults (2026-08-07)
+
+Reopens this ADR's own "`config/` is entirely unversioned/generated" Tradeoff, on explicit request:
+a game-dev browsing the repo had no way to see what `EngineConfig`/`InputBindings` (ADR-0013)
+options even exist without reading C++ struct literals -- there was nothing to point at.
+
+`assets/config/engine.yaml` and `assets/config/keybindings.yaml` are new, real, versioned files
+(staged into `resources/config/` at build time, same `assets/` -> `resources/` pipeline every other
+asset already goes through) holding exactly what `EngineConfig{}`'s struct literals / `input_bindings.cpp`'s `DefaultBindings()` used to hardcode. `LoadOrCreateEngineConfig`/`LoadOrCreateInputBindings`
+both gained a second parameter, `defaultsPath` (defaulting to `resources/config/engine.yaml`/
+`resources/config/keybindings.yaml`) -- on first run (the player-writable `path` doesn't exist
+yet), they now seed from `defaultsPath` instead of the bare struct literal, falling back to that
+struct literal only if `defaultsPath` is itself missing (a malformed/incomplete build). The
+player-writable copy's own behavior (read/edit/re-run picks up the change) is unchanged.
+
+**What this does NOT change**: `config/engine.yaml`/`config/keybindings.yaml` (the real,
+player-writable, per-run copies this ADR's original decision covers) stay exactly as decided --
+gitignored, generated on first run, never committed. Only a *second*, separate file -- the shipped
+default this generates *from* -- is now versioned. The original "no eviction/no versioning of the
+player's own copy" reasoning is untouched; this addendum only removes the "there's nothing to
+version" premise, which stopped being true the moment someone actually wanted to look at the
+defaults without reading `engine_config.h`.
+
+Verified: `tests/engine_config_test.cpp`/`tests/input_bindings_test.cpp` gained cases proving the
+`defaultsPath`-present and `defaultsPath`-missing paths both resolve correctly (deliberately using
+values that differ from the struct literals, so a passing test can't be a coincidence); an
+end-to-end check changing `assets/config/engine.yaml`'s `targetFps` and rebuilding confirmed the
+generated `config/engine.yaml` actually picks up the new value, then reverted.
+
 ## Implementation status (2026-08-05)
 
 Landed as designed, with two additions beyond the ADR's own sketch:
@@ -158,10 +187,12 @@ resort, not the first move.
 - No in-game options UI — `screen_options.c` stays exactly the stub it is today. This ADR makes the
   config *files* real; wiring a UI that reads/writes `EngineConfig`/`GameConfig` at runtime (so a
   player can change settings without hand-editing YAML) is separate, future work.
-- `config/` is entirely unversioned/generated — accepted because there's nothing to ship a default
-  for (the struct defaults are the shipped defaults); revisit only if a project ever wants to ship
-  a non-trivial preset (e.g. a "recommended settings for Steam Deck" file) — not a need that exists
-  today.
+- ~~`config/` is entirely unversioned/generated — accepted because there's nothing to ship a
+  default for (the struct defaults are the shipped defaults)~~ — revisited by this ADR's own
+  2026-08-07 addendum above: the *player-writable* `config/` copy is still entirely unversioned/
+  generated, exactly as decided; a separate, versioned *shipped-defaults* file
+  (`assets/config/`) now exists specifically so those defaults are visible/editable without
+  reading C++.
 - Flat structs only, no nested/versioned schema — matches the "cover the actual need" reasoning
   used throughout every prior ADR in this project; revisit once `EngineConfig`/`GameConfig`
   actually need something structurally richer than a handful of scalars.

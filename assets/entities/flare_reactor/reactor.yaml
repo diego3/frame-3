@@ -1,7 +1,14 @@
 # flare_reactor reactor entity (docs/rfc/0001-flare-reactor-pipeline-experiment.md). Phase 3 gave
 # it a real Reactor component (active state, validated via EvtData_ActivateBeacon/GameLogic) --
-# still just a gray solid box visually; the color-flip-to-red-on-trigger pulse is Phase 4
-# (BeaconPulseProcess), per the RFC's "Fases propostas".
+# the color-flip-to-red-on-trigger pulse is Phase 4 (BeaconPulseProcess), per the RFC's "Fases
+# propostas"; unchanged by the swap below (still lerps Renderable::color toward RED, now tinting
+# the model's own textures instead of a flat-shaded box).
+#
+# Renderable.shape/model (Sketchfab "Reactor Nuclear" by DavidFer, CC-BY-4.0 -- see
+# assets/models/reactor_nuclear/license.txt) replaces the old solid gray box placeholder. size is
+# a scale multiplier here, not a box half-extent (app/scene/renderable.h) -- the mesh's own raw
+# bounding box is ~35x60x34 units (computed from scene.gltf's accessor min/max), so 0.035 brings it
+# down to roughly the same few-unit footprint the 1.5-unit box occupied.
 components:
   Position:
     x: 0
@@ -9,10 +16,10 @@ components:
     z: 0
   Reactor: false
   Renderable:
-    shape: box
-    color: gray
-    wireframe: false
+    shape: model
+    model: resources/models/reactor_nuclear/scene.gltf
+    color: white
     size:
-      x: 1.5
-      y: 1.5
-      z: 1.5
+      x: 0.06
+      y: 0.06
+      z: 0.06
