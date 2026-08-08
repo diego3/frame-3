@@ -52,3 +52,25 @@ make -C "$SCRIPT_DIR/src" PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE GAME="$GA
 # call the Makefile directly and only ever reference $(PROJECT_NAME)).
 BUILD_DIR="$SCRIPT_DIR/build/desktop"
 cp -f "$BUILD_DIR/raylib_game" "$BUILD_DIR/$GAME"
+
+# Versioned identifier copy (2026-08-08): same "local-dev convenience, lives here not in the
+# Makefile" reasoning as the $GAME copy above -- an *additional* stamped artifact, not a
+# replacement for it. run.sh still launches build/desktop/$GAME unchanged; this one only exists so
+# a binary sitting in build/desktop/ (or copied elsewhere) can be identified after the fact: which
+# VERSION and which exact commit it was built from. VERSION (repo root) is a plain semver string,
+# bumped by hand on deliberate milestones -- nothing here bumps it automatically. The git SHA is
+# what actually answers "is this the build with my latest changes", which was the real question
+# behind the flare_reactor/raylib_game staleness mix-up this replaces.
+VERSION="$(cat "$SCRIPT_DIR/VERSION")"
+GIT_SHA="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+if ! git -C "$SCRIPT_DIR" diff --quiet 2>/dev/null || ! git -C "$SCRIPT_DIR" diff --cached --quiet 2>/dev/null; then
+    GIT_SHA="${GIT_SHA}-dirty"
+fi
+VERSIONED_NAME="${GAME}-v${VERSION}-${GIT_SHA}"
+
+# Drop this GAME's older versioned copies first -- otherwise build/desktop/ accumulates one ~2MB
+# binary per build forever. Only ever one canonical versioned copy per GAME at a time, matching
+# $BUILD_DIR/$GAME's own "always the latest" semantics.
+rm -f "$BUILD_DIR/$GAME"-v*
+cp -f "$BUILD_DIR/raylib_game" "$BUILD_DIR/$VERSIONED_NAME"
+echo "Built $BUILD_DIR/$VERSIONED_NAME"
