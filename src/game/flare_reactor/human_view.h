@@ -22,6 +22,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 
 #include <entt/entt.hpp>
 #include <raylib.h>
@@ -31,10 +32,19 @@
 #include "app/input/input_bindings.h"
 #include "app/resource/resource_cache.h"
 #include "events.h"
+#include "lighting.h"
+#include "skybox.h"
 
 class FlareReactorView : public HumanViewBase {
 public:
-    FlareReactorView(entt::registry &registry, EventManager &events, ResourceCache<Sound> &sounds);
+    // `skyboxCubemapPath`/`beaconSoundPath`: from GameConfig (game_config.h), not hardcoded here --
+    // the caller (main.cpp) loads GameConfig once and passes these through. `lighting`: owned by
+    // main.cpp (constructed before this view, so its "Renderable" component loader can call
+    // Lighting::ApplyToModel while loading the level -- see main.cpp), referenced here for
+    // FlareReactorScene's per-frame draw/update calls, not owned by this view.
+    FlareReactorView(entt::registry &registry, EventManager &events, ResourceCache<Sound> &sounds,
+                      const std::string &skyboxCubemapPath, const std::string &beaconSoundPath,
+                      Lighting &lighting);
 
     void VOnAttach(GameViewId id, std::optional<entt::entity> actorId) override;
     void VOnUpdate(float dt) override;
@@ -48,6 +58,17 @@ private:
     std::shared_ptr<Sound> beaconSound_;   // loaded once in the constructor, released before Shutdown
     Camera3D camera_;
     InputBindings input_;   // config/keybindings.yaml, loaded once here (ADR-0013 Decision 3)
+    // Constructed before FlareReactorScene (below) is pushed, so the scene element can hold a
+    // reference to it for the whole view's lifetime -- same "member outlives the pushed element"
+    // shape camera_ already has.
+    Skybox skybox_;
+    Lighting &lighting_;   // main.cpp-owned, see the constructor comment above
+    // KEY_TAB toggles between this (gameplay: player moves, camera follows) and a raylib-builtin
+    // CAMERA_FREE fly-around, added purely to make eyeballing graphics-quality changes (the skybox,
+    // to start) easier -- not an InputBindings action (ADR-0013's rebindable scheme is for real
+    // gameplay actions; this is a dev/validation tool, same category as debug_overlay.h's raw
+    // KEY_F3 toggle, not something a player would ever rebind).
+    bool freeCameraActive_ = false;
 };
 
 #endif // FLARE_REACTOR_HUMAN_VIEW_H

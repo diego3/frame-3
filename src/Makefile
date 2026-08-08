@@ -131,7 +131,10 @@ ifeq ($(GAME),flare_reactor)
 PROJECT_SOURCE_FILES_CPP += \
     game/flare_reactor/main.cpp \
     game/flare_reactor/human_view.cpp \
-    game/flare_reactor/game_logic.cpp
+    game/flare_reactor/game_logic.cpp \
+    game/flare_reactor/game_config.cpp \
+    game/flare_reactor/skybox.cpp \
+    game/flare_reactor/lighting.cpp
 endif
 
 # Source location of game content, staged into ./resources before linking (see 'resources' target)
