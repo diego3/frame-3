@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Notas de Estudo — Rendering (frame-3)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f1216;
+    --panel: #161b22;
+    --panel-border: #2a313c;
+    --text: #dfe6ee;
+    --text-dim: #9aa7b5;
+    --accent: #4fd1ff;
+    --accent-2: #ff6b6b;
+    --code-bg: #0b0e12;
+    --todo: #e0a83e;
+    --done: #4fd18b;
+    --planned: #7d8794;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  main {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 6rem;
+  }
+  header h1 {
+    font-size: 1.7rem;
+    margin-bottom: 0.25rem;
+  }
+  header p.subtitle {
+    color: var(--text-dim);
+    margin-top: 0;
+    font-size: 0.95rem;
+  }
+  header p.subtitle em {
+    color: var(--accent);
+    font-style: normal;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid var(--panel-border);
+    margin: 2.5rem 0;
+  }
+  h2 {
+    font-size: 1.3rem;
+    margin-top: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+  h2 .date {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--text-dim);
+  }
+  h3 {
+    font-size: 1.05rem;
+    color: var(--accent);
+    margin-top: 2rem;
+  }
+  p { margin: 0.8rem 0; }
+  code {
+    background: var(--code-bg);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.9em;
+    color: #b8e6ff;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 0.9rem 1rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+  }
+  pre code {
+    background: none;
+    padding: 0;
+    color: var(--text);
+  }
+  .status-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+  .status-table th, .status-table td {
+    text-align: left;
+    padding: 0.5rem 0.7rem;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .status-table th {
+    color: var(--text-dim);
+    font-weight: 500;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .badge.done { background: rgba(79, 209, 139, 0.15); color: var(--done); }
+  .badge.progress { background: rgba(224, 168, 62, 0.15); color: var(--todo); }
+  .badge.planned { background: rgba(125, 135, 148, 0.15); color: var(--planned); }
+  .note {
+    border-left: 3px solid var(--accent);
+    background: var(--panel);
+    padding: 0.8rem 1rem;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.92rem;
+    margin: 1rem 0;
+  }
+  .note.why {
+    border-left-color: var(--accent-2);
+  }
+  .refs {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .refs code { color: var(--text-dim); }
+  a { color: var(--accent); }
+  ul { padding-left: 1.3rem; }
+  li { margin: 0.35rem 0; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>📓 Notas de Estudo — Rendering em frame-3</h1>
+  <p class="subtitle">Caderno pessoal, <em>documento vivo</em>: cada seção é um tema de rendering estudado numa sessão, com data. Vai crescendo conforme novos assuntos aparecem — não é spec nem ADR, é anotação de aprendizado, âncorada no código real do projeto.</p>
+</header>
+
+<section id="status">
+  <h2>Roadmap de efeitos do reator</h2>
+  <p>Board de acompanhamento dos efeitos de shader discutidos para <code>game/flare_reactor</code> (ver seção abaixo). Atualizar o status conforme cada um é implementado.</p>
+  <table class="status-table">
+    <tr><th>Efeito</th><th>Status</th><th>Esforço</th></tr>
+    <tr><td>Fresnel rim glow</td><td><span class="badge done">Concluído</span></td><td>Baixo</td></tr>
+    <tr><td>Scrolling core texture (energy flow)</td><td><span class="badge planned">Planejado</span></td><td>Baixo</td></tr>
+    <tr><td>Emissive pulse (ligado ao estado do Reactor)</td><td><span class="badge planned">Planejado</span></td><td>Médio</td></tr>
+    <tr><td>Fake bloom (threshold + passe extra)</td><td><span class="badge planned">Planejado, depois</span></td><td>Médio/Alto (novo passe de render)</td></tr>
+    <tr><td>Especular por material (metalness)</td><td><span class="badge planned">Planejado, depois</span></td><td>Médio</td></tr>
+  </table>
+</section>
+
+<hr>
+
+<section id="2026-08-08-shader-effects">
+  <h2>Shader effects para o reator <span class="date">2026-08-08</span></h2>
+
+  <p>Ponto de partida: <code>game/flare_reactor</code> já tem um Blinn-Phong básico (<code>src/game/flare_reactor/lighting.h/.cpp</code>, <code>assets/shaders/glsl330/lighting.vs/fs</code>), portado do exemplo <code>shaders_basic_lighting</code> do raylib — uma luz direcional "sun" + um point light cyan perto do núcleo do reator. Cada um dos 13 materiais do modelo do reator (Sketchfab "Reactor Nuclear") tem sua <strong>própria instância de shader compilada</strong> (não uma compartilhada) — decisão registrada no header de <code>lighting.h</code>: <code>UnloadModel → UnloadMaterial</code> do raylib dá <code>UnloadShader</code> sem refcount, então compartilhar uma instância entre materiais causaria double-free quando o modelo for descarregado.</p>
+
+  <p>Esse padrão — um uniform por-frame empurrado pra N shaders independentes via <code>Lighting::Update(registry, viewPos)</code> — é o ponto de extensão natural pra qualquer efeito novo que precise de um uniform global (tempo, intensidade de pulso etc.): não criar um mecanismo novo, estender esse loop.
+
+  <h3>1. Fresnel rim glow</h3>
+  <p><strong>O que é:</strong> brilho que aparece mais forte nas bordas de um objeto, quando a normal da superfície é quase perpendicular à direção da câmera. É o efeito clássico de "contorno luminoso" em sci-fi (energy shields, reatores, hologramas). Fisicamente é uma aproximação do <em>efeito Fresnel</em> real (reflectância que varia com o ângulo de incidência), mas aqui é só um truque visual barato — não precisa ser fisicamente correto.</p>
+  <p><strong>Fórmula:</strong> quanto mais a normal <code>N</code> se afasta da direção pra câmera <code>V</code>, mais forte o termo:</p>
+  <pre><code>float fresnel = pow(1.0 - max(dot(normal, viewD), 0.0), power);
+finalColor.rgb += fresnel * rimColor.rgb * rimIntensity;</code></pre>
+  <p><code>viewD</code> já existe em <code>lighting.fs</code> (calculado a partir do uniform <code>viewPos</code>, que <code>Lighting::Update</code> já empurra todo frame). <code>power</code> tipicamente entre 2 e 4 — quanto maior, mais fino o contorno.</p>
+  <div class="note">
+    <strong>Por que é aditivo, não multiplicativo:</strong> o termo de Fresnel simula luz "vazando" da borda, então soma ao resultado final em vez de multiplicar — multiplicar escureceria o objeto onde não há brilho de borda.
+  </div>
+
+  <div class="note" style="border-left-color: var(--done);">
+    <strong>✅ Implementado <span class="date">2026-08-08</span>:</strong>
+    <p style="margin-top:0.4rem;"><code>assets/shaders/glsl330/lighting.fs</code> ganhou 3 uniforms novos (<code>vec3 rimColor</code>, <code>float rimPower</code>, <code>float rimIntensity</code>) e a linha do termo aditivo, logo antes da correção de gama:</p>
+    <pre><code>float fresnel = pow(1.0 - max(dot(normal, viewD), 0.0), rimPower);
+finalColor.rgb += fresnel*rimColor*rimIntensity;</code></pre>
+    <p><code>normal</code> e <code>viewD</code> já existiam no shader (usados pelo termo especular do Blinn-Phong) — nenhuma mudança em <code>lighting.vs</code> foi necessária.</p>
+    <p><code>src/game/flare_reactor/lighting.cpp</code> ganhou os valores fixos, no mesmo padrão de <code>kLights</code> (constantes estáticas, documentadas como "revisitar se precisar reagir a estado de jogo"):</p>
+    <pre><code>constexpr Color kRimColor = {110, 210, 255, 255}; // mesmo cyan do point light do núcleo
+constexpr float kRimPower = 3.0f;
+constexpr float kRimIntensity = 1.5f; // subiu de 0.6 pra 1.5 (2026-08-08) pra ficar visível de cara</code></pre>
+    <p>Setados uma vez em <code>SetupRim(Shader&amp;)</code>, chamada de dentro de <code>LoadLightingShaderInstance()</code> — ou seja, roda tanto pro shader de primitives quanto pra cada uma das 13 instâncias por-material do reator (<code>ApplyToModel</code>), sem precisar de refresh por frame (diferente de <code>viewPos</code>, que muda com a câmera): são valores estáticos, então um <code>SetShaderValue</code> na criação já basta.</p>
+    <p>Build validado com <code>make GAME=flare_reactor</code> (paths dos vendors documentados no skill <code>run</code>) — compilou sem warnings. Checagem visual fica por conta do usuário (ver <code>.claude/skills/run/SKILL.md</code>: validação visual não é mais um passo automático daqui pra frente).</p>
+  </div>
+
+  <h3>2. Scrolling core texture (energy flow)</h3>
+  <p><strong>O que é:</strong> animar uma textura de "energia" deslizando pela superfície do núcleo, deslocando as coordenadas UV ao longo do tempo. Dá sensação de fluido/plasma em movimento sem precisar de partículas.</p>
+  <pre><code>vec2 scrolledUV = fragTexCoord + vec2(time * scrollSpeed, 0.0);
+vec4 energyColor = texture(energyTex, scrolledUV);
+finalColor.rgb += energyColor.rgb * energyIntensity;</code></pre>
+  <p>Precisa de um <code>uniform float time</code> novo — mesmo ponto de entrada do Fresnel: estender <code>Lighting::Update</code> pra também setar esse uniform em todas as instâncias de shader (a primitives shader e as 13 do modelo, via <code>ApplyToModel</code>).</p>
+
+  <h3>3. Emissive pulse ligado ao estado do Reactor</h3>
+  <p><strong>Contexto:</strong> o <code>BeaconPulseProcess</code> (RFC-0001 Phase 4) já faz lerp de <code>Renderable::color</code> em direção a RED quando o beacon é ativado, e isso hoje se propaga via <code>colDiffuse</code> (o <code>tint</code> em <code>lighting.fs</code>) — <strong>multiplicativo</strong>: o objeto fica "tingido" de vermelho, mas não parece emitir luz própria.</p>
+  <p><strong>Ideia:</strong> separar isso num termo <strong>emissivo aditivo</strong>, controlado por um uniform <code>float pulseIntensity</code> (0 = inativo, 1 = pico do pulso) — mais parecido com "o núcleo está brilhando" do que "o objeto mudou de cor".</p>
+  <div class="note why">
+    <strong>Por que separar do <code>colDiffuse</code> existente:</strong> multiplicar por tint escurece partes que já são escuras (sombra), então nunca vai parecer "luz saindo". Um termo aditivo, independente da iluminação recebida, é o que faz o núcleo parecer fonte de luz mesmo em ângulos sem luz direta.
+  </div>
+
+  <h3>4. Fake bloom (threshold + passe extra) — depois</h3>
+  <p>Bloom de verdade precisa de post-processing: renderizar a cena pra uma textura, extrair pixels acima de um threshold de luminância, borrar (blur gaussiano), e compor de volta. O projeto ainda não tem nenhum passe de post-processing (<code>rlLoadFramebuffer</code> ou equivalente) — isso é mudança de arquitetura, não só shader, então fica pra depois do Fresnel + scroll + pulse, que já cobrem boa parte da sensação "glow" sem precisar de um passe novo.</p>
+
+  <h3>5. Especular por material (metalness) — depois</h3>
+  <p>Hoje o expoente especular (<code>shine</code>) é fixo em <code>16.0</code> pra todo mundo em <code>lighting.fs</code>. Os 13 materiais do glTF do reator provavelmente têm valores de metalness/roughness próprios (PBR) que dá pra ler e passar como uniform por-material em <code>Lighting::ApplyToModel</code>, pra partes metálicas ficarem mais especulares que partes foscas. Esforço médio — precisa antes inspecionar o que o glTF do Sketchfab realmente carrega em cada um dos 13 materiais.</p>
+
+  <h3>Ordem escolhida</h3>
+  <p>Fresnel rim → scrolling core texture → emissive pulse. Os três só precisam do mesmo tipo de extensão (um novo uniform empurrado por <code>Lighting::Update</code> a cada frame, pro shader de primitives + os 13 de material), sem passe de render novo nem mudança de arquitetura.</p>
+
+  <p class="refs">Refs: <code>src/game/flare_reactor/lighting.h/.cpp</code>, <code>assets/shaders/glsl330/lighting.vs/fs</code>, <code>src/game/flare_reactor/skybox.h/.cpp</code> (mesmo raciocínio de "shader não compartilhado"), RFC-0001 Phase 4 (<code>BeaconPulseProcess</code>).</p>
+</section>
+
+</main>
+</body>
+</html>
