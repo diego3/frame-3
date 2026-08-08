@@ -165,6 +165,18 @@ void FlareReactorView::VOnUpdate(float dt) {
         }
     }
 
+    // KEY_P: dev/validation tool (screenshot_capture.h), same raw-key category as KEY_TAB above --
+    // not an InputBindings action. Queue<T>, not Emit<T>: EventManager::DispatchQueued() runs at
+    // the very start of the *next* frame's TickAndUpdateDraw (app/core/engine.cpp), before that
+    // frame's own BeginDrawing/EndDrawing -- so ScreenshotCapture's TakeScreenshot() call ends up
+    // reading the front buffer exactly as it looked right after *this* frame's EndDrawing (below),
+    // i.e. the frame the player actually saw when they pressed P. Emit<T> here instead would run
+    // immediately, before this frame has even drawn -- one frame stale.
+    if (IsKeyPressed(KEY_P)) {
+        TraceLog(LOG_INFO, "FlareReactorView: KEY_P pressed -- queuing EvtData_ScreenshotRequested");
+        events_.Queue(EvtData_ScreenshotRequested{});
+    }
+
     if (freeCameraActive_) {
         // raylib's own built-in controller (rcamera.h) -- mouse-look, WASD to move, space/ctrl for
         // up/down, wheel to dolly toward camera_.target. Player position and the gameplay camera's

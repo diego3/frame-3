@@ -33,6 +33,7 @@
 #include "human_view.h"
 #include "lighting.h"
 #include "reactor.h"
+#include "screenshot_capture.h"
 #include "sentinel_ai.h"
 #include "tags.h"
 
@@ -146,6 +147,10 @@ namespace {
     // (ADR-0004). A plain `Lighting lighting;` local in main() would destruct at the closing brace,
     // i.e. after the explicit engine.Shutdown() call already ran.
     std::unique_ptr<Lighting> g_lighting;
+    // Subscribes to EvtData_ScreenshotRequested (events.h) in its constructor -- holds no GL/audio
+    // resource, so unlike g_lighting there's no ordering requirement against engine.Shutdown(), but
+    // reset alongside it below anyway for symmetry with the rest of this block.
+    std::unique_ptr<ScreenshotCapture> g_screenshotCapture;
 
     void UpdateDrawFrame() {
         UpdateDebugOverlay(GetFrameTime());   // F3 toggles a /proc/self stats HUD (Linux desktop only)
@@ -173,6 +178,7 @@ int main() {
     // Constructed before the entity factory below -- its "Renderable" component loader calls
     // Lighting::ApplyToModel while the level loads (see RegisterComponentLoaders).
     g_lighting = std::make_unique<Lighting>();
+    g_screenshotCapture = std::make_unique<ScreenshotCapture>(engine.Events());
 
     g_entityFactory = std::make_unique<EntityFactory>([](const std::string &name) {
         TraceLog(LOG_WARNING, "Unknown component '%s' in entity definition, skipping", name.c_str());
@@ -216,6 +222,7 @@ int main() {
     g_logic.reset();   // drops the attached FlareReactorView too -- g_view becomes dangling
     g_view = nullptr;
     g_lighting.reset();   // UnloadShader before the GL context closes below (ADR-0004)
+    g_screenshotCapture.reset();
 
     engine.Shutdown();
 

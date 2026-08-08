@@ -134,7 +134,8 @@ PROJECT_SOURCE_FILES_CPP += \
     game/flare_reactor/game_logic.cpp \
     game/flare_reactor/game_config.cpp \
     game/flare_reactor/skybox.cpp \
-    game/flare_reactor/lighting.cpp
+    game/flare_reactor/lighting.cpp \
+    game/flare_reactor/screenshot_capture.cpp
 endif
 
 # Source location of game content, staged into ./resources before linking (see 'resources' target)
