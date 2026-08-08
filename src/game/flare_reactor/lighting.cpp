@@ -25,6 +25,15 @@ namespace {
         {/*LIGHT_POINT=*/1, {0.0f, 3.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {110, 210, 255, 255}},
     };
 
+    // Fresnel rim glow tuning (docs/learning/rendering.html, "Fresnel rim glow") -- cyan to match
+    // the core point light above, not physically motivated. Fixed/static for now, same as kLights;
+    // revisit if this ever needs to react to game state (e.g. flare up on beacon trigger).
+    // kRimIntensity bumped 0.6 -> 1.5 (2026-08-08, user request) to read clearly at a glance instead
+    // of needing a close, slow orbit to notice -- easy to retune further, just this one constant.
+    constexpr Color kRimColor = {110, 210, 255, 255};
+    constexpr float kRimPower = 3.0f;
+    constexpr float kRimIntensity = 1.5f;
+
     // Applies kLights to `shader` -- see lighting.h's header comment on why this reimplements
     // rlights.h's CreateLight/UpdateLightValues uniform-setting instead of calling them (their
     // shared lightsCount counter isn't safe across N independent shader instances). Uniform names
@@ -54,11 +63,21 @@ namespace {
         }
     }
 
+    // Sets rimColor/rimPower/rimIntensity once -- static values, so (unlike viewPos) this doesn't
+    // need a per-frame Update() call.
+    void SetupRim(Shader &shader) {
+        float color[3] = {kRimColor.r / 255.0f, kRimColor.g / 255.0f, kRimColor.b / 255.0f};
+        SetShaderValue(shader, GetShaderLocation(shader, "rimColor"), color, SHADER_UNIFORM_VEC3);
+        SetShaderValue(shader, GetShaderLocation(shader, "rimPower"), &kRimPower, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(shader, GetShaderLocation(shader, "rimIntensity"), &kRimIntensity, SHADER_UNIFORM_FLOAT);
+    }
+
     Shader LoadLightingShaderInstance() {
         Shader shader = LoadShader(TextFormat("resources/shaders/glsl%i/lighting.vs", GLSL_VERSION),
                                     TextFormat("resources/shaders/glsl%i/lighting.fs", GLSL_VERSION));
         shader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(shader, "viewPos");
         SetupLights(shader);
+        SetupRim(shader);
         return shader;
     }
 }

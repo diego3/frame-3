@@ -32,6 +32,13 @@ uniform Light lights[MAX_LIGHTS];
 uniform vec4 ambient;
 uniform vec3 viewPos;
 
+// Fresnel rim glow -- view-dependent edge highlight (docs/learning/rendering.html, "Fresnel rim
+// glow"). Not physically-based reflectance, just the pow(1-N.V, power) cheat: additive so it reads
+// as light leaving the edge instead of tinting/darkening it.
+uniform vec3 rimColor;
+uniform float rimPower;
+uniform float rimIntensity;
+
 void main()
 {
     // Texel color fetching from texture sampler
@@ -72,6 +79,12 @@ void main()
 
     finalColor = (texelColor*((tint + vec4(specular, 1.0))*vec4(lightDot, 1.0)));
     finalColor += texelColor*(ambient/10.0)*tint;
+
+    // Fresnel rim glow: strongest where the surface normal grazes the view direction (edges,
+    // silhouettes), ~0 where it faces the camera head-on. Additive, unlit by texelColor/tint on
+    // purpose -- it's meant to read as the surface emitting light at its edge, not reflecting it.
+    float fresnel = pow(1.0 - max(dot(normal, viewD), 0.0), rimPower);
+    finalColor.rgb += fresnel*rimColor*rimIntensity;
 
     // Gamma correction
     finalColor = pow(finalColor, vec4(1.0/2.2));
