@@ -23,7 +23,7 @@ jobs:
     env:
       PROJECT_NAME: ${{ github.event.repository.name }}
       PROJECT_REPO_NAME: ${{ github.event.repository.name }}
-      PROJECT_BUILD_PATH: ${{ github.event.repository.name }}/src
+      PROJECT_BUILD_PATH: ${{ github.event.repository.name }}/build/release
       PROJECT_RELEASE_PATH: ${{ github.event.repository.name }}_dev_macos
       PROJECT_RESOURCES_SRC_PATH: assets
       PROJECT_RESOURCES_DST_PATH: resources
@@ -91,7 +91,7 @@ jobs:
 
     # Generating static library, note that i386 architecture is deprecated
     # Defining GL_SILENCE_DEPRECATION because OpenGL is deprecated on macOS
-    # x86_64 target is macos10.15, not the template's original 10.12: app/file_io.h (backing
+    # x86_64 target is macos10.15, not the template's original 10.12: app/io/file_io.h (backing
     # engine_config.cpp since docs/adr/0011) uses std::filesystem::path, unavailable before 10.15.
     # Kept in sync with the same target in the "Build Product" step below.
     - name: Build raylib Library
@@ -122,22 +122,23 @@ jobs:
     - name: Build Product
       run: |
         cd ${{ env.PROJECT_REPO_NAME }}/src
+        BUILD=../build/release
 
         # Build project x86_64 binary
         # TODO: Link with x86_64 raylib library: libraylib_x86_64.a
-        make PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE PROJECT_CUSTOM_FLAGS=${{ env.PROJECT_CUSTOM_FLAGS }} PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib ENTT_PATH=../../entt MINI_YAML_PATH=../../mini-yaml PROJECT_CUSTOM_FLAGS="-target x86_64-apple-macos10.15"
-        mv -v -f ${{ env.PROJECT_NAME }} ${{ env.PROJECT_NAME }}_x86_64
-        make clean
+        make PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE PROJECT_CUSTOM_FLAGS=${{ env.PROJECT_CUSTOM_FLAGS }} PROJECT_BUILD_PATH=$BUILD RAYLIB_PATH=../../raylib ENTT_PATH=../../entt MINI_YAML_PATH=../../mini-yaml PROJECT_CUSTOM_FLAGS="-target x86_64-apple-macos10.15"
+        mv -v -f $BUILD/${{ env.PROJECT_NAME }} $BUILD/${{ env.PROJECT_NAME }}_x86_64
+        make clean PROJECT_BUILD_PATH=$BUILD
 
         # Build project arm64 binary
         # TODO: Link with arm64 raylib library: libraylib_arm.a
-        make PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE PROJECT_CUSTOM_FLAGS=${{ env.PROJECT_CUSTOM_FLAGS }} PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib ENTT_PATH=../../entt MINI_YAML_PATH=../../mini-yaml PROJECT_CUSTOM_FLAGS="-target arm64-apple-macos11"
-        mv -v -f ${{ env.PROJECT_NAME }} ${{ env.PROJECT_NAME }}_arm64
-        make clean
+        make PLATFORM=PLATFORM_DESKTOP BUILD_MODE=RELEASE PROJECT_CUSTOM_FLAGS=${{ env.PROJECT_CUSTOM_FLAGS }} PROJECT_BUILD_PATH=$BUILD RAYLIB_PATH=../../raylib ENTT_PATH=../../entt MINI_YAML_PATH=../../mini-yaml PROJECT_CUSTOM_FLAGS="-target arm64-apple-macos11"
+        mv -v -f $BUILD/${{ env.PROJECT_NAME }} $BUILD/${{ env.PROJECT_NAME }}_arm64
+        make clean PROJECT_BUILD_PATH=$BUILD
 
         # Join x86_64 and arm64 binaries
-        lipo -create -output ${{ env.PROJECT_NAME }} ${{ env.PROJECT_NAME }}_x86_64 ${{ env.PROJECT_NAME }}_arm64
-        lipo ${{ env.PROJECT_NAME }} -detailed_info
+        lipo -create -output $BUILD/${{ env.PROJECT_NAME }} $BUILD/${{ env.PROJECT_NAME }}_x86_64 $BUILD/${{ env.PROJECT_NAME }}_arm64
+        lipo $BUILD/${{ env.PROJECT_NAME }} -detailed_info
         cd ..
 
     - name: Generate Artifacts

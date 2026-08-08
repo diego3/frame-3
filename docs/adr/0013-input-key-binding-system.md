@@ -1,7 +1,67 @@
 # 13. Input / key-binding system: data-driven action→key mapping for `HumanView`
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-08-05
+
+## Addendum: shipped, versioned defaults (2026-08-07)
+
+`config/keybindings.yaml` picked up the same treatment [ADR-0011](0011-engine-and-game-config.md)'s
+own 2026-08-07 addendum gives `config/engine.yaml` -- see that addendum for the full reasoning
+(a game-dev browsing the repo had no versioned file to point at for "what bindings exist"). New
+`assets/config/keybindings.yaml` (staged into `resources/config/keybindings.yaml` at build time)
+holds exactly what `DefaultBindings()` (`input_bindings.cpp`) used to hardcode, including a comment
+block mapping each raw raylib key code to its human-readable `KEY_*` name -- this ADR's own
+Tradeoffs deferred a real name↔code mapping in the *data format* until a rebinding UI needs one;
+this addendum documents the codes in a comment instead, without touching that format.
+`LoadOrCreateInputBindings` gained a second parameter, `defaultsPath`, seeding first-run generation
+from it instead of the bare `DefaultBindings()`. `config/keybindings.yaml` itself (the real,
+player-writable, per-run copy) is unchanged -- still gitignored, still generated on first run.
+
+## Implementation status (2026-08-06)
+
+Landed as designed below, picked up as part of
+[RFC-0001](../rfc/0001-flare-reactor-pipeline-experiment.md)'s InputManager step, with two
+deviations discovered while implementing:
+
+- **`InputAction` gained a fifth value, `Interact`, beyond this ADR's original movement-only
+  sketch.** §1's own Open Questions left "should `InputAction` grow beyond movement... ahead of a
+  second game existing, or only once a concrete game needs one?" undecided, leaning toward the
+  latter — that's exactly what happened: `game/flare_reactor`'s `PlayerInteractElement`-equivalent
+  needed a discrete, non-movement action, so `Interact` was added at that point, not guessed at
+  ahead of time.
+- **`IsDown` alone wasn't enough — `IsPressed` (edge-triggered, wraps raylib's `IsKeyPressed`) was
+  added alongside it.** This ADR's original §4 sketch only ever needed level-triggered movement
+  (`IsKeyDown`); a discrete one-shot action like `Interact` firing every frame the key stays held
+  (what `IsDown` alone would do) is wrong for a "press E to activate" action — a real gap this
+  ADR's own design left uncovered, not anticipated in the Decision above. Both `IsDown`/`IsPressed`
+  are defined `inline` directly in `input_bindings.h`, not `input_bindings.cpp` — deliberately, so
+  the `.cpp` (also compiled into the test build, `tests/input_bindings_test.cpp`) never references
+  `IsKeyDown`/`IsKeyPressed` and stays link-safe without `-lraylib`, the same
+  raylib-runtime-vs-headers-only split `src/Makefile` already documents for
+  `game/sandbox/human_view.cpp`.
+
+What actually shipped: `InputAction`/`InputBindings`/`LoadOrCreateInputBindings`
+(`src/app/input_bindings.h`/`.cpp`), first real (non-test) caller
+`game/flare_reactor/human_view.cpp`'s `FlareReactorView` — its constructor calls
+`LoadOrCreateInputBindings()` with no path argument, same as the sketch's default
+(`config/keybindings.yaml`, confirmed landing at `build/desktop/config/keybindings.yaml` on first
+run -- `src/config/` at the time this was written, before the build-output move covered in
+`build.sh`'s own history; covered by the `.gitignore`'s general `[Bb]uild` pattern either way).
+`VOnUpdate`'s four movement
+checks now read `input_.IsDown(InputAction::MoveForward/...)` instead of raw `IsKeyDown`, matching
+§4's sketch exactly (axis mapping included); `Interact` is read via `IsPressed` and, for now, only
+`TraceLog`s — no `EvtData_ActivateBeacon`/`GameLogic` handler exists yet (RFC-0001 Phase 2).
+**`game/sandbox/human_view.cpp` was NOT migrated** — it still reads `IsKeyDown(KEY_RIGHT)` etc.
+directly; a natural follow-up, not required for this ADR to be real, and left for whenever sandbox
+itself needs rebinding. `tests/input_bindings_test.cpp` exercises the
+`LoadOrCreateInputBindings`/`KeyFor` round trip (defaults, existing file, missing-field fallback) —
+`IsDown`/`IsPressed` themselves aren't unit-tested, same limitation `HumanView`'s own input handling
+already has (calling real raylib functions means nothing meaningful without a window/GL context;
+verified instead by a headless `xvfb-run` smoke test pressing through several seconds with `E`'s
+`TraceLog` firing and no crash).
+
+Gamepad support and a rebinding UI remain exactly as deferred as the Tradeoffs section below always
+said — nothing changed there.
 
 ## Context
 
@@ -116,9 +176,9 @@ MoveRight: 262      # KEY_RIGHT
 **Raw int key codes, not human-readable names** (`"UP"`/`"Arrow Up"`) — a deliberate simplicity
 tradeoff, not an oversight; see Tradeoffs.
 
-`config/keybindings.yaml` lives at `src/config/` alongside `config/engine.yaml`/`config/game.yaml`
-— already covered by the existing `/src/config/` `.gitignore` entry (ADR-0011), no new ignore rule
-needed.
+`config/keybindings.yaml` lives alongside `config/engine.yaml`/`config/game.yaml`, wherever
+`PROJECT_BUILD_PATH` resolves to (`build/desktop/config/` for local dev) — covered by the
+`.gitignore`'s general `[Bb]uild` pattern (ADR-0011), no new ignore rule needed.
 
 ### 3. Ownership: `HumanView` loads and owns its own `InputBindings`
 
@@ -194,24 +254,28 @@ action, and calls whatever writes `config/keybindings.yaml` back out, is separat
 
 ## Consequences / follow-ups
 
-- `docs/roadmap.md`'s "Input / key-binding system" line moves from "Not started" to "Proposed"
-  (this ADR), noting its dependency on ADR-0010 (PR #26) landing first, the same way ADR-0010 itself
-  once tracked its dependency on ADR-0008/0009.
-- `HumanView::VOnUpdate`'s four hardcoded `IsKeyDown` calls are replaced per §4 once implemented.
+- `docs/roadmap.md`'s "Input / key-binding system" line moves to "Shipped" (this ADR, now
+  `Accepted`) — see Implementation status above for what actually landed and what's still deferred.
+- `HumanView::VOnUpdate`'s (`game/sandbox`) four hardcoded `IsKeyDown` calls are **not yet**
+  replaced — only `game/flare_reactor`'s `FlareReactorView` uses `InputBindings` so far (see
+  Implementation status). Migrating sandbox is a natural, not-yet-scheduled follow-up.
 - `.claude/skills/engine-architecture` §9 (added for ADR-0010's `HumanView`) should gain a note
-  once `InputBindings`/`InputAction` land in code, per that skill's own "update once it lands"
-  convention.
+  about `InputBindings`/`InputAction`, per that skill's own "update once it lands" convention —
+  not yet done.
 - `config/keybindings.yaml` joins `config/engine.yaml`/`config/game.yaml` as a first-run-generated
-  file under `src/config/` — already covered by the existing `/src/config/` `.gitignore` entry, no
-  new ignore rule needed.
+  file, wherever `PROJECT_BUILD_PATH` resolves to — covered by the `.gitignore`'s general
+  `[Bb]uild` pattern, no new ignore rule needed. Confirmed landing there in practice (see
+  Implementation status).
 - A future rebinding UI, gamepad support, and a human-readable name↔keycode table are all natural
   extensions of this shape — none designed here (see Tradeoffs, Open Questions).
 
 ## Open Questions
 
-- **Should `InputAction` grow beyond movement** (e.g. `Interact`, `Jump`) ahead of a second game
-  existing, or only once a concrete game needs one? Leaning toward the latter — matches this
-  project's "don't build ahead of need" discipline — not firmly decided.
+- ~~**Should `InputAction` grow beyond movement** (e.g. `Interact`, `Jump`) ahead of a second game
+  existing, or only once a concrete game needs one?~~ **Resolved** (see Implementation status):
+  once a concrete consumer (`game/flare_reactor`) needed `Interact`, it was added then — not
+  guessed at ahead of time, confirming the "leaning toward the latter" guess this question
+  originally left open.
 - **Gamepad button mapping** — deferred entirely; see Tradeoffs. Not designed here.
 - **Human-readable key names**, needed only once a real rebinding UI exists to display them — not
   designed here.

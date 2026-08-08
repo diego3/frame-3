@@ -1,0 +1,24 @@
+# Flare Reactor experiment level (docs/rfc/0001-flare-reactor-pipeline-experiment.md): the three-
+# entity scenario -- player, reactor, sentinel -- placed via LevelLoader (docs/adr/0009), same
+# "resource" + per-instance "position" override shape assets/levels/level_01.yaml already uses.
+actors:
+  - resource: resources/entities/flare_reactor/player.yaml
+    position:
+      x: 0
+      y: 0
+      z: 8
+  - resource: resources/entities/flare_reactor/reactor.yaml
+    # y offset grounds the model: reactor_nuclear's own mesh-local origin isn't at its base (its
+    # raw bounding box runs roughly -8..+51 units on this axis, per scene.gltf's accessor min/max),
+    # so placing it at y:0 like the old box left it floating base-first several units above the
+    # grid. 0.48 = 8 * Renderable.size (0.06, reactor.yaml) -- brings the scaled base back to
+    # ground level; tune alongside size if that scale factor ever changes.
+    position:
+      x: 0
+      y: 0.48
+      z: 0
+  - resource: resources/entities/flare_reactor/sentinel.yaml
+    position:
+      x: 6
+      y: 0
+      z: 6

@@ -64,27 +64,22 @@ dkms.conf
 .cache
 compile_commands.json
 
-# Build folder
+# Build folder -- src/Makefile's own default PROJECT_BUILD_PATH/TEST_BUILD_PATH (build/desktop/,
+# build/test/, build/web/) lands here; the release CI workflows (build_linux/macos/webassembly.yml)
+# also point their own PROJECT_BUILD_PATH at a sibling build/release/ now, no longer straight into
+# src/ (this Makefile no longer special-cases PROJECT_BUILD_PATH=. anywhere, including its own
+# `clean:` target). This one pattern covers all of it (objects, linked binaries, staged resources/,
+# generated config/, GAME_MARKER, tests_runner), at any depth.
 [Bb]uild
 
-# Resources staged into src/ at build time by the raw Makefile (source lives in assets/)
-/src/resources/
-
-# Engine/game config, generated at runtime with defaults on first run -- see
-# docs/adr/0011-engine-and-game-config.md. No versioned source to stage (unlike assets/); the
-# struct defaults in engine_config.h/game_config.h *are* the shipped defaults.
-/src/config/
-
-# Desktop binary built by the raw Makefile (no file extension on Linux, so *.exe etc. miss it)
-/src/raylib_game
-
-# Unit test binary built by `make tests` / test.sh (see docs/adr/0006-doctest-for-unit-tests.md)
-/src/tests_runner
-
 # Real files engine_config_test.cpp/game_config_test.cpp/file_io_test.cpp read/write and clean up
-# around each test -- isolated from /src/config/ above so tests never collide with a real dev's
-# local config.
+# around each test -- isolated from build/'s own generated config/ above so tests never collide
+# with a real dev's local config. test_scratch/'s own location follows whatever directory
+# tests_runner is invoked from (a plain relative path in the test sources, not derived from
+# TEST_BUILD_PATH) -- test.sh/ci_sanity.yml both run it from the repo root, landing it there;
+# covered both places.
 /src/test_scratch/
+/test_scratch/
 
 # raylib checkout auto-vendored by build.sh
 /vendor/

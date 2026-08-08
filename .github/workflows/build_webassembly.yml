@@ -23,7 +23,7 @@ jobs:
     env:
       PROJECT_NAME: ${{ github.event.repository.name }}
       PROJECT_REPO_NAME: ${{ github.event.repository.name }}
-      PROJECT_BUILD_PATH: ${{ github.event.repository.name }}\\src
+      PROJECT_BUILD_PATH: ${{ github.event.repository.name }}\\build\\release
       PROJECT_RELEASE_PATH: ${{ github.event.repository.name }}_dev_wasm
       BUILD_WEB_SHELL: platform/minshell.html
       # No release tags exist upstream for mini-yaml (docs/adr/0008), same reason ci_sanity.yml
@@ -88,7 +88,7 @@ jobs:
     - name: Build Product
       run: |
         cd ${{ env.PROJECT_REPO_NAME }}/src
-        make PLATFORM=PLATFORM_WEB BUILD_MODE=RELEASE EMSDK_PATH="D:/a/${{ env.PROJECT_REPO_NAME }}/${{ env.PROJECT_REPO_NAME }}/emsdk-cache/emsdk-main" PROJECT_BUILD_PATH=. RAYLIB_PATH=../../raylib ENTT_PATH=../../entt MINI_YAML_PATH=../../mini-yaml -B
+        make PLATFORM=PLATFORM_WEB BUILD_MODE=RELEASE EMSDK_PATH="D:/a/${{ env.PROJECT_REPO_NAME }}/${{ env.PROJECT_REPO_NAME }}/emsdk-cache/emsdk-main" PROJECT_BUILD_PATH=../build/release RAYLIB_PATH=../../raylib ENTT_PATH=../../entt MINI_YAML_PATH=../../mini-yaml -B
 
     - name: Generate Artifacts
       run: |

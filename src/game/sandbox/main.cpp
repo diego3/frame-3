@@ -13,9 +13,9 @@
 #include "raylib.h"
 #include "screens.h"    // NOTE: Declares global (extern) variables and screens functions
 #include "game_config.h"
-#include "app/debug_overlay.h"
-#include "app/engine.h"
-#include "app/engine_config.h"
+#include "app/view/debug_overlay.h"
+#include "app/core/engine.h"
+#include "app/core/engine_config.h"
 
 #include <memory>                           // Required for: std::shared_ptr (font/sound handles)
 #include <stdio.h>                          // Required for: printf()

@@ -1,0 +1,21 @@
+# Input key-binding defaults (docs/adr/0013) -- shipped, versioned content, staged into
+# resources/config/keybindings.yaml at build time. Read by LoadOrCreateInputBindings ONLY the
+# first time it generates config/keybindings.yaml -- the real, player-writable, gitignored copy
+# actually consulted every run.
+#
+# Edit config/keybindings.yaml (next to the built binary) to rebind your OWN keys. Edit this file
+# instead to change what a fresh install/first run ships with for everyone.
+#
+# Values are raw raylib key codes (GLFW-based -- see vendor/raylib/src/raylib.h's KEY_* enum for
+# the full list; no human-readable name mapping exists yet, ADR-0013's own Tradeoffs defers that
+# until a rebinding UI needs to display one). The ones used below:
+#   MoveForward:  265 (KEY_UP)
+#   MoveBackward: 264 (KEY_DOWN)
+#   MoveLeft:     263 (KEY_LEFT)
+#   MoveRight:    262 (KEY_RIGHT)
+#   Interact:      69 (KEY_E)
+MoveForward: 265
+MoveBackward: 264
+MoveLeft: 263
+MoveRight: 262
+Interact: 69

@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "app/event_manager.h"
+#include "app/events/event_manager.h"
 
 namespace {
     struct DamageEvent {

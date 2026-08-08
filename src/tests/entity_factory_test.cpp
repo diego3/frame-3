@@ -2,8 +2,8 @@
 
 #include <entt/entt.hpp>
 
-#include "app/entity_def.h"
-#include "app/entity_factory.h"
+#include "app/entity/entity_def.h"
+#include "app/entity/entity_factory.h"
 
 namespace {
     // Fake components (mirrors ADR-0008's own Position/Health/EnemyTag example, and the
