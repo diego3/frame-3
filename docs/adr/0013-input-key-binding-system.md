@@ -3,6 +3,20 @@
 - Status: Accepted
 - Date: 2026-08-05
 
+## Addendum: shipped, versioned defaults (2026-08-07)
+
+`config/keybindings.yaml` picked up the same treatment [ADR-0011](0011-engine-and-game-config.md)'s
+own 2026-08-07 addendum gives `config/engine.yaml` -- see that addendum for the full reasoning
+(a game-dev browsing the repo had no versioned file to point at for "what bindings exist"). New
+`assets/config/keybindings.yaml` (staged into `resources/config/keybindings.yaml` at build time)
+holds exactly what `DefaultBindings()` (`input_bindings.cpp`) used to hardcode, including a comment
+block mapping each raw raylib key code to its human-readable `KEY_*` name -- this ADR's own
+Tradeoffs deferred a real name↔code mapping in the *data format* until a rebinding UI needs one;
+this addendum documents the codes in a comment instead, without touching that format.
+`LoadOrCreateInputBindings` gained a second parameter, `defaultsPath`, seeding first-run generation
+from it instead of the bare `DefaultBindings()`. `config/keybindings.yaml` itself (the real,
+player-writable, per-run copy) is unchanged -- still gitignored, still generated on first run.
+
 ## Implementation status (2026-08-06)
 
 Landed as designed below, picked up as part of
@@ -30,8 +44,10 @@ What actually shipped: `InputAction`/`InputBindings`/`LoadOrCreateInputBindings`
 (`src/app/input_bindings.h`/`.cpp`), first real (non-test) caller
 `game/flare_reactor/human_view.cpp`'s `FlareReactorView` — its constructor calls
 `LoadOrCreateInputBindings()` with no path argument, same as the sketch's default
-(`config/keybindings.yaml`, confirmed landing at `src/config/keybindings.yaml` on first run,
-already covered by the existing `/src/config/` `.gitignore` entry). `VOnUpdate`'s four movement
+(`config/keybindings.yaml`, confirmed landing at `build/desktop/config/keybindings.yaml` on first
+run -- `src/config/` at the time this was written, before the build-output move covered in
+`build.sh`'s own history; covered by the `.gitignore`'s general `[Bb]uild` pattern either way).
+`VOnUpdate`'s four movement
 checks now read `input_.IsDown(InputAction::MoveForward/...)` instead of raw `IsKeyDown`, matching
 §4's sketch exactly (axis mapping included); `Interact` is read via `IsPressed` and, for now, only
 `TraceLog`s — no `EvtData_ActivateBeacon`/`GameLogic` handler exists yet (RFC-0001 Phase 2).
@@ -160,9 +176,9 @@ MoveRight: 262      # KEY_RIGHT
 **Raw int key codes, not human-readable names** (`"UP"`/`"Arrow Up"`) — a deliberate simplicity
 tradeoff, not an oversight; see Tradeoffs.
 
-`config/keybindings.yaml` lives at `src/config/` alongside `config/engine.yaml`/`config/game.yaml`
-— already covered by the existing `/src/config/` `.gitignore` entry (ADR-0011), no new ignore rule
-needed.
+`config/keybindings.yaml` lives alongside `config/engine.yaml`/`config/game.yaml`, wherever
+`PROJECT_BUILD_PATH` resolves to (`build/desktop/config/` for local dev) — covered by the
+`.gitignore`'s general `[Bb]uild` pattern (ADR-0011), no new ignore rule needed.
 
 ### 3. Ownership: `HumanView` loads and owns its own `InputBindings`
 
@@ -247,8 +263,9 @@ action, and calls whatever writes `config/keybindings.yaml` back out, is separat
   about `InputBindings`/`InputAction`, per that skill's own "update once it lands" convention —
   not yet done.
 - `config/keybindings.yaml` joins `config/engine.yaml`/`config/game.yaml` as a first-run-generated
-  file under `src/config/` — already covered by the existing `/src/config/` `.gitignore` entry, no
-  new ignore rule needed. Confirmed landing there in practice (see Implementation status).
+  file, wherever `PROJECT_BUILD_PATH` resolves to — covered by the `.gitignore`'s general
+  `[Bb]uild` pattern, no new ignore rule needed. Confirmed landing there in practice (see
+  Implementation status).
 - A future rebinding UI, gamepad support, and a human-readable name↔keycode table are all natural
   extensions of this shape — none designed here (see Tradeoffs, Open Questions).
 

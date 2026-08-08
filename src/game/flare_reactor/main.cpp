@@ -166,7 +166,7 @@ int main() {
     auto sentinels = engine.Registry().view<SentinelAI>();
     if (sentinels.begin() != sentinels.end()) {
         entt::entity sentinelActor = *sentinels.begin();
-        g_logic->AttachView(std::make_unique<AIView>(engine.Registry()), sentinelActor);
+        g_logic->AttachView(std::make_unique<AIView>(engine.Registry(), engine.Sounds()), sentinelActor);
     }
 
     engine.Run(UpdateDrawFrame);

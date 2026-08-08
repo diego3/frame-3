@@ -19,25 +19,41 @@ namespace {
         out << "masterVolume: " << config.masterVolume << "\n";
         return out.str();
     }
+
+    // Shared by both the real load path (fallback == EngineConfig{}) and the first-run seeding
+    // path (fallback == whatever defaultsPath's own parse already produced) -- either way, a field
+    // missing/malformed in `contents` keeps whatever the caller passed as fallback rather than
+    // failing the whole parse.
+    EngineConfig ParseEngineConfig(const std::string &contents, const EngineConfig &fallback) {
+        YamlEntityFileParser parser;
+        EntityDefNode root = parser.Parse(contents);
+
+        EngineConfig config = fallback;
+        if (const EntityDefNode *v = root.TryGet("screenWidth")) config.screenWidth = v->AsInt(config.screenWidth);
+        if (const EntityDefNode *v = root.TryGet("screenHeight")) config.screenHeight = v->AsInt(config.screenHeight);
+        if (const EntityDefNode *v = root.TryGet("fullscreen")) config.fullscreen = v->AsBool(config.fullscreen);
+        if (const EntityDefNode *v = root.TryGet("targetFps")) config.targetFps = v->AsInt(config.targetFps);
+        if (const EntityDefNode *v = root.TryGet("masterVolume")) config.masterVolume = v->AsFloat(config.masterVolume);
+        return config;
+    }
 }
 
-EngineConfig LoadOrCreateEngineConfig(const std::string &path) {
+EngineConfig LoadOrCreateEngineConfig(const std::string &path, const std::string &defaultsPath) {
     std::string contents;
-    if (!TryReadWholeFile(path, contents)) {
-        EngineConfig defaults;
-        WriteWholeFile(path, SerializeEngineConfig(defaults));
-        return defaults;
+    if (TryReadWholeFile(path, contents)) {
+        return ParseEngineConfig(contents, EngineConfig{});
     }
 
-    YamlEntityFileParser parser;
-    EntityDefNode root = parser.Parse(contents);
+    // First run: config/engine.yaml doesn't exist yet. Seed from the shipped, versioned
+    // defaultsPath (assets/config/engine.yaml, staged into resources/config/engine.yaml) instead
+    // of the bare EngineConfig{} struct literal -- falls back to that struct literal only if even
+    // defaultsPath is missing, so a malformed/incomplete build still can't hard-fail here.
+    EngineConfig defaults;
+    std::string shippedDefaults;
+    if (TryReadWholeFile(defaultsPath, shippedDefaults)) {
+        defaults = ParseEngineConfig(shippedDefaults, defaults);
+    }
 
-    EngineConfig config;   // struct defaults are the fallback for any field missing below.
-    if (const EntityDefNode *v = root.TryGet("screenWidth")) config.screenWidth = v->AsInt(config.screenWidth);
-    if (const EntityDefNode *v = root.TryGet("screenHeight")) config.screenHeight = v->AsInt(config.screenHeight);
-    if (const EntityDefNode *v = root.TryGet("fullscreen")) config.fullscreen = v->AsBool(config.fullscreen);
-    if (const EntityDefNode *v = root.TryGet("targetFps")) config.targetFps = v->AsInt(config.targetFps);
-    if (const EntityDefNode *v = root.TryGet("masterVolume")) config.masterVolume = v->AsFloat(config.masterVolume);
-
-    return config;
+    WriteWholeFile(path, SerializeEngineConfig(defaults));
+    return defaults;
 }

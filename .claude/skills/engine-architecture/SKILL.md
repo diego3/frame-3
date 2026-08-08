@@ -455,7 +455,11 @@ its packaged resource bundle (§4's read-only, version-controlled content root).
 ints); `Engine::Run()` uses `config.targetFps` for `SetTargetFPS`/`emscripten_set_main_loop`'s rate
 argument and the frame-budget-SLO warning threshold. `game/sandbox/main.cpp`'s `main()` calls
 `engine.Init(LoadOrCreateEngineConfig(), title)`. `fullscreen`/`masterVolume` are loaded/saved but
-not yet applied to real window/audio state. `GameConfig` got its first real fields and caller
+not yet applied to real window/audio state. First-run defaults (both `EngineConfig` and
+`InputBindings`, ADR-0013) now seed from a shipped, versioned `defaultsPath` argument
+(`assets/config/engine.yaml`/`assets/config/keybindings.yaml`, staged into `resources/config/`)
+instead of a bare struct literal (ADR-0011's 2026-08-07 addendum) — the player-writable runtime
+copy itself is unchanged. `GameConfig` got its first real fields and caller
 (docs/adr/0014): `characterTexturePath`/`coinSoundPath`, read by `game/sandbox/main.cpp` right
 after `engine.Init()` returns and passed to `engine.Fonts()`/`engine.Sounds()` instead of
 hardcoding the paths there.

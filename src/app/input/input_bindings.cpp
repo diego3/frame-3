@@ -47,6 +47,22 @@ namespace {
         }
         return out.str();
     }
+
+    // Shared by both the real load path (fallback == DefaultBindings()) and the first-run seeding
+    // path (fallback == whatever defaultsPath's own parse already produced) -- either way, an
+    // action missing/malformed in `contents` keeps whatever the caller passed as fallback rather
+    // than failing the whole parse.
+    InputBindings::BindingMap ParseBindings(const std::string &contents, InputBindings::BindingMap fallback) {
+        YamlEntityFileParser parser;
+        EntityDefNode root = parser.Parse(contents);
+
+        for (const ActionName &entry : kActionNames) {
+            if (const EntityDefNode *v = root.TryGet(entry.name)) {
+                fallback[entry.action] = v->AsInt(fallback[entry.action]);
+            }
+        }
+        return fallback;
+    }
 }
 
 int InputBindings::KeyFor(InputAction action) const {
@@ -54,24 +70,25 @@ int InputBindings::KeyFor(InputAction action) const {
     return it != keys_.end() ? it->second : 0;
 }
 
-InputBindings LoadOrCreateInputBindings(const std::string &path) {
+InputBindings LoadOrCreateInputBindings(const std::string &path, const std::string &defaultsPath) {
     InputBindings bindings;
-    bindings.keys_ = DefaultBindings();   // fallback for any action missing/malformed below
 
     std::string contents;
-    if (!TryReadWholeFile(path, contents)) {
-        WriteWholeFile(path, SerializeBindings(bindings.keys_));
+    if (TryReadWholeFile(path, contents)) {
+        bindings.keys_ = ParseBindings(contents, DefaultBindings());
         return bindings;
     }
 
-    YamlEntityFileParser parser;
-    EntityDefNode root = parser.Parse(contents);
-
-    for (const ActionName &entry : kActionNames) {
-        if (const EntityDefNode *v = root.TryGet(entry.name)) {
-            bindings.keys_[entry.action] = v->AsInt(bindings.keys_[entry.action]);
-        }
+    // First run: config/keybindings.yaml doesn't exist yet. Seed from the shipped, versioned
+    // defaultsPath (assets/config/keybindings.yaml, staged into resources/config/keybindings.yaml)
+    // instead of the bare DefaultBindings() -- falls back to DefaultBindings() only if even
+    // defaultsPath is missing, so a malformed/incomplete build still can't hard-fail here.
+    bindings.keys_ = DefaultBindings();
+    std::string shippedDefaults;
+    if (TryReadWholeFile(defaultsPath, shippedDefaults)) {
+        bindings.keys_ = ParseBindings(shippedDefaults, bindings.keys_);
     }
 
+    WriteWholeFile(path, SerializeBindings(bindings.keys_));
     return bindings;
 }

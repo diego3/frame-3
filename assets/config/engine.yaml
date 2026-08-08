@@ -1,0 +1,13 @@
+# Engine-layer config defaults (docs/adr/0011) -- shipped, versioned content, staged into
+# resources/config/engine.yaml at build time (same assets/ -> resources/ staging every other
+# asset already goes through, per src/Makefile's `resources:` target). Read by
+# LoadOrCreateEngineConfig ONLY the first time it generates config/engine.yaml -- the real,
+# player-writable, gitignored copy actually consulted every run.
+#
+# Edit config/engine.yaml (next to the built binary) to change your OWN local settings. Edit this
+# file instead to change what a fresh install/first run ships with for everyone.
+screenWidth: 800
+screenHeight: 450
+fullscreen: false
+targetFps: 60
+masterVolume: 1.0
