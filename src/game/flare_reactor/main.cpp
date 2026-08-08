@@ -28,9 +28,12 @@
 #include "app/scene/renderable.h"
 #include "app/scene/transform.h"
 #include "ai_view.h"
+#include "game_config.h"
 #include "game_logic.h"
 #include "human_view.h"
+#include "lighting.h"
 #include "reactor.h"
+#include "screenshot_capture.h"
 #include "sentinel_ai.h"
 #include "tags.h"
 
@@ -54,7 +57,8 @@ namespace {
     // duplicating one eight-line lambda is cheaper than a shared registration helper nobody else
     // needs yet. Takes Engine& (not just EntityFactory&) now too -- the "Renderable" loader below
     // needs engine.Models() to resolve a `model:` path into a cached handle when shape == model.
-    void RegisterComponentLoaders(EntityFactory &factory, Engine &engine) {
+    // Takes Lighting& too, for the same loader -- see its own comment below.
+    void RegisterComponentLoaders(EntityFactory &factory, Engine &engine, Lighting &lighting) {
         factory.RegisterComponentLoader("Position", [](entt::registry &registry, entt::entity entity,
                                                          const EntityDefNode &node) {
             registry.emplace<LocalTransform>(
@@ -96,7 +100,7 @@ namespace {
             registry.emplace<Patrol>(entity, patrol);
         });
 
-        factory.RegisterComponentLoader("Renderable", [&engine](entt::registry &registry, entt::entity entity,
+        factory.RegisterComponentLoader("Renderable", [&engine, &lighting](entt::registry &registry, entt::entity entity,
                                                                   const EntityDefNode &node) {
             Renderable renderable;
             std::string shapeName = "box";
@@ -123,6 +127,10 @@ namespace {
             if (renderable.shape == Renderable::Shape::Model) {
                 if (const EntityDefNode *model = node.TryGet("model")) {
                     renderable.model = engine.Models().GetHandle(model->AsString(""));
+                    // Lighting (game/flare_reactor's own shader work): gives every material of this
+                    // Model its own compiled, lit Shader instance -- see lighting.h for why "one per
+                    // material" rather than sharing one across all of them.
+                    if (renderable.model) lighting.ApplyToModel(*renderable.model);
                 }
             }
             registry.emplace<Renderable>(entity, renderable);
@@ -134,6 +142,15 @@ namespace {
     std::unique_ptr<LevelLoader> g_levelLoader;
     std::unique_ptr<BaseGameLogic> g_logic;
     FlareReactorView *g_view = nullptr;   // non-owning -- g_logic owns it via AttachView
+    // unique_ptr, not a plain local, so its destructor (UnloadShader) can be forced to run BEFORE
+    // engine.Shutdown() closes the GL context -- same handle-lifetime discipline as g_logic below
+    // (ADR-0004). A plain `Lighting lighting;` local in main() would destruct at the closing brace,
+    // i.e. after the explicit engine.Shutdown() call already ran.
+    std::unique_ptr<Lighting> g_lighting;
+    // Subscribes to EvtData_ScreenshotRequested (events.h) in its constructor -- holds no GL/audio
+    // resource, so unlike g_lighting there's no ordering requirement against engine.Shutdown(), but
+    // reset alongside it below anyway for symmetry with the rest of this block.
+    std::unique_ptr<ScreenshotCapture> g_screenshotCapture;
 
     void UpdateDrawFrame() {
         UpdateDebugOverlay(GetFrameTime());   // F3 toggles a /proc/self stats HUD (Linux desktop only)
@@ -152,10 +169,21 @@ int main() {
     Engine engine;
     if (!engine.Init(LoadOrCreateEngineConfig(), "flare reactor experiment")) return 1;
 
+    // GameConfig (docs/adr/0011): skybox/audio asset paths, seeded from assets/config/
+    // flare_reactor/game.yaml on first run, thereafter from the player-writable config/game.yaml --
+    // see game_config.h. Loaded once here and threaded through to whichever view actually uses each
+    // path, same as EngineConfig above.
+    GameConfig gameConfig = LoadOrCreateGameConfig();
+
+    // Constructed before the entity factory below -- its "Renderable" component loader calls
+    // Lighting::ApplyToModel while the level loads (see RegisterComponentLoaders).
+    g_lighting = std::make_unique<Lighting>();
+    g_screenshotCapture = std::make_unique<ScreenshotCapture>(engine.Events());
+
     g_entityFactory = std::make_unique<EntityFactory>([](const std::string &name) {
         TraceLog(LOG_WARNING, "Unknown component '%s' in entity definition, skipping", name.c_str());
     });
-    RegisterComponentLoaders(*g_entityFactory, engine);
+    RegisterComponentLoaders(*g_entityFactory, engine, *g_lighting);
 
     g_levelLoader = std::make_unique<LevelLoader>(*g_entityFactory, g_parser);
     // FlareReactorGameLogic (Phase 3), not plain BaseGameLogic -- its constructor subscribes the
@@ -165,7 +193,9 @@ int main() {
                                                         engine.Processes(), *g_levelLoader);
     g_logic->VLoadLevel("resources/levels/flare_reactor.yaml");
 
-    auto view = std::make_unique<FlareReactorView>(engine.Registry(), engine.Events(), engine.Sounds());
+    auto view = std::make_unique<FlareReactorView>(engine.Registry(), engine.Events(), engine.Sounds(),
+                                                    gameConfig.skyboxCubemapPath, gameConfig.beaconSoundPath,
+                                                    *g_lighting);
     g_view = view.get();
 
     // PlayerTag resolves this explicitly instead of game/sandbox's "first entity in the registry"
@@ -181,13 +211,18 @@ int main() {
     auto sentinels = engine.Registry().view<SentinelAI>();
     if (sentinels.begin() != sentinels.end()) {
         entt::entity sentinelActor = *sentinels.begin();
-        g_logic->AttachView(std::make_unique<AIView>(engine.Registry(), engine.Sounds()), sentinelActor);
+        g_logic->AttachView(std::make_unique<AIView>(engine.Registry(), engine.Sounds(),
+                                                       gameConfig.sentinelPatrolVoicePath,
+                                                       gameConfig.sentinelInvestigateVoicePath),
+                             sentinelActor);
     }
 
     engine.Run(UpdateDrawFrame);
 
     g_logic.reset();   // drops the attached FlareReactorView too -- g_view becomes dangling
     g_view = nullptr;
+    g_lighting.reset();   // UnloadShader before the GL context closes below (ADR-0004)
+    g_screenshotCapture.reset();
 
     engine.Shutdown();
 

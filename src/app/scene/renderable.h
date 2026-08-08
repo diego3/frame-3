@@ -21,6 +21,7 @@
 
 #include <entt/entt.hpp>
 #include <raylib.h>
+#include <raymath.h>
 
 #include "app/scene/transform.h"
 
@@ -51,11 +52,56 @@ struct Renderable {
     std::shared_ptr<Model> model;
 };
 
+// Shared, process-lifetime unit geometry (+ one mutable Material) used to draw every solid
+// (wireframe == false, non-Model) Renderable -- added alongside game/flare_reactor's lighting work
+// so Box/Sphere shapes have real per-vertex normals a custom lighting shader can read. raylib's
+// immediate-mode DrawCubeV/DrawSphere (used here before) have none: confirmed against
+// vendor/raylib/src/rshapes.c, which never calls rlNormal3f for either -- a custom shader's
+// `vertexNormal` attribute would read whatever rlgl's disabled-attribute default is (effectively
+// (0,0,0), see rlgl.h), producing degenerate/NaN lighting. GenMeshCube/GenMeshSphere below DO
+// compute real normals, so DrawMesh-ing them fixes this for solid Box/Sphere shapes without
+// touching wireframe or Model ones.
+//
+// Lazily built on first call via an immediately-invoked lambda, not a plain namespace-scope global
+// -- GenMeshCube/GenMeshSphere/LoadMaterialDefault upload to the GPU, so this can't run before the
+// GL context exists (a plain global would construct at static-init time, before InitWindow). Never
+// explicitly unloaded -- this is shared engine-primitive geometry, not a per-entity resource-cache
+// handle (ADR-0004's handle-lifetime discipline is about handles some component/caller owns and
+// must release before Shutdown(); nothing here is owned by any one entity), so it's reclaimed by
+// CloseWindow() at process exit the same way raylib's own default shader/texture are.
+namespace renderable_detail {
+    struct PrimitiveGeometry {
+        Mesh cube;
+        Mesh sphere;
+        Material material;      // mutated (.maps[MATERIAL_MAP_DIFFUSE].color/.shader) per draw call
+        Shader defaultShader;   // material's own shader before any lighting override, captured once
+    };
+
+    inline PrimitiveGeometry &GetPrimitiveGeometry() {
+        static PrimitiveGeometry geometry = [] {
+            PrimitiveGeometry g{};
+            g.cube = GenMeshCube(1.0f, 1.0f, 1.0f);
+            g.sphere = GenMeshSphere(1.0f, 16, 16);
+            g.material = LoadMaterialDefault();
+            g.defaultShader = g.material.shader;
+            return g;
+        }();
+        return geometry;
+    }
+}
+
 // Draws every entity with both a WorldTransform (docs/adr/0002 -- already propagated by the time
 // any IScreenElement runs, see Engine::Run) and a Renderable. Caller is responsible for its own
 // BeginMode3D/EndMode3D -- this only issues Draw* calls, same division of responsibility
 // GameplayScene already has today.
-inline void DrawRenderables(entt::registry &registry) {
+//
+// `shader`, if non-null, is bound to every solid Box/Sphere Renderable's shared Material for this
+// call (see renderable_detail::PrimitiveGeometry above for why that now has real normals to give
+// it). Wireframe Renderables are unaffected (outlines don't benefit from per-pixel lighting; drawn
+// via the old unlit immediate-mode calls, unchanged) and so are Model-shaped ones -- a Model's own
+// per-material shader (set separately, e.g. by game/flare_reactor's Lighting::ApplyToModel) always
+// wins, same as DrawModelEx always did.
+inline void DrawRenderables(entt::registry &registry, const Shader *shader = nullptr) {
     auto view = registry.view<WorldTransform, Renderable>();
     for (auto entity : view) {
         const WorldTransform &world = view.get<WorldTransform>(entity);
@@ -67,14 +113,28 @@ inline void DrawRenderables(entt::registry &registry) {
                 if (renderable.wireframe) {
                     DrawCubeWiresV(position, renderable.size, renderable.color);
                 } else {
-                    DrawCubeV(position, renderable.size, renderable.color);
+                    renderable_detail::PrimitiveGeometry &geometry = renderable_detail::GetPrimitiveGeometry();
+                    geometry.material.maps[MATERIAL_MAP_DIFFUSE].color = renderable.color;
+                    geometry.material.shader = shader ? *shader : geometry.defaultShader;
+                    Matrix transform = MatrixMultiply(
+                        MatrixScale(renderable.size.x, renderable.size.y, renderable.size.z),
+                        MatrixTranslate(position.x, position.y, position.z));
+                    DrawMesh(geometry.cube, geometry.material, transform);
                 }
                 break;
             case Renderable::Shape::Sphere:
                 if (renderable.wireframe) {
                     DrawSphereWires(position, renderable.size.x, 8, 8, renderable.color);
                 } else {
-                    DrawSphere(position, renderable.size.x, renderable.color);
+                    renderable_detail::PrimitiveGeometry &geometry = renderable_detail::GetPrimitiveGeometry();
+                    geometry.material.maps[MATERIAL_MAP_DIFFUSE].color = renderable.color;
+                    geometry.material.shader = shader ? *shader : geometry.defaultShader;
+                    // renderable.size.x as the radius, matching the old DrawSphere(position,
+                    // renderable.size.x, ...) call this replaces -- uniform scale of a unit sphere.
+                    Matrix transform = MatrixMultiply(
+                        MatrixScale(renderable.size.x, renderable.size.x, renderable.size.x),
+                        MatrixTranslate(position.x, position.y, position.z));
+                    DrawMesh(geometry.sphere, geometry.material, transform);
                 }
                 break;
             case Renderable::Shape::Model:

@@ -180,8 +180,9 @@ _TODO: Show your game to the world, animated GIFs recommended!._
 
 ### License
 
-This project sources are licensed under an unmodified zlib/libpng license, which is an OSI-certified, BSD-like license that allows static linking with closed source software. Check [LICENSE](LICENSE) for further details.
+This project's own sources are proprietary, all rights reserved -- not the permissive zlib/libpng
+license the raylib template this repo started from used to carry. Check [LICENSE](LICENSE) for the
+full terms, including the third-party exceptions (vendored raylib/EnTT/mini-yaml, the reactor
+model asset) that keep their own original licenses.
 
-$(Additional Licenses)
-
-*Copyright (c) $(Year) $(User Name) ($(User Twitter/GitHub Name))*
+*Copyright (c) 2026 Diego Santos*

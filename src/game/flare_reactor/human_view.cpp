@@ -20,11 +20,15 @@ namespace {
 
     // The one real IScreenElement so far: renders every Renderable via app/scene/renderable.h
     // instead of hardcoding geometry per entity (contrast game/sandbox's GameplayScene, which
-    // still does).
+    // still does). Now also draws the scene's Skybox first, inside the same BeginMode3D/EndMode3D
+    // block -- a skybox needs the active camera's projection/view matrices, so it can't be its own
+    // independent IScreenElement without either duplicating this block or sharing a Camera3D across
+    // two elements' render calls; simplest to keep it here, same reasoning DrawGrid already follows.
     class FlareReactorScene : public IScreenElement {
     public:
-        FlareReactorScene(entt::registry &registry, const Camera3D &camera)
-            : registry_(registry), camera_(camera) {}
+        FlareReactorScene(entt::registry &registry, const Camera3D &camera, const Skybox &skybox,
+                           const Lighting &lighting)
+            : registry_(registry), camera_(camera), skybox_(skybox), lighting_(lighting) {}
 
         void VOnUpdate(float dt) override { (void)dt; }
 
@@ -32,7 +36,9 @@ namespace {
             (void)dt;
 
             BeginMode3D(camera_);
-            DrawRenderables(registry_);
+            skybox_.Draw();   // first -- everything else draws on top of it
+            lighting_.Update(registry_, camera_.position);
+            DrawRenderables(registry_, &lighting_.GetShader());
             DrawGrid(20, 1.0f);
             EndMode3D();
         }
@@ -45,6 +51,8 @@ namespace {
     private:
         entt::registry &registry_;
         const Camera3D &camera_;
+        const Skybox &skybox_;
+        const Lighting &lighting_;
         int zOrder_ = 0;
         bool visible_ = true;
     };
@@ -84,20 +92,23 @@ namespace {
     };
 }
 
-FlareReactorView::FlareReactorView(entt::registry &registry, EventManager &events, ResourceCache<Sound> &sounds)
-    : registry_(registry), events_(events), sounds_(sounds), input_(LoadOrCreateInputBindings()) {
+FlareReactorView::FlareReactorView(entt::registry &registry, EventManager &events, ResourceCache<Sound> &sounds,
+                                    const std::string &skyboxCubemapPath, const std::string &beaconSoundPath,
+                                    Lighting &lighting)
+    : registry_(registry), events_(events), sounds_(sounds), input_(LoadOrCreateInputBindings()),
+      skybox_(skyboxCubemapPath), lighting_(lighting) {
     camera_.position = Vector3{0.0f, 12.0f, 12.0f};
     camera_.target = Vector3{0.0f, 0.0f, 0.0f};
     camera_.up = Vector3{0.0f, 1.0f, 0.0f};
     camera_.fovy = 45.0f;
     camera_.projection = CAMERA_PERSPECTIVE;
 
-    PushElement(std::make_unique<FlareReactorScene>(registry_, camera_));
+    PushElement(std::make_unique<FlareReactorScene>(registry_, camera_, skybox_, lighting_));
 
-    // Reused from game/sandbox (RFC-0001 Phase 5's own decision -- no dedicated beacon sound asset
-    // exists yet; coin.wav is a placeholder, easy to swap for a real one later without touching
-    // any code, just the path here).
-    beaconSound_ = sounds_.GetHandle("resources/audio/fx/coin.wav");
+    // Path from GameConfig (game_config.h/assets/config/flare_reactor/game.yaml), not hardcoded --
+    // reused from game/sandbox (RFC-0001 Phase 5's own decision -- no dedicated beacon sound asset
+    // exists yet; coin.wav is a placeholder, easy to swap for a real one later, just a YAML edit).
+    beaconSound_ = sounds_.GetHandle(beaconSoundPath);
 
     events_.Subscribe<EvtData_BeaconTriggered>(
         [this](const EvtData_BeaconTriggered &event) { OnBeaconTriggered(event); });
@@ -138,6 +149,43 @@ void FlareReactorView::VOnAttach(GameViewId id, std::optional<entt::entity> acto
 
 void FlareReactorView::VOnUpdate(float dt) {
     UpdateElements(dt);
+
+    // KEY_TAB: dev/validation toggle, not an InputBindings action -- see the header comment on
+    // freeCameraActive_. DisableCursor()/EnableCursor() match raylib's own camera examples: locks
+    // and hides the OS cursor so CAMERA_FREE's mouse-look reads a continuous delta instead of
+    // hitting the window edge.
+    if (IsKeyPressed(KEY_TAB)) {
+        freeCameraActive_ = !freeCameraActive_;
+        if (freeCameraActive_) {
+            DisableCursor();
+            TraceLog(LOG_INFO, "FlareReactorView: free camera ON (mouse look + WASD/space/ctrl -- TAB to return)");
+        } else {
+            EnableCursor();
+            TraceLog(LOG_INFO, "FlareReactorView: free camera OFF -- gameplay camera resumes following the player");
+        }
+    }
+
+    // KEY_P: dev/validation tool (screenshot_capture.h), same raw-key category as KEY_TAB above --
+    // not an InputBindings action. Queue<T>, not Emit<T>: EventManager::DispatchQueued() runs at
+    // the very start of the *next* frame's TickAndUpdateDraw (app/core/engine.cpp), before that
+    // frame's own BeginDrawing/EndDrawing -- so ScreenshotCapture's TakeScreenshot() call ends up
+    // reading the front buffer exactly as it looked right after *this* frame's EndDrawing (below),
+    // i.e. the frame the player actually saw when they pressed P. Emit<T> here instead would run
+    // immediately, before this frame has even drawn -- one frame stale.
+    if (IsKeyPressed(KEY_P)) {
+        TraceLog(LOG_INFO, "FlareReactorView: KEY_P pressed -- queuing EvtData_ScreenshotRequested");
+        events_.Queue(EvtData_ScreenshotRequested{});
+    }
+
+    if (freeCameraActive_) {
+        // raylib's own built-in controller (rcamera.h) -- mouse-look, WASD to move, space/ctrl for
+        // up/down, wheel to dolly toward camera_.target. Player position and the gameplay camera's
+        // follow logic below are frozen while this is active; toggling back off snaps the gameplay
+        // camera back to the player on the very next frame (the block below runs unconditionally
+        // once freeCameraActive_ is false again), which is fine for a validation tool.
+        UpdateCamera(&camera_, CAMERA_FREE);
+        return;
+    }
 
     if (!possessedActor_.has_value()) return;
 
