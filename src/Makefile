@@ -293,7 +293,19 @@ endif
 #  -Wno-missing-braces  ignore invalid warning (GCC bug 53119)
 #  -Wno-unused-value    ignore unused return values of some functions (i.e. fread())
 #  -D_DEFAULT_SOURCE    use with -std=c99 on Linux and PLATFORM_WEB, required for timespec
-CFLAGS = -Wall -D_DEFAULT_SOURCE -Wno-missing-braces -Wno-unused-value -Wno-unused-result -Wno-pointer-sign $(PROJECT_CUSTOM_FLAGS)
+#  -MMD -MP             emit a %.d dependency file per object (project headers only, not system
+#                        ones; -MP adds a phony target per header so a deleted/renamed header
+#                        doesn't hard-error make instead of just forcing a rebuild) -- without this,
+#                        editing a header (e.g. a shared component definition) doesn't invalidate
+#                        any .cpp that only reaches it transitively, since GNU Make's built-in %.o:%.cpp
+#                        rule below only ever depends on the .cpp file itself. Confirmed causing a
+#                        real bug, not just a theoretical staleness risk: adding Renderable::model
+#                        (app/scene/renderable.h) left game_logic.o linked against the old, smaller
+#                        struct layout because nothing touched game_logic.cpp itself, silently
+#                        corrupting the very Renderable BeaconPulseProcess writes through -- the
+#                        reactor model would vanish the instant the beacon pulse's first Update() ran.
+#                        The generated .d files are -include'd near the end of this Makefile.
+CFLAGS = -Wall -D_DEFAULT_SOURCE -Wno-missing-braces -Wno-unused-value -Wno-unused-result -Wno-pointer-sign -MMD -MP $(PROJECT_CUSTOM_FLAGS)
 #CFLAGS += -Wextra -Wmissing-prototypes -Wstrict-prototypes
 
 ifeq ($(PLATFORM),PLATFORM_WEB)
@@ -672,6 +684,15 @@ $(TEST_OBJ_DIR)/mini_yaml.o:
 $(TEST_OBJ_DIR)/tests/%.o: tests/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) -c $< -o $@ $(TEST_CXXFLAGS)
+
+# Auto-generated header dependencies (see CFLAGS's own -MMD -MP comment above) -- one %.d file per
+# %.o, listing every header that .o's source transitively includes. Leading "-" means a missing .d
+# (first build, or after `make clean`) is silently skipped rather than erroring; once objects exist,
+# these make every %.o target above also depend on the headers it actually includes, so e.g. editing
+# app/scene/renderable.h now correctly invalidates every .o that reaches it, not just the ones whose
+# own .cpp got touched directly.
+-include $(OBJS:.o=.d)
+-include $(TEST_OBJS:.o=.d)
 
 # Clean everything
 # NOTE: used to also carry a WINDOWS/LINUX/OSX find-and-delete-relative-to-cwd block here, predating
