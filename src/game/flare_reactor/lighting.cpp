@@ -17,11 +17,18 @@ namespace {
         Color color;
     };
 
-    // Warm "sun" (matches the skybox cubemap's own sunset mood) + a cool point light near the
-    // reactor's cyan core (assets/entities/flare_reactor/reactor.yaml's model). Fixed/static for
-    // now -- nothing in this experiment moves a light yet.
+    // Warm "sun" + a cool point light near the reactor's cyan core (assets/entities/flare_reactor/
+    // reactor.yaml's model). Fixed/static for now -- nothing in this experiment moves a light yet.
+    //
+    // Sun position re-derived 2026-08-08 to actually match the baked-in sun disc in the skybox
+    // cubemap (assets/cubemaps/Cubemap_Sky_03-512x512.png, GameConfig's default), not just its
+    // color mood -- the previous {-6,8,-4} put the light high overhead from -X/-Z, while the
+    // cubemap's own sun sits low near the horizon on the +X face (near its +Z edge): opposite
+    // horizontal quadrant *and* wrong altitude. docs/learning/rendering.html has the face-layout
+    // math this was read off of. Revisit if the shipped cubemap path ever changes -- this is only
+    // calibrated against Cubemap_Sky_03 specifically.
     constexpr LightDesc kLights[2] = {
-        {/*LIGHT_DIRECTIONAL=*/0, {-6.0f, 8.0f, -4.0f}, {0.0f, 0.0f, 0.0f}, {255, 196, 130, 255}},
+        {/*LIGHT_DIRECTIONAL=*/0, {6.0f, 1.5f, 3.0f}, {0.0f, 0.0f, 0.0f}, {255, 196, 130, 255}},
         {/*LIGHT_POINT=*/1, {0.0f, 3.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {110, 210, 255, 255}},
     };
 
