@@ -23,3 +23,8 @@ Third-party exceptions -- not covered by the terms above, each under its own ori
     and MIT respectively, per their own upstream projects.
   - assets/models/reactor_nuclear/: "Reactor Nuclear" by DavidFer (Sketchfab), CC-BY-4.0 -- see
     assets/models/reactor_nuclear/license.txt for the required attribution.
+  - assets/new-to-organize/kenney_*/: Kenney (www.kenney.nl) asset packs, CC0 -- see each pack's
+    own License.txt.
+  - docs/learning/assets/refs/: reference images pulled from Wikimedia Commons for
+    docs/learning/rendering.html, each CC BY 2.5 or CC BY-SA 3.0 -- see the credit link next to
+    each image in that document for the specific author/license.
