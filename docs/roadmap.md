@@ -40,6 +40,8 @@ _(nothing currently — the last item here, scene graph/hierarchy, shipped above
 
 - [ ] Event journal for save/replay (`EventJournal`) — [ADR-0005](adr/0005-event-manager-queued-dispatch-idata-lua-proposal.md) §4 — the serialization contract it would sit on (§§1-3) already shipped above; no concrete on-disk format decided yet
 - [ ] Physics / collision (`IGamePhysics`, raylib-collision-backed, owned by `BaseGameLogic`) — [ADR-0012](adr/0012-physics-thin-raylib-collision-layer.md) — its dependency (`BaseGameLogic`, ADR-0010) just shipped above, unblocked now; also one of [RFC-0001](rfc/0001-flare-reactor-pipeline-experiment.md)'s "Lacunas de infraestrutura conhecidas" (lower priority there — that experiment only needs proximity, not rigid-body dynamics)
+- [ ] Material layer (`app/scene/material.h`/`renderer.h`: `Material`, named shader uniforms + generic `Bind`/`Draw`) — [ADR-0019](adr/0019-render-material-layer.md) — fresnel rim glow (game/flare_reactor) was the trigger; revised to build the full `Mesh`/`Material`/`Renderer` in `app/` now rather than defer, with `game/sandbox`'s `GameplayScene` deliberately migrated off its hardcoded `DrawCubeWires` onto a real `Renderable` through the same API, as the second consumer — a documented exception to the usual "wait for a second real consumer" discipline, same category as ADR-0010's own
+- [ ] Scene index (`SceneIndex`, reactive discovery of "what exists to render/observe" via EnTT's `on_construct`/`on_destroy` signals) — [ADR-0018](adr/0018-scene-graph-event-driven-revisit.md) — this file missed the merge of that ADR (Proposed, 2026-08-06); added on sight per this file's own maintenance rule below
 
 ## Not started — no ADR yet
 
@@ -50,11 +52,6 @@ any code, same as everything above did.
   is possible today, not even a crude one; genuinely new infrastructure, not an extension of
   something that exists. Surfaced by [RFC-0001](rfc/0001-flare-reactor-pipeline-experiment.md)'s
   "Lacunas de infraestrutura conhecidas" (the reactor pulse's "efeito visual... partículas").
-- [ ] **Material/shader-per-entity component** (e.g. emission/glow) — `ResourceCache<Shader>`
-  (ADR-0004) only caches a shader by path; nothing binds a shader/material to a specific entity for
-  rendering. Also surfaced by [RFC-0001](rfc/0001-flare-reactor-pipeline-experiment.md) (the
-  reactor's "emissão de luz"); likely worth designing alongside the particle system above, since
-  both are about how an entity is actually drawn.
 - [ ] **Navigable level geometry** (a real floor/obstacles, not just `DrawGrid`'s decorative grid)
   — prerequisite for real pathfinding (A*/NavMesh) to have anything to navigate against; probably
   comes after physics/collision (above) makes sense to build. Surfaced by

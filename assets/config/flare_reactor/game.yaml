@@ -1,0 +1,12 @@
+# flare_reactor's shipped GameConfig defaults (docs/adr/0011), staged into
+# resources/config/flare_reactor/game.yaml at build time. Read by LoadOrCreateGameConfig ONLY the
+# first time it generates config/game.yaml -- the real, player-writable, gitignored copy actually
+# consulted every run.
+#
+# Edit config/game.yaml (next to the built binary) to change YOUR OWN running copy (e.g. try a
+# different one of assets/cubemaps/Cubemap_Sky_01..25-512x512.png). Edit this file instead to
+# change what a fresh install/first run ships with for everyone.
+skyboxCubemapPath: resources/cubemaps/Cubemap_Sky_03-512x512.png
+beaconSoundPath: resources/audio/fx/coin.wav
+sentinelPatrolVoicePath: resources/audio/voices/just-patroling_limpa.mp3
+sentinelInvestigateVoicePath: resources/audio/voices/letsseewhatishapenning_limpa.mp3

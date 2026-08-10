@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Notas de Estudo — Rendering (frame-3)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f1216;
+    --panel: #161b22;
+    --panel-border: #2a313c;
+    --text: #dfe6ee;
+    --text-dim: #9aa7b5;
+    --accent: #4fd1ff;
+    --accent-2: #ff6b6b;
+    --code-bg: #0b0e12;
+    --todo: #e0a83e;
+    --done: #4fd18b;
+    --planned: #7d8794;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  main {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 6rem;
+  }
+  header h1 {
+    font-size: 1.7rem;
+    margin-bottom: 0.25rem;
+  }
+  header p.subtitle {
+    color: var(--text-dim);
+    margin-top: 0;
+    font-size: 0.95rem;
+  }
+  header p.subtitle em {
+    color: var(--accent);
+    font-style: normal;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid var(--panel-border);
+    margin: 2.5rem 0;
+  }
+  h2 {
+    font-size: 1.3rem;
+    margin-top: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+  h2 .date {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--text-dim);
+  }
+  h3 {
+    font-size: 1.05rem;
+    color: var(--accent);
+    margin-top: 2rem;
+  }
+  p { margin: 0.8rem 0; }
+  code {
+    background: var(--code-bg);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.9em;
+    color: #b8e6ff;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 0.9rem 1rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+  }
+  pre code {
+    background: none;
+    padding: 0;
+    color: var(--text);
+  }
+  .status-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+  .status-table th, .status-table td {
+    text-align: left;
+    padding: 0.5rem 0.7rem;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .status-table th {
+    color: var(--text-dim);
+    font-weight: 500;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .badge.done { background: rgba(79, 209, 139, 0.15); color: var(--done); }
+  .badge.progress { background: rgba(224, 168, 62, 0.15); color: var(--todo); }
+  .badge.planned { background: rgba(125, 135, 148, 0.15); color: var(--planned); }
+  .note {
+    border-left: 3px solid var(--accent);
+    background: var(--panel);
+    padding: 0.8rem 1rem;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.92rem;
+    margin: 1rem 0;
+  }
+  .note.why {
+    border-left-color: var(--accent-2);
+  }
+  .refs {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .refs code { color: var(--text-dim); }
+  a { color: var(--accent); }
+  ul { padding-left: 1.3rem; }
+  li { margin: 0.35rem 0; }
+
+  .ref-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin: 1rem 0;
+  }
+  .ref-gallery figure {
+    margin: 0;
+    flex: 1 1 220px;
+    max-width: 280px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 0.6rem;
+  }
+  .ref-gallery img {
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+    display: block;
+  }
+  .ref-gallery figcaption {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    margin-top: 0.5rem;
+    line-height: 1.4;
+  }
+  .ref-gallery figcaption a { color: var(--text-dim); text-decoration: underline; }
+
+  .layout {
+    display: flex;
+    align-items: flex-start;
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+  nav.toc {
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    flex: 0 0 230px;
+    width: 230px;
+    max-height: 100vh;
+    overflow-y: auto;
+    padding: 2rem 1rem 2rem 1.5rem;
+    border-right: 1px solid var(--panel-border);
+    font-size: 0.83rem;
+  }
+  nav.toc a {
+    display: block;
+    padding: 0.22rem 0;
+    color: var(--text-dim);
+    text-decoration: none;
+    line-height: 1.3;
+  }
+  nav.toc a:hover { color: var(--accent); }
+  nav.toc .toc-h2 {
+    display: block;
+    color: var(--text);
+    font-weight: 600;
+    margin-top: 1.1rem;
+    padding: 0.22rem 0;
+  }
+  nav.toc .toc-h2:first-child { margin-top: 0; }
+  nav.toc .toc-h3 {
+    padding-left: 0.9rem;
+    font-size: 0.78rem;
+  }
+  main { min-width: 0; }
+  @media (max-width: 760px) {
+    .layout { flex-direction: column; }
+    nav.toc {
+      position: static;
+      width: 100%;
+      max-height: none;
+      border-right: none;
+      border-bottom: 1px solid var(--panel-border);
+    }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+  <a class="toc-h2" href="#status">Roadmap de efeitos</a>
+
+  <a class="toc-h2" href="#2026-08-08-shader-effects">Shader effects</a>
+  <a class="toc-h3" href="#effect-1-fresnel">1. Fresnel rim glow</a>
+  <a class="toc-h3" href="#effect-2-scroll">2. Scrolling core texture</a>
+  <a class="toc-h3" href="#effect-3-pulse">3. Emissive pulse</a>
+  <a class="toc-h3" href="#effect-4-bloom">4. Fake bloom</a>
+  <a class="toc-h3" href="#effect-5-specular">5. Especular por material</a>
+  <a class="toc-h3" href="#effect-order">Ordem escolhida</a>
+
+  <a class="toc-h2" href="#2026-08-08-sun-vs-skybox">Sol vs. skybox</a>
+  <a class="toc-h3" href="#sun-shader-direction">Direção real da luz</a>
+  <a class="toc-h3" href="#sun-cubemap-direction">Sol no cubemap</a>
+  <a class="toc-h3" href="#sun-diagnosis">O diagnóstico</a>
+  <a class="toc-h3" href="#sun-lesson">Lição geral</a>
+
+  <a class="toc-h2" href="#2026-08-08-kenney-assets">Kenney assets</a>
+  <a class="toc-h3" href="#kenney-dev-essentials">development-essentials</a>
+  <a class="toc-h3" href="#kenney-prototype-textures">prototype-textures</a>
+  <a class="toc-h3" href="#kenney-pattern-pack">pattern-pack</a>
+</nav>
+<main>
+
+<header>
+  <h1>📓 Notas de Estudo — Rendering em frame-3</h1>
+  <p class="subtitle">Caderno pessoal, <em>documento vivo</em>: cada seção é um tema de rendering estudado numa sessão, com data. Vai crescendo conforme novos assuntos aparecem — não é spec nem ADR, é anotação de aprendizado, âncorada no código real do projeto.</p>
+</header>
+
+<section id="status">
+  <h2>Roadmap de efeitos do reator</h2>
+  <p>Board de acompanhamento dos efeitos de shader discutidos para <code>game/flare_reactor</code> (ver seção abaixo). Atualizar o status conforme cada um é implementado.</p>
+  <table class="status-table">
+    <tr><th>Efeito</th><th>Status</th><th>Esforço</th></tr>
+    <tr><td>Fresnel rim glow</td><td><span class="badge done">Concluído</span></td><td>Baixo</td></tr>
+    <tr><td>Scrolling core texture (energy flow)</td><td><span class="badge planned">Planejado</span></td><td>Baixo</td></tr>
+    <tr><td>Emissive pulse (ligado ao estado do Reactor)</td><td><span class="badge planned">Planejado</span></td><td>Médio</td></tr>
+    <tr><td>Fake bloom (threshold + passe extra)</td><td><span class="badge planned">Planejado, depois</span></td><td>Médio/Alto (novo passe de render)</td></tr>
+    <tr><td>Especular por material (metalness)</td><td><span class="badge planned">Planejado, depois</span></td><td>Médio</td></tr>
+    <tr><td>Sol direcional calibrado contra o cubemap</td><td><span class="badge done">Concluído</span></td><td>Baixo</td></tr>
+  </table>
+</section>
+
+<hr>
+
+<section id="2026-08-08-shader-effects">
+  <h2>Shader effects para o reator <span class="date">2026-08-08</span></h2>
+
+  <p>Ponto de partida: <code>game/flare_reactor</code> já tem um Blinn-Phong básico (<code>src/game/flare_reactor/lighting.h/.cpp</code>, <code>assets/shaders/glsl330/lighting.vs/fs</code>), portado do exemplo <code>shaders_basic_lighting</code> do raylib — uma luz direcional "sun" + um point light cyan perto do núcleo do reator. Cada um dos 13 materiais do modelo do reator (Sketchfab "Reactor Nuclear") tem sua <strong>própria instância de shader compilada</strong> (não uma compartilhada) — decisão registrada no header de <code>lighting.h</code>: <code>UnloadModel → UnloadMaterial</code> do raylib dá <code>UnloadShader</code> sem refcount, então compartilhar uma instância entre materiais causaria double-free quando o modelo for descarregado.</p>
+
+  <p>Esse padrão — um uniform por-frame empurrado pra N shaders independentes via <code>Lighting::Update(registry, viewPos)</code> — é o ponto de extensão natural pra qualquer efeito novo que precise de um uniform global (tempo, intensidade de pulso etc.): não criar um mecanismo novo, estender esse loop.
+
+  <h3 id="effect-1-fresnel">1. Fresnel rim glow</h3>
+  <p><strong>O que é:</strong> brilho que aparece mais forte nas bordas de um objeto, quando a normal da superfície é quase perpendicular à direção da câmera. É o efeito clássico de "contorno luminoso" em sci-fi (energy shields, reatores, hologramas). Fisicamente é uma aproximação do <em>efeito Fresnel</em> real (reflectância que varia com o ângulo de incidência), mas aqui é só um truque visual barato — não precisa ser fisicamente correto.</p>
+  <p><strong>Fórmula:</strong> quanto mais a normal <code>N</code> se afasta da direção pra câmera <code>V</code>, mais forte o termo:</p>
+  <pre><code>float fresnel = pow(1.0 - max(dot(normal, viewD), 0.0), power);
+finalColor.rgb += fresnel * rimColor.rgb * rimIntensity;</code></pre>
+  <p><code>viewD</code> já existe em <code>lighting.fs</code> (calculado a partir do uniform <code>viewPos</code>, que <code>Lighting::Update</code> já empurra todo frame). <code>power</code> tipicamente entre 2 e 4 — quanto maior, mais fino o contorno.</p>
+  <div class="note">
+    <strong>Por que é aditivo, não multiplicativo:</strong> o termo de Fresnel simula luz "vazando" da borda, então soma ao resultado final em vez de multiplicar — multiplicar escureceria o objeto onde não há brilho de borda.
+  </div>
+
+  <div class="note" style="border-left-color: var(--done);">
+    <strong>✅ Implementado <span class="date">2026-08-08</span>:</strong>
+    <p style="margin-top:0.4rem;"><code>assets/shaders/glsl330/lighting.fs</code> ganhou 3 uniforms novos (<code>vec3 rimColor</code>, <code>float rimPower</code>, <code>float rimIntensity</code>) e a linha do termo aditivo, logo antes da correção de gama:</p>
+    <pre><code>float fresnel = pow(1.0 - max(dot(normal, viewD), 0.0), rimPower);
+finalColor.rgb += fresnel*rimColor*rimIntensity;</code></pre>
+    <p><code>normal</code> e <code>viewD</code> já existiam no shader (usados pelo termo especular do Blinn-Phong) — nenhuma mudança em <code>lighting.vs</code> foi necessária.</p>
+    <p><code>src/game/flare_reactor/lighting.cpp</code> ganhou os valores fixos, no mesmo padrão de <code>kLights</code> (constantes estáticas, documentadas como "revisitar se precisar reagir a estado de jogo"):</p>
+    <pre><code>constexpr Color kRimColor = {110, 210, 255, 255}; // mesmo cyan do point light do núcleo
+constexpr float kRimPower = 3.0f;
+constexpr float kRimIntensity = 1.5f; // subiu de 0.6 pra 1.5 (2026-08-08) pra ficar visível de cara</code></pre>
+    <p>Setados uma vez em <code>SetupRim(Shader&amp;)</code>, chamada de dentro de <code>LoadLightingShaderInstance()</code> — ou seja, roda tanto pro shader de primitives quanto pra cada uma das 13 instâncias por-material do reator (<code>ApplyToModel</code>), sem precisar de refresh por frame (diferente de <code>viewPos</code>, que muda com a câmera): são valores estáticos, então um <code>SetShaderValue</code> na criação já basta.</p>
+    <p>Build validado com <code>make GAME=flare_reactor</code> (paths dos vendors documentados no skill <code>run</code>) — compilou sem warnings. Checagem visual fica por conta do usuário (ver <code>.claude/skills/run/SKILL.md</code>: validação visual não é mais um passo automático daqui pra frente).</p>
+  </div>
+
+  <h3 id="effect-2-scroll">2. Scrolling core texture (energy flow)</h3>
+  <p><strong>O que é:</strong> animar uma textura de "energia" deslizando pela superfície do núcleo, deslocando as coordenadas UV ao longo do tempo. Dá sensação de fluido/plasma em movimento sem precisar de partículas.</p>
+  <pre><code>vec2 scrolledUV = fragTexCoord + vec2(time * scrollSpeed, 0.0);
+vec4 energyColor = texture(energyTex, scrolledUV);
+finalColor.rgb += energyColor.rgb * energyIntensity;</code></pre>
+  <p>Precisa de um <code>uniform float time</code> novo — mesmo ponto de entrada do Fresnel: estender <code>Lighting::Update</code> pra também setar esse uniform em todas as instâncias de shader (a primitives shader e as 13 do modelo, via <code>ApplyToModel</code>).</p>
+  <div class="ref-gallery">
+    <figure>
+      <img src="assets/refs/plasma-energy-core.jpg" alt="Bola de plasma com filamentos de energia saindo de um núcleo central">
+      <figcaption>A sensação que o scroll de UV busca imitar: filamentos de energia saindo de um núcleo. Não precisa ficar assim tão orgânico — mesmo um ruído simples deslizando já lê como "energia viva". <a href="https://commons.wikimedia.org/wiki/File:Plasma_globe_60th.jpg" target="_blank" rel="noopener">Wikimedia Commons, CC BY-SA 3.0, Colin</a></figcaption>
+    </figure>
+    <figure>
+      <img src="assets/kenney/perlin-noise-sample.png" alt="Textura de ruído Perlin em tons de cinza">
+      <figcaption>A textura candidata real (já no repo): <code>kenney_development-essentials/Noise/perlin-noise.png</code>. Tingida de ciano + deslizada em UV, dá o "fluido" acima sem precisar desenhar nada — ver seção Kenney abaixo.</figcaption>
+    </figure>
+  </div>
+
+  <h3 id="effect-3-pulse">3. Emissive pulse ligado ao estado do Reactor</h3>
+  <p><strong>Contexto:</strong> o <code>BeaconPulseProcess</code> (RFC-0001 Phase 4) já faz lerp de <code>Renderable::color</code> em direção a RED quando o beacon é ativado, e isso hoje se propaga via <code>colDiffuse</code> (o <code>tint</code> em <code>lighting.fs</code>) — <strong>multiplicativo</strong>: o objeto fica "tingido" de vermelho, mas não parece emitir luz própria.</p>
+  <p><strong>Ideia:</strong> separar isso num termo <strong>emissivo aditivo</strong>, controlado por um uniform <code>float pulseIntensity</code> (0 = inativo, 1 = pico do pulso) — mais parecido com "o núcleo está brilhando" do que "o objeto mudou de cor".</p>
+  <div class="note why">
+    <strong>Por que separar do <code>colDiffuse</code> existente:</strong> multiplicar por tint escurece partes que já são escuras (sombra), então nunca vai parecer "luz saindo". Um termo aditivo, independente da iluminação recebida, é o que faz o núcleo parecer fonte de luz mesmo em ângulos sem luz direta.
+  </div>
+  <div class="ref-gallery">
+    <figure>
+      <img src="assets/kenney/gradient-radial-sample.png" alt="Gradiente radial suave, branco no centro, preto nas bordas">
+      <figcaption>Máscara de falloff pro pulso: <code>kenney_development-essentials/Gradient/gradient-radial.png</code>. Multiplicada por <code>pulseIntensity</code> e tingida de vermelho, dá o "núcleo brilhando de dentro pra fora" sem precisar calcular a distância no shader.</figcaption>
+    </figure>
+  </div>
+
+  <h3 id="effect-4-bloom">4. Fake bloom (threshold + passe extra) — depois</h3>
+  <p>Bloom de verdade precisa de post-processing: renderizar a cena pra uma textura, extrair pixels acima de um threshold de luminância, borrar (blur gaussiano), e compor de volta. O projeto ainda não tem nenhum passe de post-processing (<code>rlLoadFramebuffer</code> ou equivalente) — isso é mudança de arquitetura, não só shader, então fica pra depois do Fresnel + scroll + pulse, que já cobrem boa parte da sensação "glow" sem precisar de um passe novo.</p>
+  <div class="ref-gallery">
+    <figure>
+      <img src="assets/refs/bloom-photo-window.jpg" alt="Foto de uma janela com vitral, luz forte vazando com franja azulada nas bordas">
+      <figcaption>Bloom numa foto real: a franja de luz vazando nas bordas da janela, mesmo já sendo a parte mais clara da imagem. <a href="https://commons.wikimedia.org/wiki/File:HrdiBloomExample.jpg" target="_blank" rel="noopener">Wikimedia Commons, CC BY-SA 3.0, Rerdavies</a></figcaption>
+    </figure>
+    <figure>
+      <img src="assets/refs/bloom-cg-elephants-dream.jpg" alt="Cena 3D (Elephants Dream) com luz forte de uma porta vazando sobre paredes e personagens escuros">
+      <figcaption>Mesmo efeito, renderizado (não fotografado): a luz da porta "sangra" sobre as paredes e personagens escuros ao redor — exatamente o que threshold+blur reproduz. <a href="https://commons.wikimedia.org/wiki/File:Elephants_Dream_-_Emo_and_Proog.jpg" target="_blank" rel="noopener">Wikimedia Commons, CC BY 2.5, Blender Foundation</a></figcaption>
+    </figure>
+  </div>
+
+  <h3 id="effect-5-specular">5. Especular por material (metalness) — depois</h3>
+  <p>Hoje o expoente especular (<code>shine</code>) é fixo em <code>16.0</code> pra todo mundo em <code>lighting.fs</code>. Os 13 materiais do glTF do reator provavelmente têm valores de metalness/roughness próprios (PBR) que dá pra ler e passar como uniform por-material em <code>Lighting::ApplyToModel</code>, pra partes metálicas ficarem mais especulares que partes foscas. Esforço médio — precisa antes inspecionar o que o glTF do Sketchfab realmente carrega em cada um dos 13 materiais.</p>
+  <div class="ref-gallery">
+    <figure>
+      <img src="assets/refs/specular-highlight-spheres.jpg" alt="Duas esferas glossy (amarela e ciano) com highlights especulares nítidos">
+      <figcaption>O que "mais especular" quer dizer: um ponto de brilho pequeno e nítido, não uma superfície uniformemente clara. <code>shine</code> mais alto = highlight menor/mais nítido (metal); mais baixo = highlight maior/mais espalhado (plástico/fosco). <a href="https://commons.wikimedia.org/wiki/File:Specular_highlight.jpg" target="_blank" rel="noopener">Wikimedia Commons, CC BY-SA 3.0, Reedbeta</a></figcaption>
+    </figure>
+  </div>
+
+  <h3 id="effect-order">Ordem escolhida</h3>
+  <p>Fresnel rim → scrolling core texture → emissive pulse. Os três só precisam do mesmo tipo de extensão (um novo uniform empurrado por <code>Lighting::Update</code> a cada frame, pro shader de primitives + os 13 de material), sem passe de render novo nem mudança de arquitetura.</p>
+
+  <p class="refs">Refs: <code>src/game/flare_reactor/lighting.h/.cpp</code>, <code>assets/shaders/glsl330/lighting.vs/fs</code>, <code>src/game/flare_reactor/skybox.h/.cpp</code> (mesmo raciocínio de "shader não compartilhado"), RFC-0001 Phase 4 (<code>BeaconPulseProcess</code>).</p>
+</section>
+
+<hr>
+
+<section id="2026-08-08-sun-vs-skybox">
+  <h2>Calibrando a luz direcional contra o sol do cubemap <span class="date">2026-08-08</span></h2>
+
+  <p><strong>O problema:</strong> o skybox (<code>Skybox</code>, textura estática cross-layout) e a luz direcional "sun" do Blinn-Phong (<code>lighting.cpp</code>'s <code>kLights[0]</code>) são <strong>dois sistemas totalmente desacoplados</strong> — o sol que você vê no céu já está "assado" nos pixels do PNG, sem nenhuma direção 3D associada; a luz direcional é só uma posição escolhida à mão. O comentário original do código só dizia que a <em>cor</em> combinava com o clima do cubemap ("matches the skybox cubemap's own sunset mood") — nunca a <em>posição</em>. Dava pra estarem apontando em qualquer direção uma em relação à outra, e estavam.</p>
+
+  <h3 id="sun-shader-direction">Descobrindo a direção real da luz no shader</h3>
+  <p>Em <code>lighting.fs</code>, pra uma luz do tipo <code>LIGHT_DIRECTIONAL</code>:</p>
+  <pre><code>light = -normalize(lights[i].target - lights[i].position);</code></pre>
+  <p><code>target - position</code> é a direção de <em>viagem</em> da luz (de onde ela está pra onde ela aponta). O termo de Lambert (<code>dot(normal, light)</code>) precisa do vetor <em>rumo à fonte</em>, por isso o sinal negado — ou seja, <code>light = normalize(position - target)</code>. Com <code>position={-6,8,-4}</code> e <code>target={0,0,0}</code>, a luz vinha de <strong>-X, bem alto no céu (~53° de altura), -Z</strong>.</p>
+
+  <h3 id="sun-cubemap-direction">Achando o sol de verdade no cubemap</h3>
+  <p>Abri <code>assets/cubemaps/Cubemap_Sky_03-512x512.png</code> (o default do <code>game.yaml</code>) direto pra olhar. No layout cross 4x3 que o raylib usa (<code>CUBEMAP_LAYOUT_CROSS_FOUR_BY_THREE</code>, <code>vendor/raylib/src/rtextures.c</code>), as 6 faces ficam dispostas assim (colunas x linhas de células 512×512):</p>
+  <pre><code>         [ +Y ]
+[ -X ]  [ +Z ]  [ +X ]  [ -Z ]
+         [ -Y ]</code></pre>
+  <p>O disco do sol aparece bem dentro da célula da face <strong>+X</strong>, quase colado na borda com a face <strong>+Z</strong>, na altura vertical do meio da faixa (ou seja, rente ao horizonte — é um pôr-do-sol de verdade, não meio-dia). Direção real, em coordenadas de mundo: <strong>+X, quase zero de altura, puxando um pouco pra +Z</strong>.</p>
+
+  <h3 id="sun-diagnosis">O diagnóstico</h3>
+  <p>Comparando os dois: a luz do shader vinha de <code>(-X, alto, -Z)</code>; o sol de verdade está em <code>(+X, baixo, +Z)</code>. Invertido nos <strong>dois</strong> eixos horizontais, e errado também na altura. Não era um desalinhamento sutil — era o oposto quase exato.</p>
+
+  <div class="note" style="border-left-color: var(--done);">
+    <strong>✅ Corrigido <span class="date">2026-08-08</span>:</strong>
+    <pre><code>// antes
+{/*LIGHT_DIRECTIONAL=*/0, {-6.0f, 8.0f, -4.0f}, {0,0,0}, {255, 196, 130, 255}},
+
+// depois
+{/*LIGHT_DIRECTIONAL=*/0, {6.0f, 1.5f, 3.0f}, {0,0,0}, {255, 196, 130, 255}},</code></pre>
+    <p>X e Z invertidos, Y bem mais baixo (rente ao horizonte, batendo com o disco solar). Os números exatos vieram de uma leitura visual da imagem, não de um cálculo exato de UV→direção do cubemap (que existe, é a convenção padrão do OpenGL pra cubemap faces, mas não valia a pena derivar com precisão aqui) — ajuste fino é visual, comparando a sombra no reator com a posição do sol no céu.</p>
+    <p><strong>Só vale pro cubemap atual</strong> (<code>Cubemap_Sky_03</code>) — se o <code>skyboxCubemapPath</code> do <code>game.yaml</code> mudar pra um dos outros 24 PNGs, essa posição provavelmente precisa ser recalibrada do zero (o sol pode estar em outra face inteiramente).</p>
+  </div>
+
+  <h3 id="sun-lesson">Lição geral</h3>
+  <p>Sempre que um asset visual "de fundo" (skybox, HDRI, matte painting) tem uma fonte de luz óbvia assada nele, e o projeto também tem uma luz dinâmica separada tentando simular a mesma cena, as duas <strong>não ficam sincronizadas automaticamente</strong> — é fácil escolher a posição da luz "de olho" (ou copiar de um exemplo) e nunca reparar que está invertida, porque a cena ainda parece "iluminada" de algum jeito plausível. Vale sempre checar as duas contra a mesma referência.</p>
+
+  <p class="refs">Refs: <code>src/game/flare_reactor/lighting.cpp</code> (<code>kLights[0]</code>), <code>assets/shaders/glsl330/lighting.fs</code>, <code>vendor/raylib/src/rtextures.c</code> (layout das faces do cubemap cross), <code>assets/cubemaps/Cubemap_Sky_03-512x512.png</code>.</p>
+</section>
+
+<hr>
+
+<section id="2026-08-08-kenney-assets">
+  <h2>O que dá pra reaproveitar dos pacotes Kenney <span class="date">2026-08-08</span></h2>
+
+  <p>Três pacotes CC0 (domínio público, crédito apreciado mas não obrigatório) chegaram em <code>assets/new-to-organize/</code> — ainda numa pasta de "não organizado ainda", então os caminhos abaixo provavelmente mudam quando isso for pra um lugar definitivo (tipo <code>assets/textures/</code>, espelhando como <code>assets/cubemaps/</code>/<code>assets/models/</code> já são organizados). Cada um tem um <code>License.txt</code> próprio confirmando CC0.</p>
+
+  <h3 id="kenney-dev-essentials">kenney_development-essentials</h3>
+  <div class="ref-gallery">
+    <figure>
+      <img src="assets/kenney/development-essentials-preview.png" alt="Contact sheet do pacote Development Essentials: UV checker, ruído perlin, gradientes, checkerboard, normal map padrão">
+      <figcaption>UV checker, ruído Perlin (2 tamanhos), gradientes (radial/angular/linear + espelhados), checkerboard, normal map "flat" padrão, pixels sólidos 1×1/4×4.</figcaption>
+    </figure>
+  </div>
+  <p>O pacote mais diretamente útil pros efeitos do reator:</p>
+  <ul>
+    <li><strong><code>Noise/perlin-noise.png</code></strong> → textura candidata pro <strong>scroll do núcleo (efeito 2 acima)</strong>: tingir de ciano, deslizar UV com <code>time</code>. Sem precisar desenhar nada.</li>
+    <li><strong><code>Gradient/gradient-radial.png</code></strong> → máscara de falloff pro <strong>emissive pulse (efeito 3)</strong>: multiplica <code>pulseIntensity</code> por essa textura amostrada no UV do núcleo, em vez de calcular distância no shader.</li>
+    <li><strong><code>UV texture/uv-texture.png</code></strong> e <strong><code>Checkerboard/checkerboard.png</code></strong> → ferramenta de dev, não efeito final: trocar temporariamente a textura do núcleo por essa antes de implementar o scroll, pra confirmar visualmente pra que lado o UV realmente desliza (evita descobrir só depois de já ter a textura "certa" aplicada que o scroll ia na direção errada).</li>
+    <li><strong><code>1×1 Pixels/pixel-white.png</code></strong> → textura-placeholder trivial pra qualquer <code>Material</code> (ADR-0019) que precise de um <code>MATERIAL_MAP_ALBEDO</code> mas não tenha (ainda) uma textura de verdade — cor sólida sem carregar nada pesado.</li>
+    <li><strong><code>Normal map/default-normal.png</code></strong> → normal map "neutro" (RGB ≈ 128,128,255, sem relevo) — referência de placeholder pra quando um material não tem normal map próprio.</li>
+  </ul>
+
+  <h3 id="kenney-prototype-textures">kenney_prototype-textures</h3>
+  <div class="ref-gallery">
+    <figure>
+      <img src="assets/kenney/prototype-textures-preview.png" alt="Contact sheet do pacote Prototype Textures: grids rotulados 1x1 metro, em 6 cores, com variações de escada/porta/janela">
+      <figcaption>Texturas de greybox rotuladas ("WALL", 1×1 metro, 1024×1024), 6 cores, com variações (grid simples, diagonal, escada, contorno porta/janela).</figcaption>
+    </figure>
+  </div>
+  <p>Esse não é pra shader — é pra <strong>level design</strong>, e bate direto com um item já nomeado (e ainda sem ADR) no <a href="../roadmap.md">roadmap</a>: "Navigable level geometry" (hoje só existe o <code>DrawGrid</code> decorativo). As texturas já vêm com escala real (1 metro por tile) e rótulo do tipo de superfície — dá pra montar um chão/parede de teste rápido pro reator sem esperar arte final, e ainda serve de guia visual de escala (os labels "WALL 1×1 meter" ajudam a checar se as proporções da cena batem).</p>
+
+  <h3 id="kenney-pattern-pack">kenney_pattern-pack</h3>
+  <div class="ref-gallery">
+    <figure>
+      <img src="assets/kenney/pattern-pack-preview.png" alt="Contact sheet do Pattern Pack: 84 padrões geométricos preto e branco, incluindo um que parece traço de placa de circuito">
+      <figcaption>84 padrões geométricos preto/branco (listras, chevron, hexágono, ondas, pontos, losangos, um que lembra trilha de placa de circuito — linha 1, penúltima coluna) + variante "Double".</figcaption>
+    </figure>
+  </div>
+  <p>Preto e branco puro é ótimo como <strong>máscara</strong> (multiply/aditivo), não como textura final:</p>
+  <ul>
+    <li>Alternativa ao ruído Perlin pro <strong>scroll do núcleo (efeito 2)</strong>: o padrão que lembra trilha de circuito dá um visual mais "tech/PCB" que o Perlin orgânico — mesma técnica de scroll de UV, resultado diferente. Vale comparar os dois depois de implementado.</li>
+    <li><strong>UI futura</strong> (você mencionou como próximo passo do reator): esses padrões, tingidos e com opacidade baixa, são o tipo de coisa comumente usada como fundo/borda de painel de HUD sci-fi — não é shader 3D, mas é reaproveitável quando UI virar trabalho real.</li>
+  </ul>
+
+  <p class="refs">Refs: <code>assets/new-to-organize/kenney_development-essentials/</code>, <code>kenney_prototype-textures/</code>, <code>kenney_pattern-pack/</code> (cada um com <code>License.txt</code> próprio, CC0); <code>docs/roadmap.md</code> "Navigable level geometry" (Not started).</p>
+</section>
+
+</main>
+</div>
+</body>
+</html>
