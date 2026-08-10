@@ -3,6 +3,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# .githooks/pre-commit bumps VERSION's minor number on every commit (user request 2026-08-10) --
+# wiring it up here, idempotently, so any fresh clone gets it just by running this script once,
+# same self-bootstrapping shape as the vendor/ checkouts below. `|| true`: harmless outside a git
+# checkout (e.g. a source tarball with no .git/ at all).
+git -C "$SCRIPT_DIR" config core.hooksPath .githooks 2>/dev/null || true
+
 RAYLIB_VERSION="6.0"
 RAYLIB_PATH="$SCRIPT_DIR/vendor/raylib"
 

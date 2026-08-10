@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Bumps VERSION's minor number on every commit (X.Y.Z -> X.(Y+1).0) -- user request 2026-08-10.
+# Patch always resets to 0 on a minor bump (standard semver); nothing in this project increments
+# patch on its own, so it stays 0 between commits. Runs pre-commit (not post-commit) so the bumped
+# VERSION lands in the same commit being made, not a separate follow-up one.
+#
+# Wired in via `git config core.hooksPath .githooks` (build.sh sets this once, idempotently, on
+# every run -- see its own comment) rather than living in .git/hooks/ directly: that directory
+# isn't tracked by git, so a hook placed there wouldn't survive a fresh clone.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERSION_FILE="$SCRIPT_DIR/VERSION"
+
+IFS='.' read -r major minor _patch < "$VERSION_FILE"
+echo "${major}.$((minor + 1)).0" > "$VERSION_FILE"
+
+git add "$VERSION_FILE"
