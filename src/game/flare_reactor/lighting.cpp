@@ -57,11 +57,17 @@ namespace {
     // Scrolling core energy texture tuning (docs/learning/rendering.html, "Scrolling core texture
     // (energy flow)") -- fixed/static for now, same as kRim* above. kScrollSpeed is UV units/second
     // (energy-noise.png is tiled implicitly by GLSL's default texture wrap, so this just needs to
-    // read as motion, not any particular real-world speed).
+    // read as motion, not any particular real-world speed). kEnergyColor same cyan as kRimColor --
+    // reinforces one "energy signature" for the reactor core instead of two unrelated glow colors.
+    // energy-noise.png is grayscale, so without a tint the additive term just brightens the surface
+    // in a moving mottled pattern (looks like static, not energy) -- caught only after a real visual
+    // check (2026-08-10), not by build/tests. kEnergyIntensity bumped 0.6 -> 1.4 in the same pass,
+    // same "wasn't reading clearly at a glance" reasoning kRimIntensity's own bump already documents.
     constexpr float kScrollSpeed = 0.15f;
-    constexpr float kEnergyIntensity = 0.6f;
+    constexpr float kEnergyIntensity = 1.4f;
+    constexpr Color kEnergyColor = {110, 210, 255, 255};
 
-    // Same shape as BuildRimExtras -- just the two plain-float uniforms. The texture itself is NOT
+    // Same shape as BuildRimExtras -- just the plain-float/vec3 uniforms. The texture itself is NOT
     // here (see app/scene/material.h's own header comment on why a texture doesn't belong in this
     // bag) -- ApplyToModel below sets it directly on each submaterial's raylib Material.maps[]
     // instead, where DrawMesh actually rebinds it every draw.
@@ -69,6 +75,7 @@ namespace {
         return {
             {"scrollSpeed", kScrollSpeed},
             {"energyIntensity", kEnergyIntensity},
+            {"energyColor", Vector3{kEnergyColor.r / 255.0f, kEnergyColor.g / 255.0f, kEnergyColor.b / 255.0f}},
         };
     }
 

@@ -58,6 +58,7 @@ uniform sampler2D texture1;
 uniform float time;
 uniform float scrollSpeed;
 uniform float energyIntensity;
+uniform vec3 energyColor;
 
 void main()
 {
@@ -112,9 +113,14 @@ void main()
     // a default-block uniform nobody ever calls SetShaderValue on (spec section 2.11.4), so this
     // term is a no-op there regardless of what texture1/scrolledUV sample, same guarantee
     // rimIntensity already relies on above.
+    //
+    // texture1 (energy-noise.png) is grayscale Perlin noise -- sampling it raw and adding it just
+    // brightens the surface in a moving mottled pattern, reads as "static", not "energy". energyColor
+    // tints it (same idea as rimColor tinting the Fresnel term) so it actually reads as a colored
+    // glow, not a luminance ripple.
     vec2 scrolledUV = fragTexCoord + vec2(time*scrollSpeed, 0.0);
-    vec3 energyColor = texture(texture1, scrolledUV).rgb;
-    finalColor.rgb += energyColor*energyIntensity;
+    float energyNoise = texture(texture1, scrolledUV).r;
+    finalColor.rgb += energyNoise*energyColor*energyIntensity;
 
     // Gamma correction
     finalColor = pow(finalColor, vec4(1.0/2.2));
