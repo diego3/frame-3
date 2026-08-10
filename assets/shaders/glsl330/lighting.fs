@@ -42,9 +42,19 @@ uniform float rimIntensity;
 // Scrolling core energy texture (docs/learning/rendering.html, "Scrolling core texture (energy
 // flow)") -- a noise/energy texture sliding along U over time, read additively same as rim glow
 // above (a surface "emitting" light shouldn't be darkened by ambient/shadow it's not receiving).
-// `time` is pushed every frame (Lighting::Update, like viewPos); the rest are static, set once
-// when this shader instance's RenderMaterial is built (Lighting::ApplyToModel).
-uniform sampler2D energyTex;
+// `time` is pushed every frame (Lighting::Update, like viewPos); scrollSpeed/energyIntensity are
+// static, set once when this shader instance's RenderMaterial is built (Lighting::ApplyToModel).
+//
+// texture1, not a custom-named sampler: raylib's DrawMesh (rmodels.c) only auto-binds textures it
+// finds in Material::maps[] on every draw, using the fixed default names LoadShader resolves for
+// slots 0-2 (texture0 = diffuse/albedo, texture1 = specular/metalness, texture2 = normal) -- a
+// uniform sampler2D under any other name has no such per-draw rebinding, so it silently shows
+// nothing (SetShaderValueTexture's texture-unit registration is only ever consumed by raylib's
+// immediate-mode batch renderer, which DrawMesh doesn't go through). Nothing in this shader reads
+// specular/metalness texture data today (the specular term below is a fixed `shine` constant), so
+// slot 1 is free to repurpose for the scrolling energy texture instead -- Lighting::ApplyToModel
+// sets model.materials[i].maps[MATERIAL_MAP_SPECULAR].texture directly, no custom uniform push.
+uniform sampler2D texture1;
 uniform float time;
 uniform float scrollSpeed;
 uniform float energyIntensity;
@@ -97,13 +107,13 @@ void main()
     finalColor.rgb += fresnel*rimColor*rimIntensity;
 
     // Scrolling core energy texture: additive, same reasoning as rim glow above. energyIntensity
-    // defaults to 0 for any material that never calls ApplyExtras with these uniforms (e.g. every
-    // solid Box/Sphere Renderable drawn with Lighting::GetPrimitivesMaterial()) -- OpenGL zero-
-    // initializes a default-block uniform nobody ever calls SetShaderValue on (spec section 2.11.4),
-    // so this term is a no-op there regardless of what energyTex/scrolledUV sample, same guarantee
+    // defaults to 0 for any material that never calls ApplyExtras with it (e.g. every solid
+    // Box/Sphere Renderable drawn with Lighting::GetPrimitivesMaterial()) -- OpenGL zero-initializes
+    // a default-block uniform nobody ever calls SetShaderValue on (spec section 2.11.4), so this
+    // term is a no-op there regardless of what texture1/scrolledUV sample, same guarantee
     // rimIntensity already relies on above.
     vec2 scrolledUV = fragTexCoord + vec2(time*scrollSpeed, 0.0);
-    vec3 energyColor = texture(energyTex, scrolledUV).rgb;
+    vec3 energyColor = texture(texture1, scrolledUV).rgb;
     finalColor.rgb += energyColor*energyIntensity;
 
     // Gamma correction

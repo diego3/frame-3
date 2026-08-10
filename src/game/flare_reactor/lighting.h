@@ -40,12 +40,13 @@
 class Lighting {
 public:
     // `textures`/`energyTexturePath`: GameConfig (game_config.h)'s energy texture asset, needed for
-    // the scrolling core effect's `energyTex` uniform (docs/learning/rendering.html, effect 2) --
-    // same "content asset path threaded through main.cpp" shape skyboxCubemapPath/beaconSoundPath
-    // already have for Skybox/FlareReactorView. Held as a ResourceCache<Texture2D> handle (ADR-0004)
-    // -- MUST outlive this Lighting instance and be released before Engine::Shutdown(), same
-    // handle-lifetime discipline every other cache handle in this project follows; main.cpp's
-    // g_lighting is a unique_ptr reset before engine.Shutdown() for exactly this reason already.
+    // the scrolling core effect's texture (docs/learning/rendering.html, effect 2; lighting.fs's
+    // `texture1`, see ApplyToModel below for why it's not a custom-named uniform) -- same "content
+    // asset path threaded through main.cpp" shape skyboxCubemapPath/beaconSoundPath already have for
+    // Skybox/FlareReactorView. Held as a ResourceCache<Texture2D> handle (ADR-0004) -- MUST outlive
+    // this Lighting instance and be released before Engine::Shutdown(), same handle-lifetime
+    // discipline every other cache handle in this project follows; main.cpp's g_lighting is a
+    // unique_ptr reset before engine.Shutdown() for exactly this reason already.
     Lighting(ResourceCache<Texture2D> &textures, const std::string &energyTexturePath);
     ~Lighting();
 
@@ -70,13 +71,13 @@ public:
     void Update(entt::registry &registry, Vector3 viewPos) const;
 
     // Compiles one independent Shader instance per material (see the header comment on why one-per-
-    // material, not shared), applies the rim glow + scrolling-core-texture extras (ADR-0019) to
-    // each, and assigns the result to model.materials[i].shader for every i -- called once, right
-    // after a "Renderable" component loader resolves shape == Model (main.cpp). Both sets of extras
-    // are applied once here, not re-applied per frame/per draw -- rim's values are static, and the
-    // scroll effect's own static values (scrollSpeed/energyIntensity/energyTex, as opposed to
-    // `time` itself) don't need a per-frame refresh either; app/scene/renderable.h's Model draw path
-    // passes an empty extras list for exactly this reason.
+    // material, not shared), applies the rim glow + scrolling-core-texture extras (ADR-0019,
+    // scrollSpeed/energyIntensity -- NOT the texture itself, see this .cpp's own comment on why) to
+    // each, assigns the energy texture directly onto that submaterial's raylib Material.maps[], and
+    // assigns the compiled shader to model.materials[i].shader for every i -- called once, right
+    // after a "Renderable" component loader resolves shape == Model (main.cpp). The extras are
+    // applied once here, not re-applied per frame/per draw -- they're static values, unlike `time`;
+    // app/scene/renderable.h's Model draw path passes an empty extras list for exactly this reason.
     void ApplyToModel(Model &model) const;
 
 private:

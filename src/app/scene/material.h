@@ -28,15 +28,18 @@
 
 // One named uniform value beyond raylib's own fixed Material::maps[]/params[4] slots. A closed
 // std::variant, not a `void*` + size/type-tag pair -- every value this project has needed so far
-// (rim glow's color/power/intensity; the scrolling core texture's speed/intensity/sampler, per
-// docs/learning/rendering.html's "Roadmap de efeitos do reator") is one of these five raylib-native
-// shapes. Texture2D is that "fifth shape (mat4, texture sampler swap, ...)" this comment used to say
-// to revisit for -- game/flare_reactor's energyTex (scrolling core effect) is the first uniform that
-// isn't a plain scalar/vector, so it landed here rather than as a special case bolted onto
-// RenderMaterial itself.
+// (rim glow's color/power/intensity; the scrolling core texture's speed/intensity) is one of these
+// four raylib-native shapes. Revisit if a fifth shape (mat4, ...) actually shows up.
+//
+// Deliberately NOT Texture2D, even though the scrolling core effect (docs/learning/rendering.html)
+// needs one: raylib's DrawMesh (rmodels.c) only auto-rebinds textures it finds in the *raylib*
+// Material's own maps[] array on every draw (the fixed diffuse/specular/normal slots) -- a custom-
+// named uniform sampler pushed via SetShaderValue{,Texture} has no such per-draw rebinding, so it
+// silently shows nothing past the first frame. A texture belongs on RenderMaterial::raylibMaterial.
+// maps[...] directly (see game/flare_reactor/lighting.cpp's ApplyToModel), not in this bag.
 struct UniformValue {
     std::string name;
-    std::variant<float, Vector3, int, Color, Texture2D> value;
+    std::variant<float, Vector3, int, Color> value;
 };
 
 // A Shader plus every per-object value it needs to draw correctly: raylib's own fixed Material
@@ -80,8 +83,6 @@ inline void ApplyExtras(const Shader &shader, const std::vector<UniformValue> &e
                 } else if constexpr (std::is_same_v<T, Color>) {
                     float packed[4] = {v.r / 255.0f, v.g / 255.0f, v.b / 255.0f, v.a / 255.0f};
                     SetShaderValue(shader, loc, packed, SHADER_UNIFORM_VEC4);
-                } else if constexpr (std::is_same_v<T, Texture2D>) {
-                    SetShaderValueTexture(shader, loc, v);
                 }
             },
             extra.value);

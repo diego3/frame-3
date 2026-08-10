@@ -61,18 +61,15 @@ namespace {
     constexpr float kScrollSpeed = 0.15f;
     constexpr float kEnergyIntensity = 0.6f;
 
-    // Same shape as BuildRimExtras -- `energyTexture` is omitted (not a zero-valued Texture2D{})
-    // when the GameConfig-configured asset failed to load, so ApplyExtras never binds an invalid GL
-    // texture id; energyIntensity alone still gets set either way (harmless -- lighting.fs's
-    // `texture(energyTex, ...)` samples whichever texture unit happens to be bound, multiplied by
-    // whatever intensity ends up applied).
-    std::vector<UniformValue> BuildScrollExtras(const std::shared_ptr<Texture2D> &energyTexture) {
-        std::vector<UniformValue> extras = {
+    // Same shape as BuildRimExtras -- just the two plain-float uniforms. The texture itself is NOT
+    // here (see app/scene/material.h's own header comment on why a texture doesn't belong in this
+    // bag) -- ApplyToModel below sets it directly on each submaterial's raylib Material.maps[]
+    // instead, where DrawMesh actually rebinds it every draw.
+    std::vector<UniformValue> BuildScrollExtras() {
+        return {
             {"scrollSpeed", kScrollSpeed},
             {"energyIntensity", kEnergyIntensity},
         };
-        if (energyTexture) extras.push_back({"energyTex", *energyTexture});
-        return extras;
     }
 
     // Applies kLights to `shader` -- see lighting.h's header comment on why this reimplements
@@ -133,12 +130,20 @@ Lighting::~Lighting() {
 
 void Lighting::ApplyToModel(Model &model) const {
     std::vector<UniformValue> extras = BuildRimExtras();
-    std::vector<UniformValue> scroll = BuildScrollExtras(energyTexture_);
+    std::vector<UniformValue> scroll = BuildScrollExtras();
     extras.insert(extras.end(), scroll.begin(), scroll.end());
     for (int i = 0; i < model.materialCount; ++i) {
         Shader matShader = LoadLightingShaderInstance();
         ApplyExtras(matShader, extras);   // baked once here -- see this file's LoadLightingShaderInstance comment
         model.materials[i].shader = matShader;
+
+        // energyTex (lighting.fs's `texture1`) goes on the raylib Material directly, not through
+        // ApplyExtras -- see app/scene/material.h's header comment: DrawMesh only auto-rebinds
+        // textures it finds in Material::maps[] on every draw, so this is what actually makes the
+        // scrolling effect show up frame after frame (a plain SetShaderValueTexture call, tried
+        // first, silently stopped working after the first draw). MATERIAL_MAP_SPECULAR is free to
+        // repurpose -- nothing in lighting.fs reads a specular/metalness texture today.
+        if (energyTexture_) model.materials[i].maps[MATERIAL_MAP_SPECULAR].texture = *energyTexture_;
     }
 }
 
