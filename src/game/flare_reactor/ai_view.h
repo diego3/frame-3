@@ -25,6 +25,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 
 #include <entt/entt.hpp>
 #include <raylib.h>
@@ -35,10 +36,13 @@
 
 class AIView : public IGameView {
 public:
-    AIView(entt::registry &registry, ResourceCache<Sound> &sounds)
+    // `patrolVoicePath`/`investigateVoicePath`: from GameConfig (game_config.h), not hardcoded --
+    // the caller (main.cpp) loads GameConfig once and passes these through.
+    AIView(entt::registry &registry, ResourceCache<Sound> &sounds, const std::string &patrolVoicePath,
+           const std::string &investigateVoicePath)
         : registry_(registry), sounds_(sounds) {
-        patrolVoice_ = sounds_.GetHandle("resources/audio/voices/just-patroling_limpa.mp3");
-        investigateVoice_ = sounds_.GetHandle("resources/audio/voices/letsseewhatishapenning_limpa.mp3");
+        patrolVoice_ = sounds_.GetHandle(patrolVoicePath);
+        investigateVoice_ = sounds_.GetHandle(investigateVoicePath);
     }
 
     void VOnAttach(GameViewId id, std::optional<entt::entity> actorId) override {

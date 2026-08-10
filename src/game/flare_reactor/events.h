@@ -23,4 +23,12 @@ struct EvtData_BeaconTriggered {
     Vector3 position;
 };
 
+// KEY_P (human_view.cpp) queues one of these -- screenshot_capture.h's ScreenshotCapture is the
+// one subscriber today, but the point of routing this through an event (instead of human_view.cpp
+// just calling TakeScreenshot() inline) is that KEY_P doesn't have to stay the only source: some
+// other system could Queue<EvtData_ScreenshotRequested> the same way with zero changes here (2026-
+// 08-08 idea: an AI loop watching the game, capturing frames on its own trigger). No payload yet --
+// add fields here (e.g. a label) if/when a consumer needs to distinguish requests.
+struct EvtData_ScreenshotRequested {};
+
 #endif // FLARE_REACTOR_EVENTS_H

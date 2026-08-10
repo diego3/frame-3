@@ -6,8 +6,8 @@
 #
 # Edit config/engine.yaml (next to the built binary) to change your OWN local settings. Edit this
 # file instead to change what a fresh install/first run ships with for everyone.
-screenWidth: 800
-screenHeight: 450
+screenWidth: 1200
+screenHeight: 800
 fullscreen: false
 targetFps: 60
 masterVolume: 1.0
