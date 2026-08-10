@@ -59,12 +59,18 @@ namespace {
     // (energy-noise.png is tiled implicitly by GLSL's default texture wrap, so this just needs to
     // read as motion, not any particular real-world speed). kEnergyColor same cyan as kRimColor --
     // reinforces one "energy signature" for the reactor core instead of two unrelated glow colors.
-    // energy-noise.png is grayscale, so without a tint the additive term just brightens the surface
-    // in a moving mottled pattern (looks like static, not energy) -- caught only after a real visual
-    // check (2026-08-10), not by build/tests. kEnergyIntensity bumped 0.6 -> 1.4 in the same pass,
-    // same "wasn't reading clearly at a glance" reasoning kRimIntensity's own bump already documents.
+    //
+    // kEnergyIntensity 1.4 (a prior pass, same session) blew out the WHOLE model to near-white --
+    // confirmed via an actual screenshot, not guessed. Two compounding causes, only the first fixed
+    // here: (1) intensity too high for an unmasked additive term -- 0.35 is the interim number,
+    // still applied uniformly. (2) ApplyToModel below applies this to *every* one of the reactor's
+    // 12 materials -- there's no concept yet of "this one material is the glowing core, the rest
+    // are structure/frame" (the glTF's own material names -- anisotropic19, lambert1, phongE9, ...
+    // -- are Sketchfab export artifacts, no semantic hint which index is visually "the core"). This
+    // is a real architecture gap (per-submesh/per-object distinct shader treatment), not just a
+    // tuning number -- tracked as a follow-up design question, not solved by guessing an index here.
     constexpr float kScrollSpeed = 0.15f;
-    constexpr float kEnergyIntensity = 1.4f;
+    constexpr float kEnergyIntensity = 0.35f;
     constexpr Color kEnergyColor = {110, 210, 255, 255};
 
     // Same shape as BuildRimExtras -- just the plain-float/vec3 uniforms. The texture itself is NOT
