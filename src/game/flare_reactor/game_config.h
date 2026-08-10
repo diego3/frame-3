@@ -26,6 +26,10 @@ struct GameConfig {
     std::string beaconSoundPath;
     std::string sentinelPatrolVoicePath;
     std::string sentinelInvestigateVoicePath;
+    // Scrolling core energy texture (docs/learning/rendering.html, effect 2) -- a content asset
+    // (which noise/energy texture) same as skyboxCubemapPath above, not a shader path, so it belongs
+    // here per this struct's own scope note.
+    std::string energyTexturePath;
 };
 
 // Reads path; if it doesn't exist yet (first run), seeds it from defaultsPath (assets/config/

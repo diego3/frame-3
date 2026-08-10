@@ -28,14 +28,25 @@
 #ifndef FLARE_REACTOR_LIGHTING_H
 #define FLARE_REACTOR_LIGHTING_H
 
+#include <memory>
+#include <string>
+
 #include <entt/entt.hpp>
 #include <raylib.h>
 
+#include "app/resource/resource_cache.h"
 #include "app/scene/material.h"
 
 class Lighting {
 public:
-    Lighting();
+    // `textures`/`energyTexturePath`: GameConfig (game_config.h)'s energy texture asset, needed for
+    // the scrolling core effect's `energyTex` uniform (docs/learning/rendering.html, effect 2) --
+    // same "content asset path threaded through main.cpp" shape skyboxCubemapPath/beaconSoundPath
+    // already have for Skybox/FlareReactorView. Held as a ResourceCache<Texture2D> handle (ADR-0004)
+    // -- MUST outlive this Lighting instance and be released before Engine::Shutdown(), same
+    // handle-lifetime discipline every other cache handle in this project follows; main.cpp's
+    // g_lighting is a unique_ptr reset before engine.Shutdown() for exactly this reason already.
+    Lighting(ResourceCache<Texture2D> &textures, const std::string &energyTexturePath);
     ~Lighting();
 
     Lighting(const Lighting &) = delete;
@@ -50,23 +61,28 @@ public:
     // Sentinel picked up rim glow it was never meant to have.
     const RenderMaterial &GetPrimitivesMaterial() const { return primitivesMaterial_; }
 
-    // Pushes the current camera position (needed for the shader's specular term) to this shader AND
-    // to every already-lit reactor Model's own per-material shader (see ApplyToModel) -- call once
-    // per frame, before drawing.
+    // Pushes the current camera position (needed for the shader's specular term) AND elapsed time
+    // (needed for the scrolling core effect's UV offset -- docs/learning/rendering.html, effect 2)
+    // to this shader AND to every already-lit reactor Model's own per-material shader (see
+    // ApplyToModel) -- call once per frame, before drawing. Both are genuinely per-frame values, so
+    // they're pushed directly here rather than through RenderMaterial::extras/ApplyExtras (which is
+    // for values set once at material-creation time, see ApplyToModel below).
     void Update(entt::registry &registry, Vector3 viewPos) const;
 
     // Compiles one independent Shader instance per material (see the header comment on why one-per-
-    // material, not shared), applies the rim glow extras (ADR-0019) to each, and assigns the result
-    // to model.materials[i].shader for every i -- called once, right after a "Renderable" component
-    // loader resolves shape == Model (main.cpp). Rim extras are applied once here, not re-applied
-    // per frame/per draw -- they're static values (see lighting.cpp), so baking them into each
-    // shader's uniform state at compile time is enough; app/scene/renderable.h's Model draw path
+    // material, not shared), applies the rim glow + scrolling-core-texture extras (ADR-0019) to
+    // each, and assigns the result to model.materials[i].shader for every i -- called once, right
+    // after a "Renderable" component loader resolves shape == Model (main.cpp). Both sets of extras
+    // are applied once here, not re-applied per frame/per draw -- rim's values are static, and the
+    // scroll effect's own static values (scrollSpeed/energyIntensity/energyTex, as opposed to
+    // `time` itself) don't need a per-frame refresh either; app/scene/renderable.h's Model draw path
     // passes an empty extras list for exactly this reason.
     void ApplyToModel(Model &model) const;
 
 private:
     Shader shader_;
     RenderMaterial primitivesMaterial_;
+    std::shared_ptr<Texture2D> energyTexture_;
 };
 
 #endif // FLARE_REACTOR_LIGHTING_H

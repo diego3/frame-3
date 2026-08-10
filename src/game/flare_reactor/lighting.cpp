@@ -54,6 +54,27 @@ namespace {
         };
     }
 
+    // Scrolling core energy texture tuning (docs/learning/rendering.html, "Scrolling core texture
+    // (energy flow)") -- fixed/static for now, same as kRim* above. kScrollSpeed is UV units/second
+    // (energy-noise.png is tiled implicitly by GLSL's default texture wrap, so this just needs to
+    // read as motion, not any particular real-world speed).
+    constexpr float kScrollSpeed = 0.15f;
+    constexpr float kEnergyIntensity = 0.6f;
+
+    // Same shape as BuildRimExtras -- `energyTexture` is omitted (not a zero-valued Texture2D{})
+    // when the GameConfig-configured asset failed to load, so ApplyExtras never binds an invalid GL
+    // texture id; energyIntensity alone still gets set either way (harmless -- lighting.fs's
+    // `texture(energyTex, ...)` samples whichever texture unit happens to be bound, multiplied by
+    // whatever intensity ends up applied).
+    std::vector<UniformValue> BuildScrollExtras(const std::shared_ptr<Texture2D> &energyTexture) {
+        std::vector<UniformValue> extras = {
+            {"scrollSpeed", kScrollSpeed},
+            {"energyIntensity", kEnergyIntensity},
+        };
+        if (energyTexture) extras.push_back({"energyTex", *energyTexture});
+        return extras;
+    }
+
     // Applies kLights to `shader` -- see lighting.h's header comment on why this reimplements
     // rlights.h's CreateLight/UpdateLightValues uniform-setting instead of calling them (their
     // shared lightsCount counter isn't safe across N independent shader instances). Uniform names
@@ -98,9 +119,10 @@ namespace {
     }
 }
 
-Lighting::Lighting()
+Lighting::Lighting(ResourceCache<Texture2D> &textures, const std::string &energyTexturePath)
     : shader_(LoadLightingShaderInstance()),
-      primitivesMaterial_{shader_, LoadMaterialDefault(), {}} {}
+      primitivesMaterial_{shader_, LoadMaterialDefault(), {}},
+      energyTexture_(textures.GetHandle(energyTexturePath)) {}
 
 Lighting::~Lighting() {
     // Only unloads shader_ (the primitives instance) -- every reactor Model material's own instance
@@ -110,17 +132,25 @@ Lighting::~Lighting() {
 }
 
 void Lighting::ApplyToModel(Model &model) const {
-    std::vector<UniformValue> rim = BuildRimExtras();
+    std::vector<UniformValue> extras = BuildRimExtras();
+    std::vector<UniformValue> scroll = BuildScrollExtras(energyTexture_);
+    extras.insert(extras.end(), scroll.begin(), scroll.end());
     for (int i = 0; i < model.materialCount; ++i) {
         Shader matShader = LoadLightingShaderInstance();
-        ApplyExtras(matShader, rim);   // baked once here -- see this file's LoadLightingShaderInstance comment
+        ApplyExtras(matShader, extras);   // baked once here -- see this file's LoadLightingShaderInstance comment
         model.materials[i].shader = matShader;
     }
 }
 
 void Lighting::Update(entt::registry &registry, Vector3 viewPos) const {
     float pos[3] = {viewPos.x, viewPos.y, viewPos.z};
+    // Elapsed time, for the scrolling core effect's UV offset (lighting.fs's `time*scrollSpeed`) --
+    // pushed unconditionally to every instance, same as viewPos, even though it's only visually
+    // meaningful where energyIntensity != 0 (i.e. the reactor's own materials, see
+    // BuildScrollExtras) -- the primitives shader_'s own `time` uniform is harmless dead weight.
+    float time = (float)GetTime();
     SetShaderValue(shader_, shader_.locs[SHADER_LOC_VECTOR_VIEW], pos, SHADER_UNIFORM_VEC3);
+    SetShaderValue(shader_, GetShaderLocation(shader_, "time"), &time, SHADER_UNIFORM_FLOAT);
 
     // Every reactor Model material's own shader instance needs the same per-frame refresh -- each
     // is an independent compiled program (ApplyToModel), so none of them share shader_'s uniform
@@ -135,6 +165,7 @@ void Lighting::Update(entt::registry &registry, Vector3 viewPos) const {
         for (int i = 0; i < renderable.model->materialCount; ++i) {
             Shader &matShader = renderable.model->materials[i].shader;
             SetShaderValue(matShader, GetShaderLocation(matShader, "viewPos"), pos, SHADER_UNIFORM_VEC3);
+            SetShaderValue(matShader, GetShaderLocation(matShader, "time"), &time, SHADER_UNIFORM_FLOAT);
         }
     }
 }

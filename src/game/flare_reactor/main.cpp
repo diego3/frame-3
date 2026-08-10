@@ -176,8 +176,10 @@ int main() {
     GameConfig gameConfig = LoadOrCreateGameConfig();
 
     // Constructed before the entity factory below -- its "Renderable" component loader calls
-    // Lighting::ApplyToModel while the level loads (see RegisterComponentLoaders).
-    g_lighting = std::make_unique<Lighting>();
+    // Lighting::ApplyToModel while the level loads (see RegisterComponentLoaders). engine.Textures()
+    // (ADR-0004) + gameConfig.energyTexturePath: the scrolling core effect's energyTex uniform
+    // (docs/learning/rendering.html, effect 2).
+    g_lighting = std::make_unique<Lighting>(engine.Textures(), gameConfig.energyTexturePath);
     g_screenshotCapture = std::make_unique<ScreenshotCapture>(engine.Events());
 
     g_entityFactory = std::make_unique<EntityFactory>([](const std::string &name) {

@@ -39,6 +39,16 @@ uniform vec3 rimColor;
 uniform float rimPower;
 uniform float rimIntensity;
 
+// Scrolling core energy texture (docs/learning/rendering.html, "Scrolling core texture (energy
+// flow)") -- a noise/energy texture sliding along U over time, read additively same as rim glow
+// above (a surface "emitting" light shouldn't be darkened by ambient/shadow it's not receiving).
+// `time` is pushed every frame (Lighting::Update, like viewPos); the rest are static, set once
+// when this shader instance's RenderMaterial is built (Lighting::ApplyToModel).
+uniform sampler2D energyTex;
+uniform float time;
+uniform float scrollSpeed;
+uniform float energyIntensity;
+
 void main()
 {
     // Texel color fetching from texture sampler
@@ -85,6 +95,16 @@ void main()
     // purpose -- it's meant to read as the surface emitting light at its edge, not reflecting it.
     float fresnel = pow(1.0 - max(dot(normal, viewD), 0.0), rimPower);
     finalColor.rgb += fresnel*rimColor*rimIntensity;
+
+    // Scrolling core energy texture: additive, same reasoning as rim glow above. energyIntensity
+    // defaults to 0 for any material that never calls ApplyExtras with these uniforms (e.g. every
+    // solid Box/Sphere Renderable drawn with Lighting::GetPrimitivesMaterial()) -- OpenGL zero-
+    // initializes a default-block uniform nobody ever calls SetShaderValue on (spec section 2.11.4),
+    // so this term is a no-op there regardless of what energyTex/scrolledUV sample, same guarantee
+    // rimIntensity already relies on above.
+    vec2 scrolledUV = fragTexCoord + vec2(time*scrollSpeed, 0.0);
+    vec3 energyColor = texture(energyTex, scrolledUV).rgb;
+    finalColor.rgb += energyColor*energyIntensity;
 
     // Gamma correction
     finalColor = pow(finalColor, vec4(1.0/2.2));
