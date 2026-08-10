@@ -23,6 +23,8 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#include "app/scene/material.h"
+#include "app/scene/renderer.h"
 #include "app/scene/transform.h"
 
 struct Renderable {
@@ -52,7 +54,7 @@ struct Renderable {
     std::shared_ptr<Model> model;
 };
 
-// Shared, process-lifetime unit geometry (+ one mutable Material) used to draw every solid
+// Shared, process-lifetime unit geometry (+ one template RenderMaterial) used to draw every solid
 // (wireframe == false, non-Model) Renderable -- added alongside game/flare_reactor's lighting work
 // so Box/Sphere shapes have real per-vertex normals a custom lighting shader can read. raylib's
 // immediate-mode DrawCubeV/DrawSphere (used here before) have none: confirmed against
@@ -73,8 +75,13 @@ namespace renderable_detail {
     struct PrimitiveGeometry {
         Mesh cube;
         Mesh sphere;
-        Material material;      // mutated (.maps[MATERIAL_MAP_DIFFUSE].color/.shader) per draw call
-        Shader defaultShader;   // material's own shader before any lighting override, captured once
+        // Template only -- DrawRenderables below copies this per draw call and overrides
+        // .raylibMaterial's diffuse color from the entity's own Renderable::color (never mutated
+        // in place here, unlike the pre-ADR-0019 version of this file). .extras stays empty: the
+        // *caller*-supplied RenderMaterial (DrawRenderables' `material` parameter -- e.g. game/
+        // flare_reactor's Lighting::GetPrimitivesMaterial()) is what actually carries a shader/
+        // extras override, this is only the fallback when no caller material is passed.
+        RenderMaterial defaultMaterial;
     };
 
     inline PrimitiveGeometry &GetPrimitiveGeometry() {
@@ -82,8 +89,8 @@ namespace renderable_detail {
             PrimitiveGeometry g{};
             g.cube = GenMeshCube(1.0f, 1.0f, 1.0f);
             g.sphere = GenMeshSphere(1.0f, 16, 16);
-            g.material = LoadMaterialDefault();
-            g.defaultShader = g.material.shader;
+            ::Material rl = LoadMaterialDefault();
+            g.defaultMaterial = RenderMaterial{rl.shader, rl, {}};
             return g;
         }();
         return geometry;
@@ -95,13 +102,20 @@ namespace renderable_detail {
 // BeginMode3D/EndMode3D -- this only issues Draw* calls, same division of responsibility
 // GameplayScene already has today.
 //
-// `shader`, if non-null, is bound to every solid Box/Sphere Renderable's shared Material for this
-// call (see renderable_detail::PrimitiveGeometry above for why that now has real normals to give
-// it). Wireframe Renderables are unaffected (outlines don't benefit from per-pixel lighting; drawn
-// via the old unlit immediate-mode calls, unchanged) and so are Model-shaped ones -- a Model's own
-// per-material shader (set separately, e.g. by game/flare_reactor's Lighting::ApplyToModel) always
-// wins, same as DrawModelEx always did.
-inline void DrawRenderables(entt::registry &registry, const Shader *shader = nullptr) {
+// `material` (ADR-0019), if non-null, supplies the shader + extras bound to every solid Box/Sphere
+// Renderable drawn this call (see renderable_detail::PrimitiveGeometry above for why that now has
+// real normals to give it) -- e.g. game/flare_reactor/Lighting::GetPrimitivesMaterial(). Wireframe
+// Renderables are unaffected (outlines don't benefit from per-pixel lighting; drawn via the old
+// unlit immediate-mode calls, unchanged).
+//
+// Model-shaped Renderables ignore this parameter entirely -- each submesh already carries its own
+// baked-in shader + extras (game/flare_reactor/Lighting::ApplyToModel, called once while the level
+// loads), not this call's material. Reimplements raylib's own DrawModelEx loop (vendor/raylib/src/
+// rmodels.c) one submesh at a time through DrawWithMaterial (app/scene/renderer.h) instead of
+// DrawMesh directly -- same math (scale -> rotate(0) -> translate, tint multiplied onto each
+// submesh's own diffuse color via ColorTint), just routed through the same Renderer step Box/Sphere
+// use, resolving ADR-0019's "does a Model share the Renderer with primitives" open question (yes).
+inline void DrawRenderables(entt::registry &registry, const RenderMaterial *material = nullptr) {
     auto view = registry.view<WorldTransform, Renderable>();
     for (auto entity : view) {
         const WorldTransform &world = view.get<WorldTransform>(entity);
@@ -114,12 +128,12 @@ inline void DrawRenderables(entt::registry &registry, const Shader *shader = nul
                     DrawCubeWiresV(position, renderable.size, renderable.color);
                 } else {
                     renderable_detail::PrimitiveGeometry &geometry = renderable_detail::GetPrimitiveGeometry();
-                    geometry.material.maps[MATERIAL_MAP_DIFFUSE].color = renderable.color;
-                    geometry.material.shader = shader ? *shader : geometry.defaultShader;
+                    RenderMaterial draw = material ? *material : geometry.defaultMaterial;
+                    draw.raylibMaterial.maps[MATERIAL_MAP_DIFFUSE].color = renderable.color;
                     Matrix transform = MatrixMultiply(
                         MatrixScale(renderable.size.x, renderable.size.y, renderable.size.z),
                         MatrixTranslate(position.x, position.y, position.z));
-                    DrawMesh(geometry.cube, geometry.material, transform);
+                    DrawWithMaterial(geometry.cube, draw, transform);
                 }
                 break;
             case Renderable::Shape::Sphere:
@@ -127,14 +141,14 @@ inline void DrawRenderables(entt::registry &registry, const Shader *shader = nul
                     DrawSphereWires(position, renderable.size.x, 8, 8, renderable.color);
                 } else {
                     renderable_detail::PrimitiveGeometry &geometry = renderable_detail::GetPrimitiveGeometry();
-                    geometry.material.maps[MATERIAL_MAP_DIFFUSE].color = renderable.color;
-                    geometry.material.shader = shader ? *shader : geometry.defaultShader;
+                    RenderMaterial draw = material ? *material : geometry.defaultMaterial;
+                    draw.raylibMaterial.maps[MATERIAL_MAP_DIFFUSE].color = renderable.color;
                     // renderable.size.x as the radius, matching the old DrawSphere(position,
                     // renderable.size.x, ...) call this replaces -- uniform scale of a unit sphere.
                     Matrix transform = MatrixMultiply(
                         MatrixScale(renderable.size.x, renderable.size.x, renderable.size.x),
                         MatrixTranslate(position.x, position.y, position.z));
-                    DrawMesh(geometry.sphere, geometry.material, transform);
+                    DrawWithMaterial(geometry.sphere, draw, transform);
                 }
                 break;
             case Renderable::Shape::Model:
@@ -143,8 +157,20 @@ inline void DrawRenderables(entt::registry &registry, const Shader *shader = nul
                 // BeaconPulseProcess's LocalTransform::rotation spin has never been visible through
                 // this function for any shape). Revisit together if that ever needs fixing.
                 if (renderable.model) {
-                    DrawModelEx(*renderable.model, position, Vector3{0.0f, 1.0f, 0.0f}, 0.0f,
-                                renderable.size, renderable.color);
+                    Model &model = *renderable.model;
+                    Matrix matTransform = MatrixMultiply(
+                        MatrixScale(renderable.size.x, renderable.size.y, renderable.size.z),
+                        MatrixTranslate(position.x, position.y, position.z));
+                    Matrix combined = MatrixMultiply(model.transform, matTransform);
+
+                    for (int i = 0; i < model.meshCount; ++i) {
+                        ::Material submaterial = model.materials[model.meshMaterial[i]];
+                        submaterial.maps[MATERIAL_MAP_DIFFUSE].color =
+                            ColorTint(submaterial.maps[MATERIAL_MAP_DIFFUSE].color, renderable.color);
+                        // extras left empty on purpose -- see this function's header comment.
+                        RenderMaterial submeshMaterial{submaterial.shader, submaterial, {}};
+                        DrawWithMaterial(model.meshes[i], submeshMaterial, combined);
+                    }
                 }
                 break;
         }

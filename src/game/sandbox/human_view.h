@@ -15,6 +15,7 @@
 #include <entt/entt.hpp>
 #include <raylib.h>
 
+#include "app/scene/material.h"
 #include "app/view/human_view_base.h"
 #include "app/process/process_manager.h"
 #include "app/resource/resource_cache.h"
@@ -29,6 +30,14 @@ public:
     // concrete need, not before.
     HumanView(entt::registry &registry, ProcessManager &processes, ResourceCache<Sound> &sounds);
 
+    // Unloads material_.shader (see the constructor's comment on why sandbox owns this shader
+    // itself rather than through a Lighting-style class) -- needed here, not left to process exit,
+    // because GAMEPLAY can be Init/Unload'd repeatedly across a single run (main.cpp's screen state
+    // machine), unlike game/flare_reactor's single-shot main().
+    ~HumanView() override;
+    HumanView(const HumanView &) = delete;
+    HumanView &operator=(const HumanView &) = delete;
+
     void VOnUpdate(float dt) override;
 
 private:
@@ -36,6 +45,14 @@ private:
     ProcessManager &processes_;
     ResourceCache<Sound> &sounds_;
     Camera3D camera_;
+    // ADR-0019's Material/Renderer layer, sandbox's own instance -- deliberately built independently
+    // of game/flare_reactor/lighting.h's Lighting class (not shared, not reused as-is) so this
+    // actually exercises app/scene/material.h's RenderMaterial/ApplyExtras API as a second,
+    // independently-built consumer, the validation ADR-0019 was written around, rather than just
+    // wrapping the reactor's own class. Same rim-glow extras technique (rimColor/rimPower/
+    // rimIntensity, resources/shaders/glsl330/lighting.vs/.fs), different tuning -- see
+    // human_view.cpp's kRimColor et al.
+    RenderMaterial material_;
 };
 
 #endif // HUMAN_VIEW_H

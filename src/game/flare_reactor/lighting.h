@@ -14,8 +14,8 @@
 // naming lighting.fs expects) with no such shared state, safe to call on any number of shader
 // instances.
 //
-// Two independently-compiled Shader instances per "thing lit" (GetShader() for every solid
-// Box/Sphere Renderable, see app/scene/renderable.h; a fresh one per Model material via
+// Two independently-compiled Shader instances per "thing lit" (GetPrimitivesMaterial() for every
+// solid Box/Sphere Renderable, see app/scene/renderable.h; a fresh one per Model material via
 // ApplyToModel) rather than one shared instance everywhere, on purpose: raylib's UnloadModel ->
 // UnloadMaterial (vendor/raylib/src/rmodels.c) unconditionally UnloadShader's a non-default
 // material shader while tearing the model down, with no refcounting across materials that happen
@@ -31,6 +31,8 @@
 #include <entt/entt.hpp>
 #include <raylib.h>
 
+#include "app/scene/material.h"
+
 class Lighting {
 public:
     Lighting();
@@ -39,9 +41,14 @@ public:
     Lighting(const Lighting &) = delete;
     Lighting &operator=(const Lighting &) = delete;
 
-    // The shader every solid (non-wireframe, non-Model) Renderable is drawn with -- pass to
-    // app/scene/renderable.h's DrawRenderables(registry, &lighting.GetShader()).
-    const Shader &GetShader() const { return shader_; }
+    // The RenderMaterial (ADR-0019, app/scene/material.h) every solid (non-wireframe, non-Model)
+    // Renderable is drawn with -- pass to app/scene/renderable.h's
+    // DrawRenderables(registry, &lighting.GetPrimitivesMaterial()). Deliberately carries no rim
+    // extras -- this is exactly the "generic solid Renderables (the Sentinel's Box/Sphere) shouldn't
+    // get the reactor's rim glow" split ADR-0019 was written to make possible; before that ADR, the
+    // primitives shader and every reactor Model material shared the same SetupRim call, so the
+    // Sentinel picked up rim glow it was never meant to have.
+    const RenderMaterial &GetPrimitivesMaterial() const { return primitivesMaterial_; }
 
     // Pushes the current camera position (needed for the shader's specular term) to this shader AND
     // to every already-lit reactor Model's own per-material shader (see ApplyToModel) -- call once
@@ -49,12 +56,17 @@ public:
     void Update(entt::registry &registry, Vector3 viewPos) const;
 
     // Compiles one independent Shader instance per material (see the header comment on why one-per-
-    // material, not shared) and assigns it to model.materials[i].shader for every i -- called once,
-    // right after a "Renderable" component loader resolves shape == Model (main.cpp).
+    // material, not shared), applies the rim glow extras (ADR-0019) to each, and assigns the result
+    // to model.materials[i].shader for every i -- called once, right after a "Renderable" component
+    // loader resolves shape == Model (main.cpp). Rim extras are applied once here, not re-applied
+    // per frame/per draw -- they're static values (see lighting.cpp), so baking them into each
+    // shader's uniform state at compile time is enough; app/scene/renderable.h's Model draw path
+    // passes an empty extras list for exactly this reason.
     void ApplyToModel(Model &model) const;
 
 private:
     Shader shader_;
+    RenderMaterial primitivesMaterial_;
 };
 
 #endif // FLARE_REACTOR_LIGHTING_H

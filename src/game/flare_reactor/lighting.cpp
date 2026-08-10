@@ -41,6 +41,19 @@ namespace {
     constexpr float kRimPower = 3.0f;
     constexpr float kRimIntensity = 1.5f;
 
+    // ADR-0019's RenderMaterial::extras bag for rim glow -- what used to be the bespoke SetupRim
+    // free function below (removed) is now just "apply this named-uniform bag", the same mechanism
+    // any future per-material extra (scroll, pulse) will use. rimColor is a normalized (0..1) vec3,
+    // matching lighting.fs's `uniform vec3 rimColor` -- NOT a raylib Color/UniformValue's Color
+    // variant, which packs 4 channels (vec4) and would misalign a vec3 uniform.
+    std::vector<UniformValue> BuildRimExtras() {
+        return {
+            {"rimColor", Vector3{kRimColor.r / 255.0f, kRimColor.g / 255.0f, kRimColor.b / 255.0f}},
+            {"rimPower", kRimPower},
+            {"rimIntensity", kRimIntensity},
+        };
+    }
+
     // Applies kLights to `shader` -- see lighting.h's header comment on why this reimplements
     // rlights.h's CreateLight/UpdateLightValues uniform-setting instead of calling them (their
     // shared lightsCount counter isn't safe across N independent shader instances). Uniform names
@@ -70,26 +83,24 @@ namespace {
         }
     }
 
-    // Sets rimColor/rimPower/rimIntensity once -- static values, so (unlike viewPos) this doesn't
-    // need a per-frame Update() call.
-    void SetupRim(Shader &shader) {
-        float color[3] = {kRimColor.r / 255.0f, kRimColor.g / 255.0f, kRimColor.b / 255.0f};
-        SetShaderValue(shader, GetShaderLocation(shader, "rimColor"), color, SHADER_UNIFORM_VEC3);
-        SetShaderValue(shader, GetShaderLocation(shader, "rimPower"), &kRimPower, SHADER_UNIFORM_FLOAT);
-        SetShaderValue(shader, GetShaderLocation(shader, "rimIntensity"), &kRimIntensity, SHADER_UNIFORM_FLOAT);
-    }
-
+    // No SetupRim here anymore -- rim is now an opt-in RenderMaterial::extras bag (BuildRimExtras
+    // above), applied by whoever actually wants it (ApplyToModel, below) via ApplyExtras
+    // (app/scene/material.h), not baked unconditionally into every shader instance this compiles.
+    // Compiling a primitives instance (Lighting::Lighting()) and NOT calling ApplyExtras on it is
+    // exactly the fix for the bug that motivated ADR-0019: before this, every instance -- including
+    // the Sentinel's shared Box/Sphere shader -- got rim glow whether it was supposed to or not.
     Shader LoadLightingShaderInstance() {
         Shader shader = LoadShader(TextFormat("resources/shaders/glsl%i/lighting.vs", GLSL_VERSION),
                                     TextFormat("resources/shaders/glsl%i/lighting.fs", GLSL_VERSION));
         shader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(shader, "viewPos");
         SetupLights(shader);
-        SetupRim(shader);
         return shader;
     }
 }
 
-Lighting::Lighting() : shader_(LoadLightingShaderInstance()) {}
+Lighting::Lighting()
+    : shader_(LoadLightingShaderInstance()),
+      primitivesMaterial_{shader_, LoadMaterialDefault(), {}} {}
 
 Lighting::~Lighting() {
     // Only unloads shader_ (the primitives instance) -- every reactor Model material's own instance
@@ -99,8 +110,11 @@ Lighting::~Lighting() {
 }
 
 void Lighting::ApplyToModel(Model &model) const {
+    std::vector<UniformValue> rim = BuildRimExtras();
     for (int i = 0; i < model.materialCount; ++i) {
-        model.materials[i].shader = LoadLightingShaderInstance();
+        Shader matShader = LoadLightingShaderInstance();
+        ApplyExtras(matShader, rim);   // baked once here -- see this file's LoadLightingShaderInstance comment
+        model.materials[i].shader = matShader;
     }
 }
 

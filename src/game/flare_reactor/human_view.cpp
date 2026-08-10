@@ -38,7 +38,7 @@ namespace {
             BeginMode3D(camera_);
             skybox_.Draw();   // first -- everything else draws on top of it
             lighting_.Update(registry_, camera_.position);
-            DrawRenderables(registry_, &lighting_.GetShader());
+            DrawRenderables(registry_, &lighting_.GetPrimitivesMaterial());
             DrawGrid(20, 1.0f);
             EndMode3D();
         }

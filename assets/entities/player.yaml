@@ -6,3 +6,12 @@ components:
     x: 0
     y: 0
     z: 0
+  # ADR-0019's Plan item 4: a real Renderable, replacing the DrawCubeWires hardcoded in
+  # game/sandbox/human_view.cpp's GameplayScene before this. wireframe: false (unlike its old
+  # MAROON *wireframe* look) so this actually draws through HumanView's lit RenderMaterial/rim-glow
+  # path (renderable.h's wireframe branch skips materials entirely) -- proving the same technique
+  # game/flare_reactor's reactor uses works for an independently-built consumer.
+  Renderable:
+    shape: box
+    color: maroon
+    wireframe: false

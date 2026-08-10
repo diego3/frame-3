@@ -670,6 +670,69 @@ once nothing else needed doing directly. `HumanViewBase::VOnUpdate` (§10) gaine
 (`UpdateElements(dt)`) for exactly this -- `game/sandbox`'s `HumanView` still overrides it, since it
 moves its possessed actor directly rather than through a pushed element.
 
+### 11. `RenderMaterial`/Renderer (Ch. 14-ish, shader material state) — `app/scene/material.h`/`renderer.h`, via ADR-0019
+
+[ADR-0019](../../../docs/adr/0019-render-material-layer.md) (Accepted) gives a shader's per-object
+uniform values a home. Before this, `game/flare_reactor/lighting.cpp` pushed fresnel rim glow
+uniforms (`rimColor`/`rimPower`/`rimIntensity`) via a bespoke free function (`SetupRim`) straight
+onto whatever `Shader` it was handed, with no per-object identity to say "this one wants rim, that
+one doesn't" short of a bool/enum parameter threading through the shared shader-compile function —
+and that bug was real, not hypothetical: `SetupRim` ran unconditionally on every shader instance
+`LoadLightingShaderInstance()` compiled, including the one shared by every solid Box/Sphere
+`Renderable` (the Sentinel), which picked up rim glow it was never meant to have.
+
+```cpp
+// app/scene/material.h -- named RenderMaterial, not Material: raylib's own raylib.h already
+// defines a global `struct Material {...} Material;` (C typedef, no namespace), so a second global
+// Material is a redefinition conflict, not a shadow.
+struct UniformValue { std::string name; std::variant<float, Vector3, int, Color> value; };
+struct RenderMaterial { Shader shader{}; ::Material raylibMaterial{}; std::vector<UniformValue> extras; };
+void ApplyExtras(const Shader &shader, const std::vector<UniformValue> &extras);   // GetShaderLocation + SetShaderValue per extra, by name
+
+// app/scene/renderer.h -- named BindMaterial/DrawWithMaterial, not the ADR's original sketch's bare
+// Bind/Draw: a one-word global function name collides too easily with future code.
+void BindMaterial(const RenderMaterial &material);   // ApplyExtras(material.shader, material.extras)
+void DrawWithMaterial(const Mesh &mesh, const RenderMaterial &material, Matrix transform);   // Bind, then DrawMesh
+```
+
+`app/scene/renderable.h`'s `DrawRenderables` is the only caller today: solid (non-wireframe)
+Box/Sphere `Renderable`s go through `DrawWithMaterial` with a caller-supplied `RenderMaterial*`
+(e.g. `Lighting::GetPrimitivesMaterial()`, carrying **no** rim extras — the actual fix for the bug
+above); wireframe outlines are unaffected (unlit immediate-mode calls, unchanged). Model-shaped
+`Renderable`s also go through `DrawWithMaterial` now, one submesh at a time — `DrawRenderables`
+reimplements raylib's own `DrawModelEx` loop (confirmed against `vendor/raylib/src/rmodels.c`: one
+`DrawMesh` per submesh, tint premultiplied onto each submesh's own diffuse color via `ColorTint`)
+instead of calling `DrawModelEx` directly, resolving the ADR's own "does a `Model` share the
+Renderer with primitives" Open Question (yes) — each submesh's `RenderMaterial` carries an empty
+`extras` list, since `game/flare_reactor/lighting.h`'s `Lighting::ApplyToModel` already baked rim
+glow into that submaterial's shader once, at model-load time (static values, no need to re-push
+every frame/draw).
+
+**Two independently-built consumers, on purpose, not one generalized-and-reused.**
+`game/flare_reactor/lighting.h`'s `Lighting` class owns the reactor's own `RenderMaterial`s (one
+compiled `Shader` instance per Model submaterial, plus one shared primitives instance — see that
+header's own comment on why one-per-material, not shared, mirroring the resource-cache-eviction
+reasoning ADR-0004 already worked through for a different resource type). `game/sandbox/
+human_view.cpp`'s `HumanView` builds its **own** `RenderMaterial` (`LoadSandboxMaterial()`) against
+the same shared shader source (`resources/shaders/glsl330/lighting.vs/.fs`) and the same rim-glow-
+extras technique, independently — proving the API is reusable by a from-scratch consumer, not
+just correct for the one call site that motivated it. This is the same "wait for a second real
+consumer" discipline ADR-0004/0007/0015/0016/0017 already established, deliberately *anticipated*
+here rather than waited on organically (`game/sandbox`'s `GameplayScene` had no rim-glow need of
+its own) — the ADR's own "Revisão da recomendação" section records why: this project weighs
+learning/architecture-evolution goals highly enough, and the reactor's own complexity roadmap is
+concrete enough, that the usual bet-on-a-trigger calculus doesn't apply, the same category of
+exception ADR-0010 already used for `IGameView`/`BaseGameLogic`.
+
+Also closed as a side effect: `game/sandbox/human_view.cpp`'s `GameplayScene` used to hardcode a
+`DrawCubeWires(position, 1.0f, 1.0f, 1.0f, MAROON)` per `WorldTransform` — the gap `app/scene/
+renderable.h`'s own header comment and ADR-0018 both flagged (`Renderable` existed, sandbox just
+never adopted it). It now has a real `Renderable` (`assets/entities/player.yaml`) drawn through
+`DrawRenderables`, same as `game/flare_reactor`.
+
+`game/camera_fps`'s `BoxRenderable`/`scene_renderer.h` (§10 above) is untouched — third consumer,
+named in the ADR as welcome later, not needed to validate the API with two.
+
 ## Conventions
 
 - **Alias a dense or repeated `std::function`/container type as a `using` inside the class that
