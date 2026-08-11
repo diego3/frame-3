@@ -125,6 +125,9 @@ jobs:
       - name: Build project's third game module (GAME=flare_reactor, see docs/rfc/0001-flare-reactor-pipeline-experiment.md)
         run: make -C src PLATFORM=PLATFORM_DESKTOP GAME=flare_reactor RAYLIB_PATH=../raylib ENTT_PATH=../entt MINI_YAML_PATH=../mini-yaml PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=catch-value"
 
+      - name: Build project's fourth game module (GAME=dev_arena, greybox test/dev scenario)
+        run: make -C src PLATFORM=PLATFORM_DESKTOP GAME=dev_arena RAYLIB_PATH=../raylib ENTT_PATH=../entt MINI_YAML_PATH=../mini-yaml PROJECT_CUSTOM_FLAGS="-Werror -Wno-error=catch-value"
+
       - name: Build and run unit tests (see docs/adr/0006-doctest-for-unit-tests.md)
         # Most tests under test (EventManager, ProcessManager, ResourceCache) are pure logic and
         # need no raylib/EnTT dependency; hierarchy_test.cpp (docs/adr/0002), entity_factory_test.cpp
