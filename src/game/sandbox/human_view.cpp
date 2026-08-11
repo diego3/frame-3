@@ -22,10 +22,10 @@ namespace {
 
     // ADR-0019's second Material/Renderer consumer, built independently of game/flare_reactor's own
     // (see human_view.h's member comment): one directional light (just enough for the lit shader to
-    // read as more than flat black -- game/flare_reactor/lighting.cpp's own kLights has the same
-    // "warm sun" shape, tuned differently here on purpose, not copied) plus the same rim-glow extras
-    // technique, amber instead of the reactor's cyan -- proving the *API* generalizes to an
-    // independently-built consumer, not that the visual has to match.
+    // read as more than flat black -- game/flare_reactor's own sun.yaml Light entity, ADR-0020, has
+    // the same "warm sun" shape, tuned differently here on purpose, not copied) plus the same
+    // rim-glow extras technique, amber instead of the reactor's cyan -- proving the *API*
+    // generalizes to an independently-built consumer, not that the visual has to match.
     constexpr Color kRimColor = {255, 170, 60, 255};
     constexpr float kRimPower = 3.0f;
     constexpr float kRimIntensity = 1.2f;
