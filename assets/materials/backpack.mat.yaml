@@ -1,0 +1,10 @@
+# backpack.mat.yaml (docs/adr/0020) -- second, unrelated MeshRenderer consumer, proving the design
+# on a real second model (survival_guitar_backpack, Sketchfab, CC-BY-4.0 -- see
+# assets/models/survival_guitar_backpack/license.txt) with no shared state with the reactor's own
+# materials. Same shader as reactor_frame.mat.yaml/reactor_core.mat.yaml (real reuse) -- no
+# extras/textures needed: the glTF's own baseColorTexture is already loaded into this material's
+# MATERIAL_MAP_DIFFUSE slot by raylib's glTF loader, and app/scene/material_loader.h's
+# MergeSubmeshMaterial preserves that slot untouched. metallicRoughness/normal maps aren't wired
+# here -- resources/shaders/glsl330/lighting.fs has no real PBR sampling path for either yet, so
+# doing so would just be dead weight (see docs/adr/0020's own risk #3/#4 notes on this model).
+shader: resources/shaders/glsl330/lighting

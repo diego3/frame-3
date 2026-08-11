@@ -1,0 +1,26 @@
+# reactor_core.mat.yaml -- the reactor's glowing core submesh(es) (docs/adr/0020): whichever raylib
+# materials carry a real glTF emissiveFactor/emissiveTexture (app/scene/mesh_renderer.h's
+# HasEmissiveMap), detected automatically by the "MeshRenderer" component loader -- no manual
+# mapping here. Same shader as reactor_frame.mat.yaml, real reuse; only extras/textures diverge.
+#
+# Values are exactly what game/flare_reactor/lighting.cpp's old BuildRimExtras/BuildScrollExtras
+# hardcoded (docs/learning/rendering.html's "Fresnel rim glow"/"Scrolling core texture" notes) --
+# unchanged tuning, just moved from C++ constants into data. Block style only -- this mini-yaml
+# checkout doesn't parse flow-style maps (app/entity/entity_file_parser_yaml.cpp's own header
+# comment).
+shader: resources/shaders/glsl330/lighting
+extras:
+  rimColor:
+    r: 110
+    g: 210
+    b: 255
+  rimPower: 3.0
+  rimIntensity: 1.5
+  scrollSpeed: 0.15
+  energyIntensity: 0.35
+  energyColor:
+    r: 110
+    g: 210
+    b: 255
+textures:
+  specular: resources/textures/flare_reactor/energy-noise.png

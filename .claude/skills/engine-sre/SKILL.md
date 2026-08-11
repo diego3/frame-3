@@ -1,6 +1,6 @@
 ---
 name: engine-sre
-description: SRE guidance for frame-3 specifically — CI build/test gates, frame budget as an SLO, an accepted-but-unquantified error budget, observability via the F3 debug overlay, and why SLA/tracing/Terraform don't fit yet. Use this skill whenever the user brings up SRE, reliability, SLI/SLO/SLA, error budgets, observability, monitoring, alerting, tracing, incident response, or infrastructure-as-code for this project, or asks "what SRE thing could we add next" / "is X worth doing here yet". Also use it before adding a CI workflow, a build/test gate, a runtime metric, a log, or any infrastructure (hosting, Terraform) — check here first for what already exists and what's already been deliberately deferred, so the same ground doesn't get re-litigated from scratch. This is a running log of decisions made in conversation, not upstream doctrine — update it whenever a new SRE-flavored decision is made (accepted, deferred, or reversed), the same way engine-architecture tracks engine decisions.
+description: SRE guidance for frame-3 specifically — CI build/test gates, frame budget as an SLO, an accepted-but-unquantified error budget, observability via the F3 debug overlay, postmortems for bugs whose root-causing process was the real work, and why SLA/tracing/Terraform don't fit yet. Use this skill whenever the user brings up SRE, reliability, SLI/SLO/SLA, error budgets, observability, monitoring, alerting, tracing, incident response, postmortems, or infrastructure-as-code for this project, or asks "what SRE thing could we add next" / "is X worth doing here yet". Also use it before adding a CI workflow, a build/test gate, a runtime metric, a log, or any infrastructure (hosting, Terraform), and before writing up any bug fix as a postmortem — check here first for what already exists (docs/postmortems/ format/convention included) and what's already been deliberately deferred, so the same ground doesn't get re-litigated from scratch. This is a running log of decisions made in conversation, not upstream doctrine — update it whenever a new SRE-flavored decision is made (accepted, deferred, or reversed), the same way engine-architecture tracks engine decisions.
 ---
 
 # SRE for frame-3
@@ -57,6 +57,16 @@ a deferred piece getting pulled forward — the same "keep current state accurat
   answers "why is the frame budget blown" (CPU pegged? RSS growing? leaking file handles?) that
   FPS alone can't. **Ephemeral by design so far**: nothing here is logged or persisted — it only
   exists on screen while F3 is held on, live.
+- **Postmortems** (`docs/postmortems/NNNN-slug.md`, started 2026-08-11): written in Portuguese,
+  same numbered-file convention as `docs/adr/`. Not for every bug -- for the ones where root-causing
+  itself was the real work (grepping the code didn't find it; needed real instrumentation/log
+  evidence to pin down), so the *method* is worth keeping, not just the fix. Sections: Resumo,
+  Linha do tempo, one Causa raiz + Detecção + Resolução block per distinct root cause, Lições
+  aprendidas / itens de ação, Related. [0001](../../../docs/postmortems/0001-mesh-renderer-shader-lifetime-and-backpack-texture.md)
+  is the first and the template to follow -- a `shared_ptr<RenderMaterial>` cache handle going out
+  of scope and unloading its `Shader` out from under every entity that had copied the raw value,
+  found via temporary `TraceLog` + `Xvfb` (capturing log output only, never a screenshot -- that
+  stays the user's own visual-validation step, see the `run` skill).
 
 ## Core concepts, mapped onto what actually exists here
 
@@ -126,6 +136,10 @@ pressure later.
 - **The frame budget SLO logs unthrottled, on purpose, for now.** A real stall spams one warning
   per frame; accepted deliberately rather than adding throttling speculatively before it's ever
   been a real annoyance.
+- **Postmortems are selective, not automatic** (2026-08-11 — see "Current state" above). Most bugs
+  get fixed and move on; a postmortem is worth the writing time specifically when the *root-causing
+  process itself* (not just the fix) is the reusable part — e.g. needed real instrumentation because
+  reading the code alone didn't find it.
 
 ## Not yet done — concrete, low-effort next steps
 
@@ -149,6 +163,8 @@ Roughly in the order they were identified as worth doing:
 
 ## Related
 
+- [Postmortem 0001](../../../docs/postmortems/0001-mesh-renderer-shader-lifetime-and-backpack-texture.md)
+  — the first one, and the template for format/tone.
 - [ADR-0006](../../../docs/adr/0006-doctest-for-unit-tests.md) — the test-framework decision behind
   the CI test gate.
 - [ADR-0007](../../../docs/adr/0007-terraform-gated-on-authoritative-server.md) — the

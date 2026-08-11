@@ -39,6 +39,30 @@ uniform vec3 rimColor;
 uniform float rimPower;
 uniform float rimIntensity;
 
+// Scrolling core energy texture (docs/learning/rendering.html, "Scrolling core texture (energy
+// flow)") -- a noise/energy texture sliding along U over time, read additively same as rim glow
+// above (a surface "emitting" light shouldn't be darkened by ambient/shadow it's not receiving).
+// `time` is pushed every frame (app/scene/light.h's PushFrameUniforms, like viewPos);
+// scrollSpeed/energyIntensity are static, set once via a ".mat" asset's `extras:` (ADR-0020,
+// app/scene/material_loader.h's LoadRenderMaterial/ApplyExtras -- see
+// assets/materials/reactor_core.mat.yaml).
+//
+// texture1, not a custom-named sampler: raylib's DrawMesh (rmodels.c) only auto-binds textures it
+// finds in Material::maps[] on every draw, using the fixed default names LoadShader resolves for
+// slots 0-2 (texture0 = diffuse/albedo, texture1 = specular/metalness, texture2 = normal) -- a
+// uniform sampler2D under any other name has no such per-draw rebinding, so it silently shows
+// nothing (SetShaderValueTexture's texture-unit registration is only ever consumed by raylib's
+// immediate-mode batch renderer, which DrawMesh doesn't go through). Nothing in this shader reads
+// specular/metalness texture data today (the specular term below is a fixed `shine` constant), so
+// slot 1 is free to repurpose for the scrolling energy texture instead -- reactor_core.mat.yaml's
+// `textures: { specular: ... }` (MergeSubmeshMaterial) sets
+// model.materials[i].maps[MATERIAL_MAP_SPECULAR].texture directly, no custom uniform push.
+uniform sampler2D texture1;
+uniform float time;
+uniform float scrollSpeed;
+uniform float energyIntensity;
+uniform vec3 energyColor;
+
 void main()
 {
     // Texel color fetching from texture sampler
@@ -85,6 +109,21 @@ void main()
     // purpose -- it's meant to read as the surface emitting light at its edge, not reflecting it.
     float fresnel = pow(1.0 - max(dot(normal, viewD), 0.0), rimPower);
     finalColor.rgb += fresnel*rimColor*rimIntensity;
+
+    // Scrolling core energy texture: additive, same reasoning as rim glow above. energyIntensity
+    // defaults to 0 for any material that never calls ApplyExtras with it (e.g. every solid
+    // Box/Sphere Renderable drawn with Lighting::GetPrimitivesMaterial()) -- OpenGL zero-initializes
+    // a default-block uniform nobody ever calls SetShaderValue on (spec section 2.11.4), so this
+    // term is a no-op there regardless of what texture1/scrolledUV sample, same guarantee
+    // rimIntensity already relies on above.
+    //
+    // texture1 (energy-noise.png) is grayscale Perlin noise -- sampling it raw and adding it just
+    // brightens the surface in a moving mottled pattern, reads as "static", not "energy". energyColor
+    // tints it (same idea as rimColor tinting the Fresnel term) so it actually reads as a colored
+    // glow, not a luminance ripple.
+    vec2 scrolledUV = fragTexCoord + vec2(time*scrollSpeed, 0.0);
+    float energyNoise = texture(texture1, scrolledUV).r;
+    finalColor.rgb += energyNoise*energyColor*energyIntensity;
 
     // Gamma correction
     finalColor = pow(finalColor, vec4(1.0/2.2));

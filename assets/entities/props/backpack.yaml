@@ -1,0 +1,43 @@
+# survival_guitar_backpack entity (docs/adr/0020) -- MeshRenderer's second, unrelated consumer
+# (Sketchfab, CC-BY-4.0, see assets/models/survival_guitar_backpack/license.txt). No
+# coreMaterial -- confirmed the glTF's one material has no emissiveFactor/emissiveTexture at all
+# (unlike the reactor's), so every one of its 79 meshes just gets backpack.mat.yaml.
+#
+# size: FIRST attempt (0.15) was computed from the glTF's raw accessor min/max only
+# (~3.2x4.4x6.3 units) and rendered the backpack at ~66x78x58 world units -- a building next to
+# the reactor. Root cause: every one of this glTF's per-mesh nodes bakes in its own ~100x scale
+# (scene.gltf's own `nodes[].matrix`, e.g. node 3 "Cube.028": `[100.0, ..., 4.64, -99.89, ...]`) --
+# raylib's LoadGLTF applies the full node-hierarchy transform (translation+rotation+scale, not just
+# the accessor's own local min/max) directly onto each mesh's vertex data when loading (see its own
+# "Transforms ... are applied on the mesh data" comment, rmodels.c). Confirmed against the actually-
+# loaded Mesh.vertices in-memory (not just computed): real size ~416x515x386 units. SECOND attempt
+# (0.0015, ~0.62x0.77x0.58 world units) was correctly scaled by this math but read as too small next
+# to the player's 1-unit box/reactor's ~3.4-unit height in an actual screenshot (2026-08-11) -- a
+# visibility/proportion call, not a bug. 0.003 (~1.25x1.54x1.16 world units) reads clearly as a
+# real prop next to the player now.
+#
+# texture: the glTF's own baseColor was a .jpeg (Scene_-_Root_baseColor.jpeg) -- this project's
+# vendored raylib is built with SUPPORT_FILEFORMAT_JPG=0 (vendor/raylib/src/config.h's own
+# "Disabled by default"), so LoadImage on it silently failed ("IMAGE: Data format not supported"),
+# leaving the whole backpack flat gray. Converted to Scene_-_Root_baseColor.png (ImageMagick
+# `convert`, lossless-enough for a diffuse map) and re-pointed scene.gltf's own images[0].uri at it
+# -- matches every other texture in this project already being PNG, cheaper than building a
+# non-default raylib config just for one asset.
+#
+# active (docs/adr/0009, LevelLoader): true here -- flip to false for a quick "is this the object
+# that broke" test (e.g. the bugs above) without deleting/re-adding this actor from
+# assets/levels/flare_reactor.yaml. Skips this entity's spawn entirely; absent/true is the default
+# for any entity file that doesn't set this.
+active: true
+components:
+  Position:
+    x: 3
+    y: 0.74
+    z: 0
+  MeshRenderer:
+    model: resources/models/survival_guitar_backpack/scene.gltf
+    size:
+      x: 0.003
+      y: 0.003
+      z: 0.003
+    material: resources/materials/backpack.mat.yaml

@@ -79,7 +79,10 @@ PROJECT_SOURCE_FILES  ?=
 # them once game/flare_reactor's FlareReactorView became its first real caller.
 # app/view/human_view_base.cpp (docs/adr/0016, promoted out of game/sandbox/human_view in
 # docs/adr/0017) is the generic half of every concrete "human" IGameView -- all three game modules
-# below subclass it.
+# below subclass it. app/scene/material_loader.cpp (docs/adr/0020) is engine-level too (a ".mat"
+# asset is a RenderMaterial description, not a flare_reactor concern specifically) even though
+# flare_reactor is its only real caller today -- same "always link in, cheap enough" reasoning as
+# level_loader.cpp/base_game_logic.cpp above.
 PROJECT_SOURCE_FILES_CPP ?= \
     app/core/engine.cpp \
     app/process/process_manager.cpp \
@@ -89,7 +92,8 @@ PROJECT_SOURCE_FILES_CPP ?= \
     app/entity/level_loader.cpp \
     app/view/base_game_logic.cpp \
     app/view/human_view_base.cpp \
-    app/input/input_bindings.cpp
+    app/input/input_bindings.cpp \
+    app/scene/material_loader.cpp
 
 # game/sandbox (docs/adr/0014): the migrated raylib template, with a Logo/Title/Options/Gameplay/
 # Ending screen state machine and data-driven (YAML) level content. game_config.cpp is
@@ -586,7 +590,13 @@ $(OBJ_DIR)/mini_yaml.o:
 # tests/-local object rule below; it deliberately avoids raylib's own ColorLerp (a real linked
 # symbol) for exactly this reason (see that header's own comment). sentinel_ai_test.cpp
 # (docs/rfc/0001 Phase 6) tests game/flare_reactor/sentinel_ai.h the same way -- also header-only,
-# also no linked raylib symbols, also no tests/-local object rule needed.
+# also no linked raylib symbols, also no tests/-local object rule needed. material_loader_test.cpp/
+# mesh_renderer_test.cpp (docs/adr/0020) test ParseMaterialExtras (app/scene/material_loader.h) and
+# HasEmissiveMap (app/scene/mesh_renderer.h) the same way -- both pure functions touching only
+# EntityDefNode/raylib.h's plain-struct types (Vector3/Color/::Material), never a linked raylib.a
+# symbol, even though the headers they live in also declare/define other functions (LoadRenderMaterial,
+# DrawMeshRenderers, PushFrameUniforms...) that DO call linked symbols -- those simply aren't
+# instantiated since nothing in the test build calls them (an unused inline function emits no code).
 TEST_SOURCE_FILES_CPP ?= \
     tests/main_test.cpp \
     tests/event_manager_test.cpp \
@@ -606,7 +616,11 @@ TEST_SOURCE_FILES_CPP ?= \
     tests/base_game_logic_test.cpp \
     tests/input_bindings_test.cpp \
     tests/beacon_pulse_process_test.cpp \
-    tests/sentinel_ai_test.cpp
+    tests/sentinel_ai_test.cpp \
+    tests/material_loader_test.cpp \
+    tests/mesh_renderer_test.cpp \
+    tests/light_test.cpp \
+    tests/renderable_test.cpp
 
 TEST_CXXFLAGS = $(CXXFLAGS) -I. -I$(DOCTEST_INCLUDE_PATH) -I$(RAYLIB_INCLUDE_PATH) -I$(ENTT_INCLUDE_PATH) -I$(MINI_YAML_INCLUDE_PATH)
 

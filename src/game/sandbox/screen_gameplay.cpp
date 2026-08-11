@@ -28,11 +28,14 @@
 
 #include <memory>
 
+#include <string>
+
 #include "app/view/base_game_logic.h"
 #include "app/core/engine.h"
 #include "app/entity/entity_factory.h"
 #include "app/entity/entity_file_parser_yaml.h"
 #include "app/entity/level_loader.h"
+#include "app/scene/renderable.h"
 #include "app/scene/transform.h"
 #include "human_view.h"
 
@@ -57,15 +60,23 @@ namespace {
 
     // The first real component loader wired into the product (every prior caller of EntityFactory
     // used fakes -- entity_factory_test.cpp, level_loader_test.cpp). "Position" -> LocalTransform
-    // + WorldTransform is deliberately the only one: ADR-0010's own Open Questions leave "render
-    // component design" undecided, so this stays scoped to just enough to place an entity in
-    // space, not a full component schema nobody's asked for yet.
-    void RegisterComponentLoaders(EntityFactory &factory) {
+    // + WorldTransform used to be the only one: ADR-0010's own Open Questions left "render
+    // component design" undecided until app/scene/renderable.h's Renderable landed (RFC-0001 Phase
+    // 1). "Renderable" below (ADR-0019's Plan item 4) shares its parsing (ParseRenderableComponent)
+    // with game/flare_reactor/main.cpp's own loader of the same name -- MAROON default matches this
+    // module's own pre-ADR-0019 hardcoded DrawCubeWires color (see this file's header comment).
+    // Takes Engine& now for that reason (ParseRenderableComponent's `models` parameter).
+    void RegisterComponentLoaders(EntityFactory &factory, Engine &engine) {
         factory.RegisterComponentLoader("Position", [](entt::registry &registry, entt::entity entity,
                                                          const EntityDefNode &node) {
             registry.emplace<LocalTransform>(
                 entity, Vector3{node.Get("x").AsFloat(), node.Get("y").AsFloat(), node.Get("z").AsFloat()});
             registry.emplace<WorldTransform>(entity);
+        });
+
+        factory.RegisterComponentLoader("Renderable", [&engine](entt::registry &registry, entt::entity entity,
+                                                                   const EntityDefNode &node) {
+            registry.emplace<Renderable>(entity, ParseRenderableComponent(node, engine.Models(), MAROON));
         });
     }
 }
@@ -85,7 +96,7 @@ void InitGameplayScreen(void)
     g_entityFactory = std::make_unique<EntityFactory>([](const std::string &name) {
         TraceLog(LOG_WARNING, "Unknown component '%s' in entity definition, skipping", name.c_str());
     });
-    RegisterComponentLoaders(*g_entityFactory);
+    RegisterComponentLoaders(*g_entityFactory, *engine);
 
     g_levelLoader = std::make_unique<LevelLoader>(*g_entityFactory, g_parser);
     g_logic = std::make_unique<BaseGameLogic>(engine->Registry(), engine->Events(), engine->Processes(),

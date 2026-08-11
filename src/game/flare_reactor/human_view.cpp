@@ -2,6 +2,7 @@
 
 #include <raymath.h>
 
+#include "app/scene/mesh_renderer.h"
 #include "app/scene/renderable.h"
 #include "app/scene/transform.h"
 
@@ -18,9 +19,11 @@ namespace {
     // a scene where the listener can be far from the trigger.
     constexpr float kMaxAudibleDistance = 15.0f;
 
-    // The one real IScreenElement so far: renders every Renderable via app/scene/renderable.h
-    // instead of hardcoding geometry per entity (contrast game/sandbox's GameplayScene, which
-    // still does). Now also draws the scene's Skybox first, inside the same BeginMode3D/EndMode3D
+    // The one real IScreenElement so far: renders every Renderable (app/scene/renderable.h -- the
+    // Sentinel/player's Box/Sphere primitives) and every MeshRenderer (app/scene/mesh_renderer.h,
+    // ADR-0020 -- the reactor/backpack's own per-submesh materials) instead of hardcoding geometry
+    // per entity (contrast game/sandbox's GameplayScene, which still does). Now also draws the
+    // scene's Skybox first, inside the same BeginMode3D/EndMode3D
     // block -- a skybox needs the active camera's projection/view matrices, so it can't be its own
     // independent IScreenElement without either duplicating this block or sharing a Camera3D across
     // two elements' render calls; simplest to keep it here, same reasoning DrawGrid already follows.
@@ -38,7 +41,12 @@ namespace {
             BeginMode3D(camera_);
             skybox_.Draw();   // first -- everything else draws on top of it
             lighting_.Update(registry_, camera_.position);
-            DrawRenderables(registry_, &lighting_.GetShader());
+            // MeshRenderer (ADR-0020): the reactor/backpack, each their own per-submesh materials.
+            // DrawRenderables' Model path is now unused by anything in this level but stays as a
+            // generic fallback for a future Shape::Model consumer that doesn't need per-submesh
+            // materials.
+            DrawMeshRenderers(registry_);
+            DrawRenderables(registry_, &lighting_.GetPrimitivesMaterial());
             DrawGrid(20, 1.0f);
             EndMode3D();
         }

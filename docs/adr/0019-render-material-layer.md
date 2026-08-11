@@ -1,7 +1,7 @@
 # 19. Camada de Material: onde moram os uniforms nomeados de um shader (Mesh/Material/Renderer)
 
-- Status: Proposed
-- Date: 2026-08-08
+- Status: Accepted
+- Date: 2026-08-08 (implemented 2026-08-10 -- see "What actually shipped" below)
 
 ## Por que este ADR existe
 
@@ -248,6 +248,55 @@ fusão de suas definições agora. Isso continua pra sua própria ADR (referenci
 - Quando (se) `game/camera_fps` entra como terceiro consumidor — não antes de precisar de verdade,
   mesma disciplina já aplicada ao resto do projeto (essa parte da disciplina original continua de
   pé; só o "segundo consumidor" foi antecipado deliberadamente, não o terceiro).
+
+## What actually shipped, alongside this ADR
+
+Implemented 2026-08-10, following the Plano de implementação above with a few deviations forced by
+compiling against raylib's actual headers rather than the ADR's illustrative sketch:
+
+- **Named `RenderMaterial`, not `Material`.** raylib's own `raylib.h` already defines a global
+  `struct Material { Shader shader; MaterialMap *maps; float params[4]; } Material;` (C-style
+  typedef, no namespace). A second global `struct Material` is a redefinition conflict, not a
+  shadow -- doesn't compile. The ADR's own sketch (`::Material raylibMaterial`) assumed a namespace
+  wrapper this project's `app/scene/` headers don't otherwise use (`Renderable`, `BoxRenderable`,
+  `WorldTransform` all sit in the global namespace uncontested). `app/scene/material.h`'s
+  `RenderMaterial { Shader shader; ::Material raylibMaterial; std::vector<UniformValue> extras; }`
+  is the same shape, just renamed to actually compile.
+- **`BindMaterial`/`DrawWithMaterial`, not the sketch's bare `Bind`/`Draw`.** `app/scene/
+  renderer.h`. A one-word global function name is too easy to collide with unrelated code later;
+  every other draw-adjacent free function in this directory already pairs a verb with a noun
+  (`DrawRenderables`, `DrawBoxRenderables`).
+- **The Model-vs-primitives "same Renderer?" Open Question is resolved: yes.**
+  `app/scene/renderable.h`'s `DrawRenderables` now reimplements raylib's own `DrawModelEx` loop
+  (confirmed against `vendor/raylib/src/rmodels.c`: one `DrawMesh` call per submesh, tint
+  premultiplied onto each submesh's own diffuse color) one submesh at a time through
+  `DrawWithMaterial`, instead of calling `DrawModelEx` directly. Each submesh's `RenderMaterial`
+  carries an empty `extras` list -- the reactor's rim glow is still baked once per material at
+  `Lighting::ApplyToModel` time (uniform values are static, no need to re-push every frame/draw),
+  not re-applied through this call's `extras`.
+- **`Lighting::GetShader()` → `GetPrimitivesMaterial() -> const RenderMaterial&`.** Its
+  `SetupRim` free function is gone; rim glow is now `RenderMaterial::extras` built once
+  (`BuildRimExtras()`) and pushed via the generic `ApplyExtras` (`material.h`), applied only inside
+  `ApplyToModel` -- **not** on the primitives shader anymore. This is the actual fix for the bug
+  that opened this ADR: before this change, `LoadLightingShaderInstance()` called `SetupRim`
+  unconditionally on every shader instance it compiled, including the one shared by every solid
+  Box/Sphere `Renderable` (the Sentinel) -- so the Sentinel picked up rim glow it was never meant to
+  have. That's fixed now, not just designed around.
+- **`game/sandbox`**: `player.yaml` gained a `Renderable` (`shape: box, wireframe: false`),
+  `screen_gameplay.cpp` gained a `"Renderable"` component loader mirroring `game/flare_reactor/
+  main.cpp`'s own (minus its `model`/`Lighting::ApplyToModel` branch -- no Model-shaped entity
+  exists in sandbox to exercise it), and `HumanView` builds its own `RenderMaterial` (`
+  LoadSandboxMaterial()`, `human_view.cpp`) independently of `game/flare_reactor/lighting.h`'s
+  `Lighting` class -- same rim-glow-extras technique, amber instead of cyan, its own ambient/one-
+  light setup -- rather than reusing that class as-is. `GameplayScene` now calls `DrawRenderables`
+  instead of hardcoding `DrawCubeWires`, closing the gap `renderable.h`'s own header comment and
+  ADR-0018 both flagged. `HumanView` gained a destructor (`UnloadShader(material_.shader)`) --
+  necessary here in a way it wasn't for `game/flare_reactor`'s single-shot `main()`, since GAMEPLAY
+  can be Init/Unload'd repeatedly within one run via `main.cpp`'s screen state machine.
+- **`game/camera_fps`** untouched, as scoped (third consumer, not needed to validate the API with
+  two) -- confirmed it still builds clean against the changed `app/scene/renderable.h`.
+- Verified: all three game modules (`flare_reactor`, `sandbox`, `camera_fps`) build clean via
+  `build.sh`; full `test.sh` suite (97 cases / 235 assertions) passes unchanged.
 
 ## References
 

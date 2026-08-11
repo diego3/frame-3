@@ -1,0 +1,14 @@
+# flare_reactor's core point light (docs/adr/0020): a real entity now, replacing the old private
+# game/flare_reactor/lighting.cpp kLights[1] constant. Position/color unchanged -- sits near the
+# reactor's cyan core (reactor_core.mat.yaml's own rim/energy color).
+components:
+  Position:
+    x: 0.0
+    y: 3.0
+    z: 0.0
+  Light:
+    type: point
+    color:
+      r: 110
+      g: 210
+      b: 255

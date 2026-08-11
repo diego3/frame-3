@@ -39,9 +39,8 @@ class FlareReactorView : public HumanViewBase {
 public:
     // `skyboxCubemapPath`/`beaconSoundPath`: from GameConfig (game_config.h), not hardcoded here --
     // the caller (main.cpp) loads GameConfig once and passes these through. `lighting`: owned by
-    // main.cpp (constructed before this view, so its "Renderable" component loader can call
-    // Lighting::ApplyToModel while loading the level -- see main.cpp), referenced here for
-    // FlareReactorScene's per-frame draw/update calls, not owned by this view.
+    // main.cpp, referenced here for FlareReactorScene's per-frame Update()/GetPrimitivesMaterial()
+    // calls (app/scene/mesh_renderer.h/renderable.h), not owned by this view.
     FlareReactorView(entt::registry &registry, EventManager &events, ResourceCache<Sound> &sounds,
                       const std::string &skyboxCubemapPath, const std::string &beaconSoundPath,
                       Lighting &lighting);

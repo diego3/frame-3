@@ -22,3 +22,11 @@ actors:
       x: 6
       y: 0
       z: 6
+  # Light entities (docs/adr/0020) -- replace the old private game/flare_reactor/lighting.cpp
+  # kLights[2] array. Each already carries its own Position in its own entity file (matches
+  # player.yaml/reactor.yaml's own pattern), so no "position:" override needed here.
+  - resource: resources/entities/flare_reactor/sun.yaml
+  - resource: resources/entities/flare_reactor/core_light.yaml
+  # MeshRenderer's second, unrelated consumer (docs/adr/0020) -- proves the design on a real second
+  # model with no shared state with the reactor's own materials.
+  - resource: resources/entities/props/backpack.yaml

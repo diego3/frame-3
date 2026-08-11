@@ -18,11 +18,16 @@
 #define RENDERABLE_H
 
 #include <memory>
+#include <string>
 
 #include <entt/entt.hpp>
 #include <raylib.h>
 #include <raymath.h>
 
+#include "app/entity/entity_def.h"
+#include "app/resource/resource_cache.h"
+#include "app/scene/material.h"
+#include "app/scene/renderer.h"
 #include "app/scene/transform.h"
 
 struct Renderable {
@@ -52,7 +57,63 @@ struct Renderable {
     std::shared_ptr<Model> model;
 };
 
-// Shared, process-lifetime unit geometry (+ one mutable Material) used to draw every solid
+// name -> Color for Renderable's "color:" YAML field -- shared by every "Renderable" component
+// loader (game/flare_reactor/main.cpp, game/sandbox/screen_gameplay.cpp used to each keep a
+// near-identical copy of this; unified here so RegisterComponentLoaders in either file doesn't
+// carry it inline). Returns `fallback` for any unrecognized name.
+inline Color ParseColorName(const std::string &name, Color fallback) {
+    if (name == "red") return RED;
+    if (name == "blue") return BLUE;
+    if (name == "darkgray" || name == "dark_gray") return DARKGRAY;
+    if (name == "green") return GREEN;
+    if (name == "orange") return ORANGE;
+    if (name == "maroon") return MAROON;
+    if (name == "gray" || name == "grey") return GRAY;
+    if (name == "white") return WHITE;
+    return fallback;
+}
+
+// Parses shape/size/color/wireframe/model from a "Renderable" component's own EntityDefNode -- the
+// "Renderable" component loader's own body (previously duplicated near-verbatim between
+// game/flare_reactor/main.cpp and game/sandbox/screen_gameplay.cpp), factored out so
+// RegisterComponentLoaders in either file stays a short list of registrations. `defaultColor` lets
+// each game module keep its own "no color given" fallback without forking this function (sandbox
+// used MAROON, flare_reactor GRAY -- both match Renderable::color's own struct default when
+// defaulted). `models` is only consulted when shape == "model" -- sandbox has never authored one,
+// but gains the branch for free; harmless (same "forward-compatible, not a real need yet" shape
+// DrawRenderables' own Model case already documents).
+inline Renderable ParseRenderableComponent(const EntityDefNode &node, ResourceCache<Model> &models,
+                                            Color defaultColor = GRAY) {
+    Renderable renderable;
+    std::string shapeName = "box";
+    if (const EntityDefNode *shape = node.TryGet("shape")) shapeName = shape->AsString("box");
+    if (shapeName == "sphere") {
+        renderable.shape = Renderable::Shape::Sphere;
+    } else if (shapeName == "model") {
+        renderable.shape = Renderable::Shape::Model;
+    } else {
+        renderable.shape = Renderable::Shape::Box;
+    }
+
+    if (const EntityDefNode *size = node.TryGet("size")) {
+        renderable.size = Vector3{size->Get("x").AsFloat(1.0f), size->Get("y").AsFloat(1.0f),
+                                   size->Get("z").AsFloat(1.0f)};
+    }
+    if (const EntityDefNode *color = node.TryGet("color")) {
+        renderable.color = ParseColorName(color->AsString(""), defaultColor);
+    }
+    if (const EntityDefNode *wireframe = node.TryGet("wireframe")) {
+        renderable.wireframe = wireframe->AsBool(true);
+    }
+    if (renderable.shape == Renderable::Shape::Model) {
+        if (const EntityDefNode *model = node.TryGet("model")) {
+            renderable.model = models.GetHandle(model->AsString(""));
+        }
+    }
+    return renderable;
+}
+
+// Shared, process-lifetime unit geometry (+ one template RenderMaterial) used to draw every solid
 // (wireframe == false, non-Model) Renderable -- added alongside game/flare_reactor's lighting work
 // so Box/Sphere shapes have real per-vertex normals a custom lighting shader can read. raylib's
 // immediate-mode DrawCubeV/DrawSphere (used here before) have none: confirmed against
@@ -73,8 +134,13 @@ namespace renderable_detail {
     struct PrimitiveGeometry {
         Mesh cube;
         Mesh sphere;
-        Material material;      // mutated (.maps[MATERIAL_MAP_DIFFUSE].color/.shader) per draw call
-        Shader defaultShader;   // material's own shader before any lighting override, captured once
+        // Template only -- DrawRenderables below copies this per draw call and overrides
+        // .raylibMaterial's diffuse color from the entity's own Renderable::color (never mutated
+        // in place here, unlike the pre-ADR-0019 version of this file). .extras stays empty: the
+        // *caller*-supplied RenderMaterial (DrawRenderables' `material` parameter -- e.g. game/
+        // flare_reactor's Lighting::GetPrimitivesMaterial()) is what actually carries a shader/
+        // extras override, this is only the fallback when no caller material is passed.
+        RenderMaterial defaultMaterial;
     };
 
     inline PrimitiveGeometry &GetPrimitiveGeometry() {
@@ -82,8 +148,8 @@ namespace renderable_detail {
             PrimitiveGeometry g{};
             g.cube = GenMeshCube(1.0f, 1.0f, 1.0f);
             g.sphere = GenMeshSphere(1.0f, 16, 16);
-            g.material = LoadMaterialDefault();
-            g.defaultShader = g.material.shader;
+            ::Material rl = LoadMaterialDefault();
+            g.defaultMaterial = RenderMaterial{rl.shader, rl, {}};
             return g;
         }();
         return geometry;
@@ -95,13 +161,22 @@ namespace renderable_detail {
 // BeginMode3D/EndMode3D -- this only issues Draw* calls, same division of responsibility
 // GameplayScene already has today.
 //
-// `shader`, if non-null, is bound to every solid Box/Sphere Renderable's shared Material for this
-// call (see renderable_detail::PrimitiveGeometry above for why that now has real normals to give
-// it). Wireframe Renderables are unaffected (outlines don't benefit from per-pixel lighting; drawn
-// via the old unlit immediate-mode calls, unchanged) and so are Model-shaped ones -- a Model's own
-// per-material shader (set separately, e.g. by game/flare_reactor's Lighting::ApplyToModel) always
-// wins, same as DrawModelEx always did.
-inline void DrawRenderables(entt::registry &registry, const Shader *shader = nullptr) {
+// `material` (ADR-0019), if non-null, supplies the shader + extras bound to every solid Box/Sphere
+// Renderable drawn this call (see renderable_detail::PrimitiveGeometry above for why that now has
+// real normals to give it) -- e.g. game/flare_reactor/Lighting::GetPrimitivesMaterial(). Wireframe
+// Renderables are unaffected (outlines don't benefit from per-pixel lighting; drawn via the old
+// unlit immediate-mode calls, unchanged).
+//
+// Model-shaped Renderables ignore this parameter entirely -- each submesh just uses whichever
+// shader/maps raylib's own LoadModel already assigned it (no per-submesh material override path
+// here; that's what app/scene/mesh_renderer.h's MeshRenderer is for, ADR-0020 -- this Shape::Model
+// case stays as a simpler fallback for a future consumer that doesn't need one). Reimplements
+// raylib's own DrawModelEx loop (vendor/raylib/src/rmodels.c) one submesh at a time through
+// DrawWithMaterial (app/scene/renderer.h) instead of DrawMesh directly -- same math (scale ->
+// rotate(0) -> translate, tint multiplied onto each submesh's own diffuse color via ColorTint),
+// just routed through the same Renderer step Box/Sphere use, resolving ADR-0019's "does a Model
+// share the Renderer with primitives" open question (yes).
+inline void DrawRenderables(entt::registry &registry, const RenderMaterial *material = nullptr) {
     auto view = registry.view<WorldTransform, Renderable>();
     for (auto entity : view) {
         const WorldTransform &world = view.get<WorldTransform>(entity);
@@ -114,12 +189,12 @@ inline void DrawRenderables(entt::registry &registry, const Shader *shader = nul
                     DrawCubeWiresV(position, renderable.size, renderable.color);
                 } else {
                     renderable_detail::PrimitiveGeometry &geometry = renderable_detail::GetPrimitiveGeometry();
-                    geometry.material.maps[MATERIAL_MAP_DIFFUSE].color = renderable.color;
-                    geometry.material.shader = shader ? *shader : geometry.defaultShader;
+                    RenderMaterial draw = material ? *material : geometry.defaultMaterial;
+                    draw.raylibMaterial.maps[MATERIAL_MAP_DIFFUSE].color = renderable.color;
                     Matrix transform = MatrixMultiply(
                         MatrixScale(renderable.size.x, renderable.size.y, renderable.size.z),
                         MatrixTranslate(position.x, position.y, position.z));
-                    DrawMesh(geometry.cube, geometry.material, transform);
+                    DrawWithMaterial(geometry.cube, draw, transform);
                 }
                 break;
             case Renderable::Shape::Sphere:
@@ -127,14 +202,14 @@ inline void DrawRenderables(entt::registry &registry, const Shader *shader = nul
                     DrawSphereWires(position, renderable.size.x, 8, 8, renderable.color);
                 } else {
                     renderable_detail::PrimitiveGeometry &geometry = renderable_detail::GetPrimitiveGeometry();
-                    geometry.material.maps[MATERIAL_MAP_DIFFUSE].color = renderable.color;
-                    geometry.material.shader = shader ? *shader : geometry.defaultShader;
+                    RenderMaterial draw = material ? *material : geometry.defaultMaterial;
+                    draw.raylibMaterial.maps[MATERIAL_MAP_DIFFUSE].color = renderable.color;
                     // renderable.size.x as the radius, matching the old DrawSphere(position,
                     // renderable.size.x, ...) call this replaces -- uniform scale of a unit sphere.
                     Matrix transform = MatrixMultiply(
                         MatrixScale(renderable.size.x, renderable.size.x, renderable.size.x),
                         MatrixTranslate(position.x, position.y, position.z));
-                    DrawMesh(geometry.sphere, geometry.material, transform);
+                    DrawWithMaterial(geometry.sphere, draw, transform);
                 }
                 break;
             case Renderable::Shape::Model:
@@ -143,8 +218,20 @@ inline void DrawRenderables(entt::registry &registry, const Shader *shader = nul
                 // BeaconPulseProcess's LocalTransform::rotation spin has never been visible through
                 // this function for any shape). Revisit together if that ever needs fixing.
                 if (renderable.model) {
-                    DrawModelEx(*renderable.model, position, Vector3{0.0f, 1.0f, 0.0f}, 0.0f,
-                                renderable.size, renderable.color);
+                    Model &model = *renderable.model;
+                    Matrix matTransform = MatrixMultiply(
+                        MatrixScale(renderable.size.x, renderable.size.y, renderable.size.z),
+                        MatrixTranslate(position.x, position.y, position.z));
+                    Matrix combined = MatrixMultiply(model.transform, matTransform);
+
+                    for (int i = 0; i < model.meshCount; ++i) {
+                        ::Material submaterial = model.materials[model.meshMaterial[i]];
+                        submaterial.maps[MATERIAL_MAP_DIFFUSE].color =
+                            ColorTint(submaterial.maps[MATERIAL_MAP_DIFFUSE].color, renderable.color);
+                        // extras left empty on purpose -- see this function's header comment.
+                        RenderMaterial submeshMaterial{submaterial.shader, submaterial, {}};
+                        DrawWithMaterial(model.meshes[i], submeshMaterial, combined);
+                    }
                 }
                 break;
         }

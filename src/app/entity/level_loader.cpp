@@ -12,6 +12,12 @@ std::vector<entt::entity> LevelLoader::Load(entt::registry &registry, EventManag
         std::string resourcePath = placement.Get("resource").AsString();
         EntityDefNode entityDef = parser_.Parse(readFile_(resourcePath));
 
+        // "active" (top-level, sibling of "components:") skips this actor's spawn entirely when
+        // false -- see this method's own header comment (level_loader.h).
+        if (const EntityDefNode *active = entityDef.TryGet("active")) {
+            if (!active->AsBool(true)) continue;
+        }
+
         // "position" is sugar for an override targeting the Position component specifically (the
         // overwhelmingly common per-instance override) -- folded into the same overridesMap
         // MergeOverrides() below already handles, not a separate code path.

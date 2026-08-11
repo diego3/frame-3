@@ -25,6 +25,8 @@
 #include <raymath.h>
 
 #include "app/process/process.h"
+#include "app/scene/hierarchy.h"
+#include "app/scene/mesh_renderer.h"
 #include "app/scene/renderable.h"
 #include "app/scene/transform.h"
 #include "reactor.h"
@@ -53,9 +55,19 @@ class BeaconPulseProcess : public Process {
 public:
     // Snapshots reactor's current Renderable::color (if any) as the lerp's starting point, instead
     // of assuming GRAY -- stays correct if a future reactor variant has a different base color.
+    // ADR-0020: since MeshRenderer migrated the reactor off Renderable (a MeshRenderer subtree root
+    // carries no Renderable of its own -- see app/scene/mesh_renderer.h), also tries its first
+    // Relationship child's own MeshRenderer::tint (default WHITE, matching reactor.yaml's old
+    // "color: white") when no Renderable is found.
     BeaconPulseProcess(entt::registry &registry, entt::entity reactor)
         : registry_(registry), reactor_(reactor) {
-        if (auto *renderable = registry_.try_get<Renderable>(reactor_)) baseColor_ = renderable->color;
+        if (auto *renderable = registry_.try_get<Renderable>(reactor_)) {
+            baseColor_ = renderable->color;
+        } else if (const Relationship *rel = registry_.try_get<Relationship>(reactor_)) {
+            if (rel->first != entt::null) {
+                if (auto *meshRenderer = registry_.try_get<MeshRenderer>(rel->first)) baseColor_ = meshRenderer->tint;
+            }
+        }
     }
 
     void Update(float dt) override {
@@ -71,8 +83,23 @@ public:
                 QuaternionFromAxisAngle(Vector3{0.0f, 1.0f, 0.0f}, elapsed_ * kSpinRadiansPerSecond);
         }
 
+        Color pulsed = LerpColor(baseColor_, RED, eased);
+
         if (auto *renderable = registry_.try_get<Renderable>(reactor_)) {
-            renderable->color = LerpColor(baseColor_, RED, eased);
+            renderable->color = pulsed;
+        }
+
+        // MeshRenderer subtree (ADR-0020): walk every child of the reactor root and tint its own
+        // MeshRenderer the same way -- the root's own LocalTransform scale/rotation above already
+        // propagates down to every child for free via PropagateTransforms (hierarchy.h), but tint
+        // is per-entity data (MeshRenderer::tint), not part of WorldTransform, so it needs its own
+        // walk here.
+        if (const Relationship *rel = registry_.try_get<Relationship>(reactor_)) {
+            for (entt::entity child = rel->first; child != entt::null;) {
+                entt::entity next = registry_.get<Relationship>(child).next;
+                if (auto *meshRenderer = registry_.try_get<MeshRenderer>(child)) meshRenderer->tint = pulsed;
+                child = next;
+            }
         }
 
         if (t >= 1.0f) {

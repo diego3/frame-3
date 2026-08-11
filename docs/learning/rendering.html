@@ -253,7 +253,7 @@
   <table class="status-table">
     <tr><th>Efeito</th><th>Status</th><th>Esforço</th></tr>
     <tr><td>Fresnel rim glow</td><td><span class="badge done">Concluído</span></td><td>Baixo</td></tr>
-    <tr><td>Scrolling core texture (energy flow)</td><td><span class="badge planned">Planejado</span></td><td>Baixo</td></tr>
+    <tr><td>Scrolling core texture (energy flow)</td><td><span class="badge done">Concluído</span></td><td>Baixo</td></tr>
     <tr><td>Emissive pulse (ligado ao estado do Reactor)</td><td><span class="badge planned">Planejado</span></td><td>Médio</td></tr>
     <tr><td>Fake bloom (threshold + passe extra)</td><td><span class="badge planned">Planejado, depois</span></td><td>Médio/Alto (novo passe de render)</td></tr>
     <tr><td>Especular por material (metalness)</td><td><span class="badge planned">Planejado, depois</span></td><td>Médio</td></tr>
@@ -309,6 +309,27 @@ finalColor.rgb += energyColor.rgb * energyIntensity;</code></pre>
       <img src="assets/kenney/perlin-noise-sample.png" alt="Textura de ruído Perlin em tons de cinza">
       <figcaption>A textura candidata real (já no repo): <code>kenney_development-essentials/Noise/perlin-noise.png</code>. Tingida de ciano + deslizada em UV, dá o "fluido" acima sem precisar desenhar nada — ver seção Kenney abaixo.</figcaption>
     </figure>
+  </div>
+
+  <div class="note" style="border-left-color: var(--done);">
+    <strong>✅ Implementado <span class="date">2026-08-10</span>:</strong>
+    <p style="margin-top:0.4rem;"><code>assets/shaders/glsl330/lighting.fs</code> ganhou 3 uniforms novos (<code>float time</code>, <code>float scrollSpeed</code>, <code>float energyIntensity</code>) e o termo aditivo, logo depois do rim glow:</p>
+    <pre><code>vec2 scrolledUV = fragTexCoord + vec2(time*scrollSpeed, 0.0);
+float energyNoise = texture(texture1, scrolledUV).r;
+finalColor.rgb += energyNoise*energyColor*energyIntensity;</code></pre>
+    <p>A textura candidata (<code>kenney_development-essentials/Noise/perlin-noise.png</code>) saiu de <code>assets/new-to-organize/</code> pra <code>assets/textures/flare_reactor/energy-noise.png</code> — primeiro asset real do reator que precisou de uma pasta <code>assets/textures/</code> própria (mesma convenção de <code>assets/audio/</code>/<code>assets/cubemaps/</code>/<code>assets/models/</code>), com a licença Kenney CC0 copiada junto (<code>license.txt</code>, mesmo padrão de <code>assets/models/reactor_nuclear/license.txt</code>). O path é <code>GameConfig</code> (<code>energyTexturePath</code>, <code>assets/config/flare_reactor/game.yaml</code>), não hardcoded — mesmo mecanismo de <code>skyboxCubemapPath</code>.</p>
+    <p><strong>Escopado só ao núcleo do reator, não aos primitivos genéricos</strong> — mesma separação que o Fresnel rim glow (efeito 1) já tinha: <code>scrollSpeed</code>/<code>energyIntensity</code> só são aplicados via <code>Lighting::ApplyToModel</code> (os 13 materiais do reator), nunca no shader compartilhado de <code>Lighting::GetPrimitivesMaterial()</code> que o Sentinel (Box/Sphere) usa — <code>energyIntensity</code> fica 0 nos primitivos (uniform de bloco default nunca setado, zero-inicializado pela própria spec do OpenGL, seção 2.11.4), sem nenhum <code>if</code>/branch no C++.</p>
+    <p><code>time</code> (dinâmico, via <code>GetTime()</code>) é empurrado todo frame por <code>Lighting::Update</code>, igual <code>viewPos</code> já era. <code>scrollSpeed</code>/<code>energyIntensity</code> (estáticos) viraram <code>RenderMaterial::extras</code> de verdade (<a href="../adr/0019-render-material-layer.md">ADR-0019</a>), aplicados uma vez em <code>ApplyToModel</code> junto do rim glow.</p>
+    <div class="note why" style="margin-top:0.6rem;">
+      <strong>Tentativa 1 não funcionou — a textura nunca aparecia:</strong>
+      <p style="margin-top:0.3rem;">Primeira versão usava um uniform próprio (<code>sampler2D energyTex</code>) setado via <code>SetShaderValueTexture</code>, incluído no mesmo <code>RenderMaterial::extras</code> das outras duas uniforms (<code>UniformValue</code>'s <code>std::variant</code> ganhou <code>Texture2D</code> como um quinto tipo só pra isso). Compilou, testes passaram, build rodou — mas nada aparecia na tela. Causa: <code>SetShaderValueTexture</code> registra a textura no sistema de <em>batch</em> do modo imediato do raylib (<code>DrawCube</code>, <code>DrawLine</code>, etc.), não no caminho que <code>DrawMesh</code> (o que desenha o reator) usa. <code>DrawMesh</code> (<code>rmodels.c</code>) só re-vincula, a cada draw, texturas que estejam no array <code>Material.maps[]</code> do próprio raylib — um uniform com nome arbitrário fora desse array nunca é re-bindado, então some depois do primeiro frame (ou nunca aparece). Fix: revert do <code>Texture2D</code> em <code>UniformValue</code>, uniform renomeado pra <code>texture1</code> (nome que <code>LoadShader</code> já resolve automaticamente pro slot <code>MATERIAL_MAP_SPECULAR</code>, livre pra reaproveitar já que nada aqui lê specular/metalness de verdade), e <code>Lighting::ApplyToModel</code> seta <code>model.materials[i].maps[MATERIAL_MAP_SPECULAR].texture</code> direto — aí <code>DrawMesh</code> re-vincula sozinho, todo draw, sem nenhuma lógica extra por frame.</p>
+      <p style="margin-top:0.3rem;"><strong>Lição:</strong> compilar sem erro e passar nos testes não prova que uma textura customizada aparece — os testes deste projeto não cobrem pixels na tela, só lógica C++. Uniform sampler numa <code>Material</code> desenhada via <code>DrawMesh</code> só é re-bindado automaticamente se estiver num dos slots fixos que o raylib já conhece (<code>maps[]</code>); qualquer outro nome de uniform de textura precisa ser re-setado à mão a cada draw, o que <code>ApplyExtras</code> (pensado pra floats/vetores estáticos) não fazia.</p>
+    </div>
+    <div class="note why" style="margin-top:0.6rem;">
+      <strong>Tentativa 2 — a textura deslizava, mas sem "cara" de energia:</strong>
+      <p style="margin-top:0.3rem;"><code>energy-noise.png</code> (Kenney Perlin noise) é <strong>cinza</strong> -- somar ela crua só clareia a superfície num padrão manchado, lê como "estática", não "energia". Faltava exatamente o passo que o próprio doc já sugeria desde o início ("tingir de ciano") e que a primeira implementação descartou por engano. Fix: uniform <code>vec3 energyColor</code> novo (mesmo ciano do <code>rimColor</code>/point light do núcleo, reforça uma "assinatura de energia" única pro reator em vez de duas cores de glow sem relação), amostragem trocada pra <code>.r</code> (só a luminância do ruído, já que é grayscale) multiplicada pela tint, e <code>kEnergyIntensity</code> subido de <code>0.6</code> pra <code>1.4</code> -- mesmo "não lia claro à primeira vista" que motivou o ajuste do <code>kRimIntensity</code> (efeito 1) antes.</p>
+    </div>
+    <p>Build validado nos três módulos (<code>flare_reactor</code>/<code>sandbox</code>/<code>camera_fps</code>) via <code>build.sh</code>; suite de testes completa (97/235) passa sem alteração. Checagem visual fica por conta do usuário, como sempre.</p>
   </div>
 
   <h3 id="effect-3-pulse">3. Emissive pulse ligado ao estado do Reactor</h3>
@@ -407,7 +428,7 @@ finalColor.rgb += energyColor.rgb * energyIntensity;</code></pre>
   </div>
   <p>O pacote mais diretamente útil pros efeitos do reator:</p>
   <ul>
-    <li><strong><code>Noise/perlin-noise.png</code></strong> → textura candidata pro <strong>scroll do núcleo (efeito 2 acima)</strong>: tingir de ciano, deslizar UV com <code>time</code>. Sem precisar desenhar nada.</li>
+    <li><strong><code>Noise/perlin-noise.png</code></strong> → a textura real do <strong>scroll do núcleo (efeito 2 acima, ✅ implementado 2026-08-10)</strong>: deslizada em UV com <code>time</code>, tingida de ciano no shader (<code>energyColor</code>, mesmo tom do rim glow) — sem isso o ruído cinza cru só lia como "estática", não "energia" (ver nota "Tentativa 2" acima). Movida de <code>assets/new-to-organize/</code> pra <code>assets/textures/flare_reactor/energy-noise.png</code> — primeiro asset deste pacote que saiu de "não organizado" pra uso real.</li>
     <li><strong><code>Gradient/gradient-radial.png</code></strong> → máscara de falloff pro <strong>emissive pulse (efeito 3)</strong>: multiplica <code>pulseIntensity</code> por essa textura amostrada no UV do núcleo, em vez de calcular distância no shader.</li>
     <li><strong><code>UV texture/uv-texture.png</code></strong> e <strong><code>Checkerboard/checkerboard.png</code></strong> → ferramenta de dev, não efeito final: trocar temporariamente a textura do núcleo por essa antes de implementar o scroll, pra confirmar visualmente pra que lado o UV realmente desliza (evita descobrir só depois de já ter a textura "certa" aplicada que o scroll ia na direção errada).</li>
     <li><strong><code>1×1 Pixels/pixel-white.png</code></strong> → textura-placeholder trivial pra qualquer <code>Material</code> (ADR-0019) que precise de um <code>MATERIAL_MAP_ALBEDO</code> mas não tenha (ainda) uma textura de verdade — cor sólida sem carregar nada pesado.</li>
