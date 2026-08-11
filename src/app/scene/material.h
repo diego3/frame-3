@@ -19,6 +19,7 @@
 #ifndef RENDER_MATERIAL_H
 #define RENDER_MATERIAL_H
 
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <variant>
@@ -36,7 +37,8 @@
 // Material's own maps[] array on every draw (the fixed diffuse/specular/normal slots) -- a custom-
 // named uniform sampler pushed via SetShaderValue{,Texture} has no such per-draw rebinding, so it
 // silently shows nothing past the first frame. A texture belongs on RenderMaterial::raylibMaterial.
-// maps[...] directly (see game/flare_reactor/lighting.cpp's ApplyToModel), not in this bag.
+// maps[...] directly (see app/scene/material_loader.h's LoadRenderMaterial/MergeSubmeshMaterial,
+// ADR-0020), not in this bag.
 struct UniformValue {
     std::string name;
     std::variant<float, Vector3, int, Color> value;
@@ -54,6 +56,13 @@ struct RenderMaterial {
     Shader shader{};
     ::Material raylibMaterial{};
     std::vector<UniformValue> extras;
+    // ADR-0020: keeps any ResourceCache<Texture2D> handle (ADR-0004) referenced by
+    // raylibMaterial.maps[i].texture alive for as long as this RenderMaterial exists --
+    // raylibMaterial only stores the raw Texture2D{id, ...} by value (no ownership of its own), so
+    // whoever loads a texture into a map slot (app/scene/material_loader.h's LoadRenderMaterial)
+    // must park its own handle here or the cache would unload the GPU texture out from under this
+    // material the moment its local shared_ptr goes out of scope.
+    std::vector<std::shared_ptr<Texture2D>> textureHandles;
 };
 
 // Applies every extras[i] to `shader` by name, one GetShaderLocation + SetShaderValue call each --

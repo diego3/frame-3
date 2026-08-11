@@ -18,11 +18,14 @@
 #define RENDERABLE_H
 
 #include <memory>
+#include <string>
 
 #include <entt/entt.hpp>
 #include <raylib.h>
 #include <raymath.h>
 
+#include "app/entity/entity_def.h"
+#include "app/resource/resource_cache.h"
 #include "app/scene/material.h"
 #include "app/scene/renderer.h"
 #include "app/scene/transform.h"
@@ -53,6 +56,62 @@ struct Renderable {
     // here can't outlive the context its eventual UnloadModel call needs.
     std::shared_ptr<Model> model;
 };
+
+// name -> Color for Renderable's "color:" YAML field -- shared by every "Renderable" component
+// loader (game/flare_reactor/main.cpp, game/sandbox/screen_gameplay.cpp used to each keep a
+// near-identical copy of this; unified here so RegisterComponentLoaders in either file doesn't
+// carry it inline). Returns `fallback` for any unrecognized name.
+inline Color ParseColorName(const std::string &name, Color fallback) {
+    if (name == "red") return RED;
+    if (name == "blue") return BLUE;
+    if (name == "darkgray" || name == "dark_gray") return DARKGRAY;
+    if (name == "green") return GREEN;
+    if (name == "orange") return ORANGE;
+    if (name == "maroon") return MAROON;
+    if (name == "gray" || name == "grey") return GRAY;
+    if (name == "white") return WHITE;
+    return fallback;
+}
+
+// Parses shape/size/color/wireframe/model from a "Renderable" component's own EntityDefNode -- the
+// "Renderable" component loader's own body (previously duplicated near-verbatim between
+// game/flare_reactor/main.cpp and game/sandbox/screen_gameplay.cpp), factored out so
+// RegisterComponentLoaders in either file stays a short list of registrations. `defaultColor` lets
+// each game module keep its own "no color given" fallback without forking this function (sandbox
+// used MAROON, flare_reactor GRAY -- both match Renderable::color's own struct default when
+// defaulted). `models` is only consulted when shape == "model" -- sandbox has never authored one,
+// but gains the branch for free; harmless (same "forward-compatible, not a real need yet" shape
+// DrawRenderables' own Model case already documents).
+inline Renderable ParseRenderableComponent(const EntityDefNode &node, ResourceCache<Model> &models,
+                                            Color defaultColor = GRAY) {
+    Renderable renderable;
+    std::string shapeName = "box";
+    if (const EntityDefNode *shape = node.TryGet("shape")) shapeName = shape->AsString("box");
+    if (shapeName == "sphere") {
+        renderable.shape = Renderable::Shape::Sphere;
+    } else if (shapeName == "model") {
+        renderable.shape = Renderable::Shape::Model;
+    } else {
+        renderable.shape = Renderable::Shape::Box;
+    }
+
+    if (const EntityDefNode *size = node.TryGet("size")) {
+        renderable.size = Vector3{size->Get("x").AsFloat(1.0f), size->Get("y").AsFloat(1.0f),
+                                   size->Get("z").AsFloat(1.0f)};
+    }
+    if (const EntityDefNode *color = node.TryGet("color")) {
+        renderable.color = ParseColorName(color->AsString(""), defaultColor);
+    }
+    if (const EntityDefNode *wireframe = node.TryGet("wireframe")) {
+        renderable.wireframe = wireframe->AsBool(true);
+    }
+    if (renderable.shape == Renderable::Shape::Model) {
+        if (const EntityDefNode *model = node.TryGet("model")) {
+            renderable.model = models.GetHandle(model->AsString(""));
+        }
+    }
+    return renderable;
+}
 
 // Shared, process-lifetime unit geometry (+ one template RenderMaterial) used to draw every solid
 // (wireframe == false, non-Model) Renderable -- added alongside game/flare_reactor's lighting work
@@ -108,13 +167,15 @@ namespace renderable_detail {
 // Renderables are unaffected (outlines don't benefit from per-pixel lighting; drawn via the old
 // unlit immediate-mode calls, unchanged).
 //
-// Model-shaped Renderables ignore this parameter entirely -- each submesh already carries its own
-// baked-in shader + extras (game/flare_reactor/Lighting::ApplyToModel, called once while the level
-// loads), not this call's material. Reimplements raylib's own DrawModelEx loop (vendor/raylib/src/
-// rmodels.c) one submesh at a time through DrawWithMaterial (app/scene/renderer.h) instead of
-// DrawMesh directly -- same math (scale -> rotate(0) -> translate, tint multiplied onto each
-// submesh's own diffuse color via ColorTint), just routed through the same Renderer step Box/Sphere
-// use, resolving ADR-0019's "does a Model share the Renderer with primitives" open question (yes).
+// Model-shaped Renderables ignore this parameter entirely -- each submesh just uses whichever
+// shader/maps raylib's own LoadModel already assigned it (no per-submesh material override path
+// here; that's what app/scene/mesh_renderer.h's MeshRenderer is for, ADR-0020 -- this Shape::Model
+// case stays as a simpler fallback for a future consumer that doesn't need one). Reimplements
+// raylib's own DrawModelEx loop (vendor/raylib/src/rmodels.c) one submesh at a time through
+// DrawWithMaterial (app/scene/renderer.h) instead of DrawMesh directly -- same math (scale ->
+// rotate(0) -> translate, tint multiplied onto each submesh's own diffuse color via ColorTint),
+// just routed through the same Renderer step Box/Sphere use, resolving ADR-0019's "does a Model
+// share the Renderer with primitives" open question (yes).
 inline void DrawRenderables(entt::registry &registry, const RenderMaterial *material = nullptr) {
     auto view = registry.view<WorldTransform, Renderable>();
     for (auto entity : view) {

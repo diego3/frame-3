@@ -1,8 +1,26 @@
 # 20. MeshRenderer/Material/Shader: separar "o quê" de "como" de "código GPU"
 
-- Status: Proposed — **deliberadamente em aberto**, não é uma decisão fechada. Registrado agora pra
-  não perder o desenho da conversa; revisitar antes de qualquer implementação real (ver `##
-  Continuar depois` no fim).
+- Status: Accepted, **Fase A implementada** (2026-08-11) — `MeshRenderer`/`MeshRendererRoot`/
+  `HasEmissiveMap` (`app/scene/mesh_renderer.h`), `Light`/`PushFrameUniforms` (`app/scene/light.h`),
+  `.mat` YAML assets via `LoadRenderMaterial`/`MergeSubmeshMaterial`
+  (`app/scene/material_loader.h/.cpp`). Reator (rim+scroll agora só no submesh emissivo, detectado
+  via glTF `emissiveFactor`, não por nome/índice) e `survival_guitar_backpack` (segundo consumidor
+  real, sem colisão de slot) migrados; `Lighting` (`game/flare_reactor/`) encolheu pro que sobrou —
+  só o shader dos primitivos Box/Sphere. Fase B (shader variants, `Shader` de fato compartilhado via
+  `Engine::GetShader()`, `MaterialManager`/`ShaderManager` dedicados) segue em aberto, sem gatilho
+  ainda — ver `## Continuar depois`, que permanece a lista real do que não foi decidido/feito.
+- **Bug real pós-implementação (2026-08-11), corrigido**: reator e backpack renderizavam quebrados
+  (reator incompleto, backpack com escala aparentemente ignorada) -- causa raiz root-caused via
+  trilha de `TraceLog` de shader IDs (não por screenshot): `frameMaterial`/`coreMaterial`
+  (`ResourceCache<RenderMaterial>::GetHandle`, variáveis locais em `SpawnMeshRendererComponent`)
+  saíam de escopo ao fim da função; `MergeSubmeshMaterial` só copia o `Shader` (id+locs) POR VALOR
+  em cada `RenderMaterial` por-índice, sem estender o `shared_ptr` original -- então o refcount do
+  cache zerava ali mesmo, o deleter (`UnloadShader`) disparava, e todo `MeshRenderer` filho ficava
+  com um `Shader.id` de um programa GL já destruído (o log mostrou o ID sendo reciclado pelo shader
+  do skybox logo em seguida). Fix: `MeshRendererRoot` agora guarda
+  `vector<shared_ptr<RenderMaterial>> materialTemplates` -- os handles originais, mantidos vivos
+  pelo tempo de vida do root. Ver `app/scene/mesh_renderer.h`'s `MeshRendererRoot` para o comentário
+  completo.
 - Date: 2026-08-10
 
 ## Por que este ADR existe
@@ -520,34 +538,43 @@ slot de textura que `reactor_core` usa pra `energy-noise.png` nunca é visto pel
 
 ## Continuar depois
 
-Este ADR foi registrado pra não perder o desenho, **não pra travar a decisão**. A rodada de
-2026-08-10 com Three.js/LearnOpenGL já resolveu (ou deu resposta candidata a) alguns pontos que
-antes estavam em aberto -- marcados abaixo -- mas nada disso está fechado até revisitar com o
-usuário. O que ainda falta decidir de verdade:
+Este ADR foi registrado pra não perder o desenho, **não pra travar a decisão** -- a rodada de
+2026-08-10/11 fechou boa parte do que estava em aberto (marcado ✅ abaixo, com a resposta real que
+saiu, não mais "candidato"). O que ainda falta pra Fase B:
 
-- Naming exato: `MeshRenderer` (literal, Unity-style) vs. estender `Renderable` vs. um nome novo
-  que não colida com o vocabulário já usado em `app/scene/`.
-- Se a Fase A já precisa tocar o problema de refcount do Shader compartilhado, ou se dá pra adiar
-  mais -- **candidato a resposta agora**: dá pra adiar; com `MeshRenderer`/subtree por-entidade, cada
-  entidade já tem sua própria instância de `Shader` de qualquer forma (mesmo padrão que o reator já
-  usa hoje), então "Shader compartilhado" vira otimização de Fase B, não pré-requisito.
-- Formato exato do contrato de Frame uniforms -- generalizar `Lighting::Update` como está, ou
-  desenhar algo novo desde já pensando em N shaders diferentes precisando dele.
-- Se/quando materiais viram asset `.mat` de verdade, carregado por caminho (como
-  `skyboxCubemapPath`/`energyTexturePath` já fazem), ou continuam construídos em código C++
-  (`Lighting::BuildRimExtras`-style) por mais um tempo.
-- Se algum esqueleto mínimo de shader variants entra na Fase A (mesmo que sem gerar permutações
-  ainda) ou fica 100% Fase B.
-- Como isso convive com a convergência ainda não resolvida `Renderable`/`BoxRenderable`
-  (referenciada pela [ADR-0018](0018-scene-graph-event-driven-revisit.md)) -- **candidato a resposta
-  agora**: `MeshRenderer` parece ser a própria oportunidade de resolver essa convergência (ambos
-  virariam "essa entidade tem um `MeshRenderer`"), mas isso não foi validado com o usuário ainda.
-- Modelo exato do componente `Light` -- só `type`/`color`/`intensity`, ou já prever `range`/atenuação
-  pra point lights, `castShadow` (mesmo sem shadow mapping implementado ainda), etc.
-- Como o loader de `Model` decide automaticamente "esse submesh é o `core`, os outros não são" pra
-  virar a subtree do segundo diagrama -- por nome de material (frágil, os nomes do glTF do reator
-  são artefato de export, `anisotropic19` etc.), por índice (frágil também), ou por autoria manual
-  no YAML da entidade (mais explícito, mais trabalho de configurar).
+- ✅ **Naming**: `MeshRenderer`, literal (não uma extensão de `Renderable`) -- decisão explícita do
+  usuário; convergência `Renderable`/`BoxRenderable` continua deliberadamente adiada (ADR-0018).
+- ✅ **Refcount do Shader compartilhado**: confirmado desnecessário resolver agora, por um motivo
+  melhor do que "dá pra adiar" -- `vendor/raylib/src/rmodels.c:1205`'s `UnloadModel` (raylib 6.0,
+  vendorizado neste projeto) **não chama `UnloadMaterial`**, só libera `materials[i].maps`; nunca
+  toca `materials[i].shader`. O risco de double-free que motivava "um Shader por material" nunca
+  existiu pro desenho do `MeshRenderer` (seu `RenderMaterial` nunca é escrito em `model.materials[]`
+  -- é uma struct própria). `LoadRenderMaterial` ainda compila sua própria instância por `.mat`
+  (não via `Engine::GetShader()`) só por escopo combinado com o usuário, não por necessidade real.
+- ✅ **Formato do contrato de Frame uniforms**: `PushFrameUniforms` (`app/scene/light.h`) --
+  generaliza `Lighting::Update` como estava, recebe `Shader&` direto, sem estado por-Lighting.
+- ✅ **`.mat` como asset real**: sim, YAML, via `YamlEntityFileParser` (`app/scene/material_loader.h`).
+- ✅ **Detecção de "core"**: nem nome nem índice -- `HasEmissiveMap` lê o slot
+  `MATERIAL_MAP_EMISSION` que o próprio loader de glTF do raylib já popula a partir do
+  `emissiveFactor`/`emissiveTexture` do arquivo (sinal semântico real, não uma convenção de nome
+  frágil). Nenhuma autoria manual (`materialOverrides`) no YAML da entidade.
+- **Descoberta real durante a implementação, não prevista no desenho original**: um `.mat`
+  compartilhado por N submeshes (`reactor_frame.mat.yaml` cobre 11 materiais distintos do reator)
+  não pode simplesmente substituir o material de cada submesh -- cada índice de material do glTF
+  carrega seu próprio mapa `MATERIAL_MAP_DIFFUSE` (cor/textura base), que um `.mat` em branco
+  perderia. `MergeSubmeshMaterial` (`app/scene/material_loader.h`) resolve isso: constrói UM
+  `RenderMaterial` por índice de material real (não por `.mat`, não por mesh), preservando o
+  `MATERIAL_MAP_DIFFUSE` original daquele índice e só sobrepondo shader/extras/texturas explícitas
+  do template. Sem isso, os 11 materiais "frame" do reator apareceriam todos com a mesma cor
+  em branco.
+- Shader variants/features de verdade (geração + cache de permutação) -- **ainda 100% Fase B**, sem
+  gatilho novo (só uma feature real por shader até agora: rim + scroll, ambas uniform, nunca branch
+  de compilação).
+- Modelo exato do componente `Light` -- Fase A ficou só `type`/`color` (nem `intensity` chegou a ser
+  usado -- `lighting.fs` não tem multiplicador de intensidade hoje); `range`/atenuação,
+  `castShadow`, etc. seguem em aberto, sem gatilho.
+- `MaterialManager`/`ShaderManager` dedicados -- Fase A reusou `ResourceCache<RenderMaterial>`
+  (ADR-0004) puro, sem classe nova; revisitar só se esse cache genérico não bastar mais.
 
 ## References
 
