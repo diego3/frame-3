@@ -1,0 +1,17 @@
+# game/dev_arena's reference cube -- a plain 1x1x1 solid Renderable box (checkerboard-textured via
+# whatever material dev_arena's own view passes to DrawRenderables, see
+# assets/materials/dev_arena.mat.yaml), reused across assets/levels/dev_arena.yaml with only
+# "color:" overridden per placement (docs/adr/0009's MergeOverrides) -- same "one entity def,
+# per-instance override" pattern game/camera_fps's tower.yaml/assets/levels/camera_fps.yaml already
+# established. wireframe: false so it actually renders through the material/lighting path (renderable.h's
+# wireframe branch skips materials entirely, same reasoning assets/entities/player.yaml's own
+# comment gives).
+components:
+  Position:
+    x: 0
+    y: 0
+    z: 0
+  Renderable:
+    shape: box
+    color: gray
+    wireframe: false

@@ -1,0 +1,15 @@
+# dev_arena.mat.yaml -- game/dev_arena's own material (docs/adr/0020's format, reused as-is). Same
+# shared lighting.vs/.fs shader every other .mat in this project uses (real reuse, not a shader
+# fork), but deliberately no "extras:" block -- unlike game/sandbox's amber rim-glow or
+# game/flare_reactor's reactor core, a greybox test scenario wants a neutral, undistracting look,
+# not a stylized effect. Basic Blinn-Phong (diffuse + the shader's own ambient/specular terms) is
+# enough to read shape/depth on a checkerboard-textured box.
+#
+# textures.diffuse: Kenney's Development Essentials checkerboard (CC0, see
+# assets/textures/kenney/README.md) -- classic scale/orientation reference texture, tinted per
+# entity via Renderable::color (app/scene/renderable.h already multiplies this onto the diffuse map
+# color every draw, see DrawRenderables' Box case) so a handful of differently-colored reference
+# cubes stay visually distinct while sharing this one material/DrawRenderables call.
+shader: resources/shaders/glsl330/lighting
+textures:
+  diffuse: resources/textures/kenney/development-essentials/Checkerboard/checkerboard.png

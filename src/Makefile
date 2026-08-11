@@ -142,6 +142,20 @@ PROJECT_SOURCE_FILES_CPP += \
     game/flare_reactor/screenshot_capture.cpp
 endif
 
+# game/dev_arena: a greybox test/dev scenario, not a game -- docs/adr/0017's "second game module"
+# pattern applied a fourth time (see src/game/dev_arena/main.cpp's own header comment). A single
+# Engine-driven scene, no screens.h state machine, no GameConfig (no game-specific settings
+# needed), reusing BaseGameLogic directly (no subclass -- nothing here needs its own game logic).
+# Its own checkerboard-textured reference-cube row (assets/levels/dev_arena.yaml) uses Kenney's
+# Development Essentials pack (CC0, see assets/textures/kenney/README.md) as a scale/orientation
+# reference for visually testing new engine features without touching any of the other three
+# games' own content.
+ifeq ($(GAME),dev_arena)
+PROJECT_SOURCE_FILES_CPP += \
+    game/dev_arena/main.cpp \
+    game/dev_arena/human_view.cpp
+endif
+
 # Source location of game content, staged into ./resources before linking (see 'resources' target)
 PROJECT_RESOURCES_PATH ?= ../assets
 

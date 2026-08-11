@@ -1,0 +1,16 @@
+# game/dev_arena's one light (docs/adr/0020) -- a plain white directional light, just enough for
+# dev_arena.mat.yaml's lighting.fs shader to read as more than flat black. No dramatic tuning (no
+# rim glow, no warm color grade) -- unlike game/sandbox's amber rim or game/flare_reactor's sun,
+# this scene wants a neutral, undistracting look (see assets/materials/dev_arena.mat.yaml's own
+# header comment).
+components:
+  Position:
+    x: 4.0
+    y: 8.0
+    z: 6.0
+  Light:
+    type: directional
+    color:
+      r: 255
+      g: 255
+      b: 255

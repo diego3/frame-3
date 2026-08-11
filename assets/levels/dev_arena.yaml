@@ -1,0 +1,84 @@
+# game/dev_arena's level: a greybox test/dev scenario, not a game (docs/adr/0017's "second game
+# module" pattern applied a third time -- see src/game/dev_arena/main.cpp's own header comment).
+# Player first, same reason every other multi-actor level in this project lists it first
+# (assets/levels/camera_fps.yaml) -- VLoadLevel's returned entity list needs spawned[0] to be
+# unambiguous.
+#
+# Six ref_cube.yaml placements at 2-unit spacing along X, y=0.5 (half the cube's own 1-unit height,
+# so it sits on DrawGrid's y=0 plane instead of floating/clipping through it), each overriding just
+# "color:" (docs/adr/0009's MergeOverrides) -- a real, if small, scale/color reference row: walk
+# past all six and the 2-unit spacing plus each cube's known 1x1x1 size gives an actual sense of
+# scale, which is the entire point of a greybox arena. sun.yaml last (order doesn't matter past
+# index 0 -- nothing reads spawned[1..]) -- one directional Light so dev_arena.mat.yaml's shader
+# reads as more than flat black.
+actors:
+  - resource: resources/entities/player.yaml
+    position:
+      x: 0
+      y: 0.5
+      z: 6
+  - resource: resources/entities/dev_arena/ref_cube.yaml
+    position:
+      x: -5
+      y: 0.5
+      z: 0
+    overrides:
+      Renderable:
+        shape: box
+        color: red
+        wireframe: false
+  - resource: resources/entities/dev_arena/ref_cube.yaml
+    position:
+      x: -3
+      y: 0.5
+      z: 0
+    overrides:
+      Renderable:
+        shape: box
+        color: blue
+        wireframe: false
+  - resource: resources/entities/dev_arena/ref_cube.yaml
+    position:
+      x: -1
+      y: 0.5
+      z: 0
+    overrides:
+      Renderable:
+        shape: box
+        color: green
+        wireframe: false
+  - resource: resources/entities/dev_arena/ref_cube.yaml
+    position:
+      x: 1
+      y: 0.5
+      z: 0
+    overrides:
+      Renderable:
+        shape: box
+        color: orange
+        wireframe: false
+  - resource: resources/entities/dev_arena/ref_cube.yaml
+    position:
+      x: 3
+      y: 0.5
+      z: 0
+    overrides:
+      Renderable:
+        shape: box
+        color: gray
+        wireframe: false
+  - resource: resources/entities/dev_arena/ref_cube.yaml
+    position:
+      x: 5
+      y: 0.5
+      z: 0
+    overrides:
+      Renderable:
+        shape: box
+        color: white
+        wireframe: false
+  - resource: resources/entities/dev_arena/sun.yaml
+    position:
+      x: 4.0
+      y: 8.0
+      z: 6.0
