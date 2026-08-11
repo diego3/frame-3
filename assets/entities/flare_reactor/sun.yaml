@@ -1,0 +1,16 @@
+# flare_reactor's "sun" (docs/adr/0020): a real entity now, replacing the old private
+# game/flare_reactor/lighting.cpp kLights[0] constant. Position/color unchanged -- re-derived
+# 2026-08-08 to match the baked-in sun disc in the shipped skybox cubemap (GameConfig's
+# skyboxCubemapPath default), see the old lighting.cpp comment this position was copied from
+# (docs/learning/rendering.html has the face-layout math it was read off of).
+components:
+  Position:
+    x: 6.0
+    y: 1.5
+    z: 3.0
+  Light:
+    type: directional
+    color:
+      r: 255
+      g: 196
+      b: 130

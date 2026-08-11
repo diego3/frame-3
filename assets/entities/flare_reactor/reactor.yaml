@@ -1,25 +1,29 @@
 # flare_reactor reactor entity (docs/rfc/0001-flare-reactor-pipeline-experiment.md). Phase 3 gave
 # it a real Reactor component (active state, validated via EvtData_ActivateBeacon/GameLogic) --
-# the color-flip-to-red-on-trigger pulse is Phase 4 (BeaconPulseProcess), per the RFC's "Fases
-# propostas"; unchanged by the swap below (still lerps Renderable::color toward RED, now tinting
-# the model's own textures instead of a flat-shaded box).
+# the color-flip-to-red-on-trigger pulse is Phase 4 (BeaconPulseProcess), unchanged in spirit by
+# the swap below -- still lerps toward RED, now tinting each submesh's own MeshRenderer instead of
+# a single Renderable::color.
 #
-# Renderable.shape/model (Sketchfab "Reactor Nuclear" by DavidFer, CC-BY-4.0 -- see
-# assets/models/reactor_nuclear/license.txt) replaces the old solid gray box placeholder. size is
-# a scale multiplier here, not a box half-extent (app/scene/renderable.h) -- the mesh's own raw
-# bounding box is ~35x60x34 units (computed from scene.gltf's accessor min/max), so 0.035 brings it
-# down to roughly the same few-unit footprint the 1.5-unit box occupied.
+# MeshRenderer (ADR-0020, replaces the old Renderable shape:model) splits this Model into one child
+# entity per submesh -- the core (whichever raylib materials carry a real glTF emissiveFactor, see
+# app/scene/mesh_renderer.h's HasEmissiveMap) gets reactor_core.mat.yaml (rim + scrolling energy
+# texture); every other submesh gets reactor_frame.mat.yaml (same shader, no extras). No manual
+# per-submesh mapping authored here -- the "MeshRenderer" component loader (game/flare_reactor/
+# main.cpp) detects this automatically. size is a scale multiplier here, not a box half-extent --
+# the mesh's own raw bounding box is ~35x60x34 units (computed from scene.gltf's accessor
+# min/max), so 0.06 brings it down to roughly the same few-unit footprint the box it originally
+# replaced (Phase 1) did.
 components:
   Position:
     x: 0
     y: 0
     z: 0
   Reactor: false
-  Renderable:
-    shape: model
+  MeshRenderer:
     model: resources/models/reactor_nuclear/scene.gltf
-    color: white
     size:
       x: 0.06
       y: 0.06
       z: 0.06
+    material: resources/materials/reactor_frame.mat.yaml
+    coreMaterial: resources/materials/reactor_core.mat.yaml

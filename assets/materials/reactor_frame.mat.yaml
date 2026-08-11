@@ -1,0 +1,6 @@
+# reactor_frame.mat.yaml -- the reactor's structural submeshes (everything except the glowing
+# core, see reactor.yaml/HasEmissiveMap). Same shader every other .mat in this level uses (real
+# reuse, not a shader-per-material split like the old Lighting::ApplyToModel) -- no extras/textures
+# means each submesh keeps its own glTF-authored base color untouched (app/scene/material_loader.h's
+# MergeSubmeshMaterial), just lit by lighting.fs's Blinn-Phong instead of raylib's default shader.
+shader: resources/shaders/glsl330/lighting

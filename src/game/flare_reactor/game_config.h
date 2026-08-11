@@ -26,10 +26,9 @@ struct GameConfig {
     std::string beaconSoundPath;
     std::string sentinelPatrolVoicePath;
     std::string sentinelInvestigateVoicePath;
-    // Scrolling core energy texture (docs/learning/rendering.html, effect 2) -- a content asset
-    // (which noise/energy texture) same as skyboxCubemapPath above, not a shader path, so it belongs
-    // here per this struct's own scope note.
-    std::string energyTexturePath;
+    // No energyTexturePath here anymore (ADR-0020) -- the scrolling core effect's energy texture is
+    // now assets/materials/reactor_core.mat.yaml's own `textures:` entry, loaded through the
+    // material cache (game/flare_reactor/main.cpp), not GameConfig.
 };
 
 // Reads path; if it doesn't exist yet (first run), seeds it from defaultsPath (assets/config/

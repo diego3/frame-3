@@ -4,6 +4,8 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#include "app/scene/hierarchy.h"
+#include "app/scene/mesh_renderer.h"
 #include "app/scene/renderable.h"
 #include "app/scene/transform.h"
 #include "game/flare_reactor/beacon_pulse_process.h"
@@ -28,6 +30,26 @@ TEST_CASE("BeaconPulseProcess animates scale/color mid-pulse and resets Reactor:
     process.Update(1.5f);   // pushes elapsed_ past kDurationSeconds
     CHECK(process.IsDead());
     CHECK(registry.get<Reactor>(reactor).active == false);   // BeaconPulseProcess resets it, not GameLogic
+}
+
+TEST_CASE("BeaconPulseProcess tints a MeshRenderer subtree's children (ADR-0020), not just a bare Renderable") {
+    entt::registry registry;
+    entt::entity reactor = registry.create();
+    registry.emplace<LocalTransform>(reactor);
+    registry.emplace<WorldTransform>(reactor);
+    registry.emplace<Reactor>(reactor, Reactor{true});
+
+    entt::entity submesh = registry.create();
+    SetParent(registry, submesh, reactor);
+    registry.emplace<MeshRenderer>(submesh, MeshRenderer{Mesh{}, nullptr, WHITE});
+
+    BeaconPulseProcess process(registry, reactor);
+
+    process.Update(1.0f);   // halfway through the 2s pulse
+
+    Color tint = registry.get<MeshRenderer>(submesh).tint;
+    CHECK(tint.r != WHITE.r);   // shifted away from the base (WHITE, snapshotted from the child's own tint)
+    CHECK(registry.get<LocalTransform>(reactor).scale.x > 1.0f);   // root's own scale pulse, unaffected by the tint change above
 }
 
 TEST_CASE("BeaconPulseProcess tolerates a reactor missing LocalTransform/Renderable") {

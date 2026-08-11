@@ -42,8 +42,10 @@ uniform float rimIntensity;
 // Scrolling core energy texture (docs/learning/rendering.html, "Scrolling core texture (energy
 // flow)") -- a noise/energy texture sliding along U over time, read additively same as rim glow
 // above (a surface "emitting" light shouldn't be darkened by ambient/shadow it's not receiving).
-// `time` is pushed every frame (Lighting::Update, like viewPos); scrollSpeed/energyIntensity are
-// static, set once when this shader instance's RenderMaterial is built (Lighting::ApplyToModel).
+// `time` is pushed every frame (app/scene/light.h's PushFrameUniforms, like viewPos);
+// scrollSpeed/energyIntensity are static, set once via a ".mat" asset's `extras:` (ADR-0020,
+// app/scene/material_loader.h's LoadRenderMaterial/ApplyExtras -- see
+// assets/materials/reactor_core.mat.yaml).
 //
 // texture1, not a custom-named sampler: raylib's DrawMesh (rmodels.c) only auto-binds textures it
 // finds in Material::maps[] on every draw, using the fixed default names LoadShader resolves for
@@ -52,8 +54,9 @@ uniform float rimIntensity;
 // nothing (SetShaderValueTexture's texture-unit registration is only ever consumed by raylib's
 // immediate-mode batch renderer, which DrawMesh doesn't go through). Nothing in this shader reads
 // specular/metalness texture data today (the specular term below is a fixed `shine` constant), so
-// slot 1 is free to repurpose for the scrolling energy texture instead -- Lighting::ApplyToModel
-// sets model.materials[i].maps[MATERIAL_MAP_SPECULAR].texture directly, no custom uniform push.
+// slot 1 is free to repurpose for the scrolling energy texture instead -- reactor_core.mat.yaml's
+// `textures: { specular: ... }` (MergeSubmeshMaterial) sets
+// model.materials[i].maps[MATERIAL_MAP_SPECULAR].texture directly, no custom uniform push.
 uniform sampler2D texture1;
 uniform float time;
 uniform float scrollSpeed;

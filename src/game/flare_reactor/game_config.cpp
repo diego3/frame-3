@@ -16,7 +16,6 @@ namespace {
         out << "beaconSoundPath: " << config.beaconSoundPath << "\n";
         out << "sentinelPatrolVoicePath: " << config.sentinelPatrolVoicePath << "\n";
         out << "sentinelInvestigateVoicePath: " << config.sentinelInvestigateVoicePath << "\n";
-        out << "energyTexturePath: " << config.energyTexturePath << "\n";
         return out.str();
     }
 
@@ -37,8 +36,6 @@ namespace {
             config.sentinelPatrolVoicePath = v->AsString(config.sentinelPatrolVoicePath);
         if (const EntityDefNode *v = root.TryGet("sentinelInvestigateVoicePath"))
             config.sentinelInvestigateVoicePath = v->AsString(config.sentinelInvestigateVoicePath);
-        if (const EntityDefNode *v = root.TryGet("energyTexturePath"))
-            config.energyTexturePath = v->AsString(config.energyTexturePath);
         return config;
     }
 }

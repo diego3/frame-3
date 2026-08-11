@@ -10,4 +10,3 @@ skyboxCubemapPath: resources/cubemaps/Cubemap_Sky_03-512x512.png
 beaconSoundPath: resources/audio/fx/coin.wav
 sentinelPatrolVoicePath: resources/audio/voices/just-patroling_limpa.mp3
 sentinelInvestigateVoicePath: resources/audio/voices/letsseewhatishapenning_limpa.mp3
-energyTexturePath: resources/textures/flare_reactor/energy-noise.png

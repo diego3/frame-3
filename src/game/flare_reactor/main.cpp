@@ -25,6 +25,11 @@
 #include "app/entity/entity_factory.h"
 #include "app/entity/entity_file_parser_yaml.h"
 #include "app/entity/level_loader.h"
+#include "app/io/file_io.h"
+#include "app/scene/hierarchy.h"
+#include "app/scene/light.h"
+#include "app/scene/material_loader.h"
+#include "app/scene/mesh_renderer.h"
 #include "app/scene/renderable.h"
 #include "app/scene/transform.h"
 #include "ai_view.h"
@@ -38,27 +43,15 @@
 #include "tags.h"
 
 namespace {
-    Color ParseColorName(const std::string &name, Color fallback) {
-        if (name == "red") return RED;
-        if (name == "blue") return BLUE;
-        if (name == "darkgray" || name == "dark_gray") return DARKGRAY;
-        if (name == "green") return GREEN;
-        if (name == "orange") return ORANGE;
-        if (name == "maroon") return MAROON;
-        if (name == "gray" || name == "grey") return GRAY;
-        if (name == "white") return WHITE;   // reactor.yaml's Model tint default -- no color skew
-                                              // over the mesh's own baked textures.
-        return fallback;
-    }
-
     // Mirrors game/sandbox/screen_gameplay.cpp's RegisterComponentLoaders shape exactly (same
     // EntityFactory API, same "one lambda per component name" pattern) -- not shared between the
     // two modules because "Position" is the only loader they'd actually have in common, and
     // duplicating one eight-line lambda is cheaper than a shared registration helper nobody else
     // needs yet. Takes Engine& (not just EntityFactory&) now too -- the "Renderable" loader below
     // needs engine.Models() to resolve a `model:` path into a cached handle when shape == model.
-    // Takes Lighting& too, for the same loader -- see its own comment below.
-    void RegisterComponentLoaders(EntityFactory &factory, Engine &engine, Lighting &lighting) {
+    // Takes ResourceCache<RenderMaterial>& (ADR-0020's ".mat" cache, see main() below) too -- the
+    // "MeshRenderer" loader resolves `material:`/`coreMaterial:` paths through it.
+    void RegisterComponentLoaders(EntityFactory &factory, Engine &engine, ResourceCache<RenderMaterial> &materials) {
         factory.RegisterComponentLoader("Position", [](entt::registry &registry, entt::entity entity,
                                                          const EntityDefNode &node) {
             registry.emplace<LocalTransform>(
@@ -100,40 +93,28 @@ namespace {
             registry.emplace<Patrol>(entity, patrol);
         });
 
-        factory.RegisterComponentLoader("Renderable", [&engine, &lighting](entt::registry &registry, entt::entity entity,
+        // Renderable/MeshRenderer/Light parsing all live next to their own component structs now
+        // (app/scene/renderable.h/mesh_renderer.h/light.h) -- these loaders are thin registrations,
+        // not full parsing logic, so this list stays scannable as new components are added.
+        factory.RegisterComponentLoader("Renderable", [&engine](entt::registry &registry, entt::entity entity,
                                                                   const EntityDefNode &node) {
-            Renderable renderable;
-            std::string shapeName = "box";
-            if (const EntityDefNode *shape = node.TryGet("shape")) {
-                shapeName = shape->AsString("box");
-            }
-            if (shapeName == "sphere") {
-                renderable.shape = Renderable::Shape::Sphere;
-            } else if (shapeName == "model") {
-                renderable.shape = Renderable::Shape::Model;
-            } else {
-                renderable.shape = Renderable::Shape::Box;
-            }
-            if (const EntityDefNode *size = node.TryGet("size")) {
-                renderable.size = Vector3{size->Get("x").AsFloat(1.0f), size->Get("y").AsFloat(1.0f),
-                                           size->Get("z").AsFloat(1.0f)};
-            }
-            if (const EntityDefNode *color = node.TryGet("color")) {
-                renderable.color = ParseColorName(color->AsString("gray"), GRAY);
-            }
-            if (const EntityDefNode *wireframe = node.TryGet("wireframe")) {
-                renderable.wireframe = wireframe->AsBool(true);
-            }
-            if (renderable.shape == Renderable::Shape::Model) {
-                if (const EntityDefNode *model = node.TryGet("model")) {
-                    renderable.model = engine.Models().GetHandle(model->AsString(""));
-                    // Lighting (game/flare_reactor's own shader work): gives every material of this
-                    // Model its own compiled, lit Shader instance -- see lighting.h for why "one per
-                    // material" rather than sharing one across all of them.
-                    if (renderable.model) lighting.ApplyToModel(*renderable.model);
-                }
-            }
-            registry.emplace<Renderable>(entity, renderable);
+            registry.emplace<Renderable>(entity, ParseRenderableComponent(node, engine.Models()));
+        });
+
+        // MeshRenderer (ADR-0020, Fase A): splits a multi-material Model into one child entity per
+        // submesh, each carrying its own RenderMaterial -- see app/scene/mesh_renderer.h's own
+        // header comment (SpawnMeshRendererComponent) for the "core" detection/hierarchy details.
+        factory.RegisterComponentLoader(
+            "MeshRenderer", [&engine, &materials](entt::registry &registry, entt::entity entity,
+                                                    const EntityDefNode &node) {
+                SpawnMeshRendererComponent(registry, entity, node, engine.Models(), materials);
+            });
+
+        // Light (ADR-0020, Fase A): replaces the old private kLights[2] array
+        // (game/flare_reactor/lighting.cpp) with real entities -- see app/scene/light.h.
+        factory.RegisterComponentLoader("Light", [](entt::registry &registry, entt::entity entity,
+                                                      const EntityDefNode &node) {
+            registry.emplace<Light>(entity, ParseLightComponent(node));
         });
     }
 
@@ -147,6 +128,11 @@ namespace {
     // (ADR-0004). A plain `Lighting lighting;` local in main() would destruct at the closing brace,
     // i.e. after the explicit engine.Shutdown() call already ran.
     std::unique_ptr<Lighting> g_lighting;
+    // ADR-0020's ".mat" cache -- ResourceCache<RenderMaterial> (app/resource/resource_cache.h,
+    // ADR-0004), same infrastructure Models()/Textures() already use, dedupes by path (e.g. every
+    // reactor submesh sharing reactor_frame.mat.yaml resolves to the SAME compiled Shader instance).
+    // unique_ptr for the same UnloadShader-before-Shutdown() reason g_lighting already is.
+    std::unique_ptr<ResourceCache<RenderMaterial>> g_materialCache;
     // Subscribes to EvtData_ScreenshotRequested (events.h) in its constructor -- holds no GL/audio
     // resource, so unlike g_lighting there's no ordering requirement against engine.Shutdown(), but
     // reset alongside it below anyway for symmetry with the rest of this block.
@@ -175,17 +161,23 @@ int main() {
     // path, same as EngineConfig above.
     GameConfig gameConfig = LoadOrCreateGameConfig();
 
-    // Constructed before the entity factory below -- its "Renderable" component loader calls
-    // Lighting::ApplyToModel while the level loads (see RegisterComponentLoaders). engine.Textures()
-    // (ADR-0004) + gameConfig.energyTexturePath: the scrolling core effect's energyTex uniform
-    // (docs/learning/rendering.html, effect 2).
-    g_lighting = std::make_unique<Lighting>(engine.Textures(), gameConfig.energyTexturePath);
+    // Owns only the Sentinel/player's Box/Sphere primitives shader now (ADR-0020 moved the
+    // reactor's own per-material shading to .mat assets, see RegisterComponentLoaders/lighting.h).
+    g_lighting = std::make_unique<Lighting>();
     g_screenshotCapture = std::make_unique<ScreenshotCapture>(engine.Events());
+
+    // Constructed before the entity factory below -- its loader (LoadRenderMaterial,
+    // app/scene/material_loader.h) needs g_parser + engine.Textures(), and the "MeshRenderer"
+    // component loader (RegisterComponentLoaders) resolves `material:`/`coreMaterial:` paths
+    // through this cache while the level loads.
+    g_materialCache = std::make_unique<ResourceCache<RenderMaterial>>(
+        [&engine](const char *path) { return LoadRenderMaterial(path, g_parser, ReadWholeFile, engine.Textures()); },
+        [](RenderMaterial &material) { UnloadShader(material.shader); });
 
     g_entityFactory = std::make_unique<EntityFactory>([](const std::string &name) {
         TraceLog(LOG_WARNING, "Unknown component '%s' in entity definition, skipping", name.c_str());
     });
-    RegisterComponentLoaders(*g_entityFactory, engine, *g_lighting);
+    RegisterComponentLoaders(*g_entityFactory, engine, *g_materialCache);
 
     g_levelLoader = std::make_unique<LevelLoader>(*g_entityFactory, g_parser);
     // FlareReactorGameLogic (Phase 3), not plain BaseGameLogic -- its constructor subscribes the
@@ -224,6 +216,7 @@ int main() {
     g_logic.reset();   // drops the attached FlareReactorView too -- g_view becomes dangling
     g_view = nullptr;
     g_lighting.reset();   // UnloadShader before the GL context closes below (ADR-0004)
+    g_materialCache.reset();   // same reason -- each cached RenderMaterial's UnloadShader
     g_screenshotCapture.reset();
 
     engine.Shutdown();
