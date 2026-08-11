@@ -41,6 +41,14 @@ public:
     // the entity through entityFactory_, and Queue()s EvtData_EntitySpawned for it (ADR-0005's
     // Queue/DispatchQueued, not Emit -- per ADR-0009's own follow-up note, now that it exists).
     // Returns every entity created, in file order.
+    //
+    // A resource file's own top-level "active:" (a sibling of "components:", not itself a
+    // component -- checked before EntityFactory::Create ever runs, so an inactive entity's
+    // components never touch the registry at all) skips that actor's spawn entirely when false.
+    // Absent/true is the default, so every entity file written before this stays unaffected. User
+    // request (2026-08-11): a quick, no-rebuild way to toggle a single entity off for a visual test
+    // (e.g. assets/entities/props/backpack.yaml) without deleting/re-adding its actors[] entry.
+
     std::vector<entt::entity> Load(entt::registry &registry, EventManager &events,
                                     const std::string &levelPath);
 

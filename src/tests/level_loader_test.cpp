@@ -64,6 +64,38 @@ namespace {
             });
         return [files](const std::string &path) { return files->at(path); };
     }
+
+    const std::string kInactiveEntityYaml =
+        "active: false\n"
+        "components:\n"
+        "  Position:\n"
+        "    x: 0\n"
+        "    y: 0\n"
+        "    z: 0\n"
+        "  EnemyTag:\n";
+
+    const std::string kLevelWithInactiveActorYaml =
+        "actors:\n"
+        "  - resource: entities/enemy.yaml\n"
+        "    position:\n"
+        "      x: 0\n"
+        "      y: 0\n"
+        "      z: 0\n"
+        "  - resource: entities/inactive.yaml\n"
+        "    position:\n"
+        "      x: 0\n"
+        "      y: 0\n"
+        "      z: 0\n";
+
+    LevelLoader::FileReader FakeFilesWithInactiveActor() {
+        auto files = std::make_shared<std::unordered_map<std::string, std::string>>(
+            std::unordered_map<std::string, std::string>{
+                {"level.yaml", kLevelWithInactiveActorYaml},
+                {"entities/enemy.yaml", kEnemyEntityYaml},
+                {"entities/inactive.yaml", kInactiveEntityYaml},
+            });
+        return [files](const std::string &path) { return files->at(path); };
+    }
 }
 
 TEST_CASE("Load spawns one entity per actor placement") {
@@ -113,6 +145,20 @@ TEST_CASE("Load applies explicit overrides on top of the entity resource's base 
     CHECK(registry.get<FakeHealth>(spawned[0]).max == doctest::Approx(50.0f));
     // Second placement overrides Health.max down to 25.
     CHECK(registry.get<FakeHealth>(spawned[1]).max == doctest::Approx(25.0f));
+}
+
+TEST_CASE("Load skips an actor whose entity resource has active: false") {
+    entt::registry registry;
+    EventManager events;
+    EntityFactory factory;
+    RegisterFakeComponents(factory);
+    YamlEntityFileParser parser;
+    LevelLoader loader(factory, parser, FakeFilesWithInactiveActor());
+
+    std::vector<entt::entity> spawned = loader.Load(registry, events, "level.yaml");
+
+    REQUIRE(spawned.size() == 1);   // only the active actor spawned
+    CHECK(registry.all_of<FakePosition, FakeEnemyTag>(spawned[0]));
 }
 
 TEST_CASE("Load queues EvtData_EntitySpawned for each spawned entity, not dispatched immediately") {
